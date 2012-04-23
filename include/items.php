@@ -1226,6 +1226,16 @@ function dfrn_deliver($owner,$contact,$atom, $dissolve = false) {
 }
 
 
+function item_edited_has_changed($old, $new) {
+    if (!x($new,'edited')) {
+        return false;
+    }
+    if (!$new['edited']) {
+        return false;
+    }
+    return $new['edited'] !== $old['edited'];
+}
+
 /**
  *
  * consume_feed - process atom feed and update anything/everything we might need to update
@@ -1609,7 +1619,7 @@ function consume_feed($xml,$importer,&$contact, &$hub, $datedir = 0, $pass = 0) 
 				// Update content if 'updated' changes
 
 				if(count($r)) {
-					if((x($datarray,'edited') !== false) && (datetime_convert('UTC','UTC',$datarray['edited']) !== $r[0]['edited'])) {  
+					if(item_edited_has_changed($r[0], $datarray)) {
 						$r = q("UPDATE `item` SET `title` = '%s', `body` = '%s', `tag` = '%s', `edited` = '%s' WHERE `uri` = '%s' AND `uid` = %d LIMIT 1",
 							dbesc($datarray['title']),
 							dbesc($datarray['body']),
@@ -1755,7 +1765,7 @@ function consume_feed($xml,$importer,&$contact, &$hub, $datedir = 0, $pass = 0) 
 				// Update content if 'updated' changes
 
 				if(count($r)) {
-					if((x($datarray,'edited') !== false) && (datetime_convert('UTC','UTC',$datarray['edited']) !== $r[0]['edited'])) {  
+					if(item_edited_has_changed($r[0], $datarray)) {
 						$r = q("UPDATE `item` SET `title` = '%s', `body` = '%s', `tag` = '%s', `edited` = '%s' WHERE `uri` = '%s' AND `uid` = %d LIMIT 1",
 							dbesc($datarray['title']),
 							dbesc($datarray['body']),
@@ -2239,7 +2249,7 @@ function local_delivery($importer,$data) {
 
 				if(count($r)) {
 					$iid = $r[0]['id'];
-					if((x($datarray,'edited') !== false) && (datetime_convert('UTC','UTC',$datarray['edited']) !== $r[0]['edited'])) {  
+					if(item_edited_has_changed($r[0], $datarray)) {
 						logger('received updated comment' , LOGGER_DEBUG);
 						$r = q("UPDATE `item` SET `title` = '%s', `body` = '%s', `tag` = '%s', `edited` = '%s' WHERE `uri` = '%s' AND `uid` = %d LIMIT 1",
 							dbesc($datarray['title']),
@@ -2401,7 +2411,7 @@ function local_delivery($importer,$data) {
 				// Update content if 'updated' changes
 
 				if(count($r)) {
-					if((x($datarray,'edited') !== false) && (datetime_convert('UTC','UTC',$datarray['edited']) !== $r[0]['edited'])) {  
+					if(item_edited_has_changed($r[0], $datarray)) {
 						$r = q("UPDATE `item` SET `title` = '%s', `body` = '%s', `tag` = '%s', `edited` = '%s' WHERE `uri` = '%s' AND `uid` = %d LIMIT 1",
 							dbesc($datarray['title']),
 							dbesc($datarray['body']),
@@ -2479,7 +2489,7 @@ function local_delivery($importer,$data) {
 			
 				if(!x($datarray['type']) || $datarray['type'] != 'activity') {
 
-					$myconv = q("SELECT `author-link`, `author-avatar`, `parent` FROM `item` WHERE `parent-uri` = '%s' AND `uid` = %d AND `parent` != 0 AND `deleted` = 0",
+					$myconv = q("SELECT `author-link`, `author-avatar`, `parent` FROM `item` WHERE `parent-uri` = '%s' AND `uid` = %d AND `parent` != 0 ",
 						dbesc($parent_uri),
 						intval($importer['importer_uid'])
 					);
@@ -2567,7 +2577,7 @@ function local_delivery($importer,$data) {
 			// Update content if 'updated' changes
 
 			if(count($r)) {
-				if((x($datarray,'edited') !== false) && (datetime_convert('UTC','UTC',$datarray['edited']) !== $r[0]['edited'])) {  
+       				if(item_edited_has_changed($r[0], $datarray)) {
 					$r = q("UPDATE `item` SET `title` = '%s', `body` = '%s', `tag` = '%s', `edited` = '%s' WHERE `uri` = '%s' AND `uid` = %d LIMIT 1",
 						dbesc($datarray['title']),
 						dbesc($datarray['body']),
