@@ -392,10 +392,22 @@ function dfrn_request_post(&$a) {
 				);
 			}
 
-			// contact is created. Now send an email verify form to the requestor.
-			//
+			// contact is created. Now create an introduction
 
+			$hash = random_string();
 
+			$r = q("insert into intro ( uid, `contact-id`, knowyou, note, hash, datetime, blocked )
+				values( %d , %d, %d, '%s', '%s', '%s', %d ) ",
+				intval($uid),
+				intval($contact_id),
+				((x($_POST,'knowyou') && ($_POST['knowyou'] == 1)) ? 1 : 0),
+				dbesc(notags(trim($_POST['dfrn-request-message']))),
+				dbesc($hash),
+				dbesc(datetime_convert()),
+				1
+			);
+				
+			// Next send an email verify form to the requestor.
 
 		}
 
@@ -688,7 +700,8 @@ function dfrn_request_content(&$a) {
 						'node' => $r[0]['nickname'],
 						'dfrn_id' => $r[0]['issued-id'],
 						'intro_id' => $intro[0]['id'],
-						'duplex' => (($r[0]['page-flags'] == PAGE_FREELOVE) ? 1 : 0)
+						'duplex' => (($r[0]['page-flags'] == PAGE_FREELOVE) ? 1 : 0),
+						'activity' => intval(get_pconfig($r[0]['uid'],'system','post_newfriend'))
 					);
 					dfrn_confirm_post($a,$handsfree);
 				}
@@ -740,6 +753,11 @@ function dfrn_request_content(&$a) {
 			/* $_GET variables are already urldecoded */ 
 			$myaddr = ((x($_GET,'address')) ? $_GET['address'] : '');
 		}
+
+		// last, try a zrl
+		if(! strlen($myaddr))
+			$myaddr = get_my_url();
+
 
 		$target_addr = $a->profile['nickname'] . '@' . substr(z_root(), strpos(z_root(),'://') + 3 );
 
