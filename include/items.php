@@ -1233,7 +1233,19 @@ function item_edited_has_changed($old, $new) {
     if (!$new['edited']) {
         return false;
     }
-    return $new['edited'] !== $old['edited'];
+    $oldtz = date_default_timezone_get();
+    date_default_timezone_set('UTC');
+    $oldtime = strtotime($old['edited']);
+    $newtime = strtotime($new['edited']);
+    date_default_timezone_set($oldtz);
+    if (!$oldtime || !$newtime) {
+        return false;
+    }
+    return ($newtime - $oldtime) > 3;
+    if ($newtime != $oldtime) {
+        logger('item has changed: ' . $new['plink'], LOGGER_DATA);
+        call_hooks('post_remote', $new);
+    }
 }
 
 /**
