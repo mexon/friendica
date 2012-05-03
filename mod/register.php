@@ -527,8 +527,8 @@ function register_content(&$a) {
 		$profile_publish = replace_macros($publish_tpl,array(
 			'$instance'     => 'reg',
 			'$pubdesc'      => t('Include your profile in member directory?'),
-			'$yes_selected' => ' checked="checked" ',
-			'$no_selected'  => '',
+			'$yes_selected' => '',
+			'$no_selected'  => ' checked="checked" ',
 			'$str_yes'      => t('Yes'),
 			'$str_no'       => t('No')
 		));
