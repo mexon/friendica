@@ -13,6 +13,9 @@
 // you "compile" the css (with `lessc`), but css (/**/) comments
 // do. i use them to our advantage :).
 
+// import our reset styles first
+@import "../css/reset";
+
 //* backgrounds */
 @dk_bg_colour: #1d1f1d;
 @bg_colour: #2e2f2e;
@@ -25,14 +28,30 @@
 @main_colour: #eeeecc;
 @main_alt_colour: #eeeeee;
 // darken(@main_alt_colour, 13%) > #cdcdcd
+// darken(@main_alt_colour, 13.5%) > #cccccc
+// darken(@main_alt_colour, 33%) > #9a9a9a
+// darken(@main_alt_colour, 24%) > #b1b1b1
+// darken(@main_alt_colour, 27%) > #a9a9a9
+// darken(@main_alt_colour, 33.5%) > #999999
+// darken(@main_alt_colour, 40%) > #888888
+// darken(@main_alt_colour, 46.8%) > #777777
+// darken(@main_alt_colour, 53.5%) > #666666
 // darken(@main_alt_colour, 60%) > #555555
+// darken(@main_alt_colour, 66.5%) > #444444
+// darken(@main_alt_colour, 73.5%) > #333333
+// darken(@main_alt_colour, 80%) > #222222
+// darken(@main_alt_colour, 86.5%) > #111111
 @disabled_colour: #ddddbb;
 @shiny_colour: #2e3436;
 @red_orange: #ff2000;
 @orange: #f8911b;
 @lt_orange: #fcaf3e;
-@shadow_colour: #111111;
+@shadow_colour: darken(@main_alt_colour, 86.5%);
+@lt_shadow_colour: #888888;
 @friendica_blue: #3465a4;
+@border2: #babdb6;
+@group_show: #9ade00;
+@group_hide: #ff4141;
 @notice: #3320bc;
 @info: #1353b1;
 @alert: #ff0000;
@@ -46,6 +65,9 @@
 @lt_link_colour: lighten(@link_colour, 10%);
 //@hover_colour: #729fcf;
 @hover_colour: @dk_link_colour;
+
+// other colours
+@med_border_colour: #c8bebe;
 
 //* box shadows */
 @menu_shadow: 5px 0 10px 0 @shadow_colour;
@@ -77,7 +99,7 @@
 //*/
 
 //* text-shadow */
-.text_shadow (@h: 1px, @v: 1px, @c: #111) {
+.text_shadow (@h: 1px, @v: 1px, @c: @shadow_colour) {
 	-moz-text-shadow: @h @v @c;
 	-o-text-shadow: @h @v @c;
 	-webkit-text-shadow: @h @v @c;
@@ -85,7 +107,7 @@
 	text-shadow: @h @v @c;
 }
 //* transitions */
-.transition (@type: all, @dur: 0.5s, @effect: ease-in-out) {
+.transition (@type: all, @dur: 0.75s, @effect: ease-in-out) {
     -webkit-transition: @arguments;
     -moz-transition: @arguments;
     -o-transition: @arguments;
@@ -97,7 +119,9 @@
 .borders (@size: 1px, @style: solid, @colour: @main_colour) {
 	border: @size @style @colour;
 }
-
+.med_borders (@sz: 2px, @st: solid, @c: @med_border_colour) {
+	border: @sz @st @c;
+}
 //* rounded box corners */
 .rounded_corners (@r: 5px) {
 	-o-border-radius: @r;
@@ -105,6 +129,13 @@
 	-moz-border-radius: @r;
 	-ms-border-radius: @r;
 	border-radius: @r;
+}
+.text_overflow (@t: ellipsis) {
+	-moz-text-overflow: @t;
+	-ms-text-verflow: @t;
+	-o-text-overflow: @t;
+	-webkit-text-overflow: @t;
+	text-overflow: @t;
 }
 
 //* pre wrap */
@@ -115,9 +146,15 @@
 }
 //* font size sizing */
 .default_font () {
-	font-size: 16px;
+	font-size: 14pt;
 	line-height: 1.1em;
 	font-family: sans-serif;
+}
+.font_size_adjust () {
+	-webkit-text-size-adjust: 100%;
+	-ms-text-size-adjust: 100%;
+	-o-text-size-adjust: 100%;
+	font-size-adjust: 100%;
 }
 
 //* reset ul, ol */

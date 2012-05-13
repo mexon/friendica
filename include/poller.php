@@ -30,6 +30,17 @@ function poller_run($argv, $argc){
 	load_config('config');
 	load_config('system');
 
+	$maxsysload = intval(get_config('system','maxloadavg'));
+	if($maxsysload < 1)
+		$maxsysload = 50;
+	if(function_exists('sys_getloadavg')) {
+		$load = sys_getloadavg();
+		if(intval($load[0]) > $maxsysload) {
+			logger('system: load ' . $load . ' too high. Poller deferred to next scheduled run.');
+			return;
+		}
+	}
+
 	$lockpath = get_config('system','lockpath');
 	if ($lockpath != '') {
 		$pidfile = new pidfile($lockpath, 'poller.lck');
@@ -38,6 +49,8 @@ function poller_run($argv, $argc){
 			exit;
 		}
 	}
+
+
 
 	$a->set_baseurl(get_config('system','url'));
 
@@ -113,7 +126,9 @@ function poller_run($argv, $argc){
 		$force     = true;
 	}
 
-	$interval = ((get_config('system','delivery_interval') === false) ? 3 : intval(get_config('system','delivery_interval')));
+	$interval = intval(get_config('system','poll_interval'));
+	if(! $interval) 
+		$interval = ((get_config('system','delivery_interval') === false) ? 3 : intval(get_config('system','delivery_interval')));
 
 	$sql_extra = (($manual_id) ? " AND `id` = $manual_id " : "");
 
