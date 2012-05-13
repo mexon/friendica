@@ -143,7 +143,7 @@ function common_friends_visitor_widget($profile_uid) {
 	$cid = $zcid = 0;
 
 	if(can_write_wall($a,$profile_uid))
-		$cid = local_user();
+		$cid = remote_user();
 	else {
 		if(get_my_url()) {
 			$r = q("select id from contact where nurl = '%s' and uid = %d limit 1",
@@ -175,12 +175,17 @@ function common_friends_visitor_widget($profile_uid) {
 		return;
 
 	if($cid)
-		$r = common_friends($profile_uid,$cid,5,true);
+		$r = common_friends($profile_uid,$cid,0,5,true);
 	else
-		$r = common_friends_zcid($profile_uid,$zcid,5,true);
+		$r = common_friends_zcid($profile_uid,$zcid,0,5,true);
 
 	return replace_macros(get_markup_template('remote_friends_common.tpl'), array(
-		'$desc' =>  sprintf( tt("%d friend in common", "%d friends in common", $t), $t),
+		'$desc' =>  sprintf( tt("%d contact in common", "%d contacts in common", $t), $t),
+		'$base' => $a->get_baseurl(),
+		'$uid' => $profile_uid,
+		'$cid' => (($cid) ? $cid : '0'),
+		'$linkmore' => (($t > 5) ? 'true' : ''),
+		'$more' => t('show more'),
 		'$items' => $r
 	)); 
 
