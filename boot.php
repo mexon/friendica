@@ -10,7 +10,7 @@ require_once('include/cache.php');
 require_once('include/config.php');
 
 define ( 'FRIENDICA_PLATFORM',     'Friendica');
-define ( 'FRIENDICA_VERSION',      '3.0.1340' );
+define ( 'FRIENDICA_VERSION',      '3.0.1341' );
 define ( 'DFRN_PROTOCOL_VERSION',  '2.23'    );
 define ( 'DB_UPDATE_VERSION',      1143      );
 
