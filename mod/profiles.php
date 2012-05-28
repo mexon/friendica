@@ -146,7 +146,7 @@ function profiles_post(&$a) {
 				$value = $marital;
 			}
 			if($withchanged) {
-				$changes[] = '&hearts; ' . t('Romantic Partner');
+				$changes[] = '[color=#ff0000]&hearts;[/color] ' . t('Romantic Partner');
 				$value = strip_tags($with);
 			}							
 			if($work != $orig[0]['work']) {
@@ -176,9 +176,18 @@ function profiles_post(&$a) {
 				$changes[] = t('Interests');
 				$value = $interest;
 			}
-			if($address != $orig[0]['address'] || $locality != $orig[0]['locality'] || $region != $orig[0]['region']
+			if($address != $orig[0]['address']) {
+				$changes[] = t('Address');
+				// New address not sent in notifications, potential privacy issues
+				// in case this leaks to unintended recipients. Yes, it's in the public
+				// profile but that doesn't mean we have to broadcast it to everybody.
+			}
+			if($locality != $orig[0]['locality'] || $region != $orig[0]['region']
 				|| $country_name != $orig[0]['country-name']) {
  				$changes[] = t('Location');
+				$comma1 = ((($locality) && ($region || $country_name)) ? ', ' : ' ');
+				$comma2 = (($region && $country_name) ? ', ' : '');
+				$value = $locality . $comma1 . $region . $comma2 . $country_name;
 			}
 
 			profile_activity($changes,$value);
@@ -329,7 +338,7 @@ function profile_activity($changed, $value) {
 
 	if($t == 1 && strlen($value)) {
 		$message = sprintf( t('%1$s changed %2$s to &ldquo;%3$s&rdquo;'), $A, $changes, $value);
-		$message .= "\n\n" . sprintf( t(" - Visit %1$s\'s %2$s"), $A, $prof);
+		$message .= "\n\n" . sprintf( t(' - Visit %1$s\'s %2$s'), $A, $prof);
 	}
 	else
 		$message = 	sprintf( t('%1$s has an updated %2$s, changing %3$s.'), $A, $prof, $changes);
