@@ -498,12 +498,9 @@ function get_atom_elements($feed,$item) {
 
 	// Disallow time travelling posts
 
-//        $oldzone = get_default_timezone();
-//        set_default_timezone('UTC');
-	$d1 = strtotime($res['created']);
-	$d2 = strtotime($res['edited']);
+	$d1 = x($res,'created') ? datetime_convert('UTC', 'UTC', $res['created']) : null;
+	$d2 = x($res,'edited') ? datetime_convert('UTC', 'UTC', $res['edited']) : null;
 	$d3 = strtotime('now');
-//        set_default_timezone($oldzone);
 
 	if($d1 > $d3)
 		$res['created'] = datetime_convert();
@@ -732,7 +729,7 @@ function item_store($arr,$force_parent = false) {
 	$arr['owner-link']    = ((x($arr,'owner-link'))    ? notags(trim($arr['owner-link']))    : '');
 	$arr['owner-avatar']  = ((x($arr,'owner-avatar'))  ? notags(trim($arr['owner-avatar']))  : '');
 	$arr['created']       = ((x($arr,'created') !== false) ? datetime_convert('UTC','UTC',$arr['created']) : datetime_convert());
-	$arr['edited']        = ((x($arr,'edited')  !== false) ? datetime_convert('UTC','UTC',$arr['edited'])  : false);
+	$arr['edited']        = ((x($arr,'edited')  !== false) ? datetime_convert('UTC','UTC',$arr['edited'])  : datetime_convert());
 	$arr['commented']     = datetime_convert();
 	$arr['received']      = datetime_convert();
 	$arr['changed']       = datetime_convert();
@@ -1253,15 +1250,15 @@ function item_edited_has_changed($old, $new) {
     if (!$new['edited']) {
         return false;
     }
-//    $oldzone = get_default_timezone();
-//    set_default_timezone('UTC');
-    $newtime = strtotime($new['edited']);
-    $oldtime = strtotime($old['edited']);
-//    set_default_timezone($oldzone);
+    $newtime = datetime_convert('UTC', 'UTC', $new['edited']);
+    $oldtime = datetime_convert('UTC', 'UTC', $old['edited']);
+
     if ($newtime != $oldtime) {
         logger('item has changed: ' . $new['plink'], LOGGER_DATA);
-        call_hooks('post_remote', $new);
+        call_hooks('post_remote', array_merge($old, $new));
+        return true;
     }
+    return false;
 }
 
 /**
