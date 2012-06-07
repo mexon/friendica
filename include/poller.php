@@ -181,12 +181,8 @@ function poller_run($argv, $argc){
 			if($manual_id)
 				$contact['last-update'] = '0000-00-00 00:00:00';
 
-			if($contact['network'] === NETWORK_DFRN) {
-				$contact['priority'] = 2;
-                                if(strpos($contact['url'],$a->get_baseurl()) !== FALSE) {
-                                        $contact['priority'] = 0;
-                                }
-                        }
+			if($contact['network'] === NETWORK_DFRN)
+				$contact['priority'] = (strpos($contact['url'],$a->get_baseurl()) === FALSE) ? 2 : 0;
 
 			if(!get_config('system','ostatus_use_priority') and ($contact['network'] === NETWORK_OSTATUS))
 				$contact['priority'] = 2;
