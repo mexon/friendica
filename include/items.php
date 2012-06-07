@@ -1243,19 +1243,23 @@ function dfrn_deliver($owner,$contact,$atom, $dissolve = false) {
 }
 
 
-function item_edited_has_changed($old, $new) {
+function item_edited_has_changed($old, &$new) {
     if (!x($new,'edited')) {
         return false;
     }
     if (!$new['edited']) {
         return false;
     }
-    $newtime = datetime_convert('UTC', 'UTC', $new['edited']);
-    $oldtime = datetime_convert('UTC', 'UTC', $old['edited']);
+    $newedited = datetime_convert('UTC', 'UTC', $new['edited']);
+    $oldedited = datetime_convert('UTC', 'UTC', $old['edited']);
+    $oldretrieved = datetime_convert('UTC', 'UTC', $old['retrieved']);
 
-    if ($newtime != $oldtime) {
-        logger('item has changed: ' . $new['plink'], LOGGER_DATA);
+    $result = false;
+    //if ($newedited != $oldedited) {
+    if (($newedited > $oldretrieved) && ($newedited > $oldedited)) {
+        logger('item has changed (oldretrieved ' . $oldretrieved . ', oldedited ' . $oldedited . ', newedited ' . $newedited . '): ' . $new['plink'], LOGGER_DATA);
         call_hooks('post_remote', array_merge($old, $new));
+
         return true;
     }
     return false;
