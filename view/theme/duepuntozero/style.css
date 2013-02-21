@@ -194,7 +194,7 @@ aside {
 	border-radius: 5px;
 	padding: 5px;
 	font-weight: bold;
-	background: #3465a4 url('friendika-16.png') no-repeat 95% center;
+	background: #3465a4 url('friendica-16.png') no-repeat 95% center;
 }
 #wallmessage-link {
 	display: block;
@@ -245,8 +245,9 @@ section {
 
 /* footer */
 footer {
-    display: none;
-
+	text-align: right;
+	padding-bottom: 1em;
+	padding-right: 3em;
 }
 
 .birthday-today, .event-today {
@@ -429,6 +430,9 @@ div.wall-item-content-wrapper.shiny {
 	height: 50px;
 }
 
+#login-submit-wrapper {
+	clear: both;
+}
 #login-submit-button {
 /*	margin-top: 10px; */
 	margin-left: 200px;
@@ -437,7 +441,7 @@ div.wall-item-content-wrapper.shiny {
 
 input#dfrn-url {
 	float: left;
-	background: url(friendika-16.png) no-repeat;
+	background: url(friendica-16.png) no-repeat;
 	background-position: 2px center;
 	font-size: 17px;
 	padding-left: 21px;
@@ -560,7 +564,12 @@ input#dfrn-url {
 	clear: both;
 	margin-bottom: 30px;
 }
-
+.aprofile dt {
+	font-weight: bold;
+}
+#page-profile .title {
+	font-weight: bold;
+}
 #profile-vcard-break {
 	clear: both;
 }
@@ -927,12 +936,26 @@ input#dfrn-url {
 	position: relative;
 	-moz-border-radius: 3px;
 	border-radius: 3px;	
+}
 
+.tread-wrapper .tread-wrapper {
+	margin-left: 50px;
+}
+.tread-wrapper .wall-item-comment-wrapper {
+	margin-left: 50px;
+}
+
+.tread-end-wrapper {
+	margin-left: 50px;
 }
 
 .wall-item-content-wrapper.comment {
-	margin-left: 50px;
+#	margin-left: 50px;
 	background: #EEEEEE;
+}
+
+.wall-item-like.comment, .wall-item-dislike.comment {
+	margin-left: 50px;
 }
 
 .wall-item-info {
@@ -1119,7 +1142,7 @@ input#dfrn-url {
 	margin-left: 10px;
 	/*margin-bottom: 20px;*/
 	/*padding: 20px;*/
-	max-height: 400px;
+	max-height: 700px;
 	overflow: auto;
 }
 
@@ -1166,9 +1189,7 @@ input#dfrn-url {
 }
 
 .comment-wwedit-wrapper {
-	margin-top: 15px;
 	background: #f3f3f3;
-	margin-left: 50px;
 }
 
 .comment-edit-photo {
@@ -1178,6 +1199,10 @@ input#dfrn-url {
 	width: 100px;
 	float: left;
 }
+.comment-wwedit-wrapper.threaded > .comment-edit-form > .comment-edit-photo {
+	width: 40px;
+}
+
 .comment-edit-photo img {
 	width: 25px;
 }
@@ -1195,6 +1220,10 @@ input#dfrn-url {
 
 .comment-edit-submit {
 	margin: 10px 0px 10px 110px;
+}
+
+.comment-wwedit-wrapper.threaded > .comment-edit-form > .comment-edit-submit-wrapper > .comment-edit-submit {
+	margin-left: 50px;
 }
 
 #profile-jot-plugin-wrapper,
@@ -1608,7 +1637,7 @@ input#dfrn-url {
 .contact-photo-menu li a:hover { color: #FFFFFF; background: #3465A4; text-decoration: none; }
 
 
-#block-message, #ignore-message, #archive-message {
+#block-message, #ignore-message, #archive-message, #lost-contact-message {
 	color: #FF0000;
 }
 
@@ -1640,6 +1669,9 @@ input#dfrn-url {
 	display:block!important;
 }
 
+#photos-usage-message {
+	margin-bottom: 15px;
+}
 
 
 #acl-wrapper {
@@ -1737,10 +1769,14 @@ input#dfrn-url {
 
 .comment-edit-text-empty {
 	color: gray;
-	height: 30px;
+	height: 2em;
 	width: 175px;
 	overflow: auto;
 	margin-bottom: 10px;
+}
+
+.comment-wwedit-wrapper.threaded > .comment-edit-form > .comment-edit-text-empty {
+	height: 1.5em;
 }
 
 .comment-edit-text-full {
@@ -2414,9 +2450,40 @@ aside input[type='text'] {
 	font-size: 20px;
 }
 
+#event-summary-text {
+	margin-top: 15px;
+}
+
+#event-share-checkbox {
+	float: left;
+	margin-top: 10px;
+}
+
+#event-share-text {
+	float: left;
+	margin-top: 10px;
+	margin-left: 5px;
+}
+
+#event-share-break {
+	clear: both;
+	margin-bottom: 10px;
+}
+
+#event-summary {
+	width: 400px;
+}
+
 .vevent {
 	border: 1px solid #CCCCCC;
 }
+
+.vevent .event-summary {
+	margin-left: 10px;
+	margin-right: 10px;
+	font-weight: bold;
+}
+
 .vevent .event-description, .vevent .event-location {
 	margin-left: 10px;
 	margin-right: 10px;
@@ -2994,7 +3061,8 @@ aside input[type='text'] {
 [class^="comment-edit-bb"] {
 	list-style: none;
 	display: none;
-	margin: 0px 0 -5px 60px;
+	margin: 0px 0 -5px 0px;
+	padding: 0px;
 	width: 75%;
 }
 [class^="comment-edit-bb"] > li {
@@ -3226,3 +3294,18 @@ ul.menu-popup {
 .autocomplete { color:#000; border:1px solid #999; background:#FFF; cursor:default; text-align:left; max-height:350px; overflow:auto; margin:-6px 6px 6px -6px; /* IE6 specific: */ _height:350px;  _margin:0; _overflow-x:hidden; }
 .autocomplete .selected { background:#F0F0F0; }
 .autocomplete div { padding:2px 5px; white-space:nowrap; overflow:hidden; }
+
+#datebrowse-sidebar select {
+	margin-left: 25px;
+}
+
+#div_id_remember label {
+	width: 170px;
+}
+#div_id_remember input {
+	width: 20px;
+}
+
+.shared_header span {
+	margin-left: 10px;
+}

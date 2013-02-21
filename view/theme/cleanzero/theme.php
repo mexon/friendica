@@ -5,10 +5,13 @@
  * Version:
  * Author: Christian Vogeley (https://christian-vogeley.de/profile/christian)
  */
+
+function cleanzero_init(&$a) {
 $a->theme_info = array(
   'extends' => 'duepuntozero',
 );
-function cleanzero_init(&$a) {
+set_template_engine($a, 'smarty3');
+
 $a->page['htmlhead'] .= <<< EOT
 <script>
 
@@ -42,12 +45,21 @@ function insertFormatting(comment,BBcode,id) {
 	return true;
 }
 
-function cmtBbOpen(id) {
-	$(".comment-edit-bb-" + id).show();
+function cmtBbOpen(comment, id) {
+	if($(comment).hasClass('comment-edit-text-full')) {
+		$(".comment-edit-bb-" + id).show();
+		return true;
+	}
+	return false;
 }
 function cmtBbClose(comment, id) {
-	$(".comment-edit-bb-" + id).hide();
+//	if($(comment).hasClass('comment-edit-text-empty')) {
+//		$(".comment-edit-bb-" + id).hide();
+//		return true;
+//	}
+	return false;
 }
+
 
 $(document).ready(function() {
 

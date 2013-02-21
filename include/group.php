@@ -40,7 +40,7 @@ function group_add($uid,$name) {
 function group_rmv($uid,$name) {
 	$ret = false;
 	if(x($uid) && x($name)) {
-		$r = q("SELECT * FROM `group` WHERE `uid` = %d AND `name` = '%s' LIMIT 1",
+		$r = q("SELECT id FROM `group` WHERE `uid` = %d AND `name` = '%s' LIMIT 1",
 			intval($uid),
 			dbesc($name)
 		);
@@ -48,6 +48,37 @@ function group_rmv($uid,$name) {
 			$group_id = $r[0]['id'];
 		if(! $group_id)
 			return false;
+
+		// remove group from default posting lists
+		$r = q("SELECT def_gid, allow_gid, deny_gid FROM user WHERE uid = %d LIMIT 1",
+		       intval($uid)
+		);
+		if($r) {
+			$user_info = $r[0];
+			$change = false;
+
+			if($user_info['def_gid'] == $group_id) {
+				$user_info['def_gid'] = 0;
+				$change = true;
+			}
+			if(strpos($user_info['allow_gid'], '<' . $group_id . '>') !== false) {
+				$user_info['allow_gid'] = str_replace('<' . $group_id . '>', '', $user_info['allow_gid']);
+				$change = true;
+			}
+			if(strpos($user_info['deny_gid'], '<' . $group_id . '>') !== false) {
+				$user_info['deny_gid'] = str_replace('<' . $group_id . '>', '', $user_info['deny_gid']);
+				$change = true;
+			}
+
+			if($change) {
+				q("UPDATE user SET def_gid = %d, allow_gid = '%s', deny_gid = '%s' WHERE uid = %d",
+				  intval($user_info['def_gid']),
+				  dbesc($user_info['allow_gid']),
+				  dbesc($user_info['deny_gid']),
+				  intval($uid)
+				);
+			}
+		}
 
 		// remove all members
 		$r = q("DELETE FROM `group_member` WHERE `uid` = %d AND `gid` = %d ",
@@ -103,7 +134,7 @@ function group_add_member($uid,$name,$member,$gid = 0) {
 	if((! $gid) || (! $uid) || (! $member))
 		return false;
 
-	$r = q("SELECT * FROM `group_member` WHERE `uid` = %d AND `id` = %d AND `contact-id` = %d LIMIT 1",	
+	$r = q("SELECT * FROM `group_member` WHERE `uid` = %d AND `gid` = %d AND `contact-id` = %d LIMIT 1",	
 		intval($uid),
 		intval($gid),
 		intval($member)
@@ -248,7 +279,7 @@ function group_side($every="contacts",$each="group",$edit = false, $group_id = 0
 	return $o;
 }
 
-function expand_groups($a) {
+function expand_groups($a,$check_dead = false) {
 	if(! (is_array($a) && count($a)))
 		return array();
 	$groups = implode(',', $a);
@@ -258,6 +289,10 @@ function expand_groups($a) {
 	if(count($r))
 		foreach($r as $rr)
 			$ret[] = $rr['contact-id'];
+	if($check_dead) {
+		require_once('include/acl_selectors.php');
+		$ret = prune_deadguys($ret);
+	}
 	return $ret;
 }
 

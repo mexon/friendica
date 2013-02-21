@@ -2,7 +2,7 @@
 require_once("boot.php");
 require_once('include/queue_fn.php');
 
-function queue_run($argv, $argc){
+function queue_run(&$argv, &$argc){
 	global $a, $db;
 
 	if(is_null($a)){
@@ -11,14 +11,14 @@ function queue_run($argv, $argc){
   
 	if(is_null($db)){
 		@include(".htconfig.php");
-		require_once("dba.php");
+		require_once("include/dba.php");
 		$db = new dba($db_host, $db_user, $db_pass, $db_data);
 		unset($db_host, $db_user, $db_pass, $db_data);
 	};
 
 
-	require_once("session.php");
-	require_once("datetime.php");
+	require_once("include/session.php");
+	require_once("include/datetime.php");
 	require_once('include/items.php');
 	require_once('include/bbcode.php');
 
@@ -161,7 +161,7 @@ function queue_run($argv, $argc){
 			case NETWORK_DIASPORA:
 				if($contact['notify']) {
 					logger('queue: diaspora_delivery: item ' . $q_item['id'] . ' for ' . $contact['name']);
-					$deliver_status = diaspora_transmit($owner,$contact,$data,$public);
+					$deliver_status = diaspora_transmit($owner,$contact,$data,$public,true);
 
 					if($deliver_status == (-1))
 						update_queue_time($q_item['id']);

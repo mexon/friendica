@@ -1,18 +1,18 @@
 <?php
 
-function profile_init(&$a) {
+require_once('include/contact_widgets.php');
+require_once('include/redir.php');
 
-	require_once('include/contact_widgets.php');
+
+function profile_init(&$a) {
 
 	if(! x($a->page,'aside'))
 		$a->page['aside'] = '';
 
-	$blocked = (((get_config('system','block_public')) && (! local_user()) && (! remote_user())) ? true : false);
-
 	if($a->argc > 1)
 		$which = $a->argv[1];
 	else {
-		$r = q("select nickname from user where blocked = 0 and account_expired = 0 and verified = 1 order by rand() limit 1");
+		$r = q("select nickname from user where blocked = 0 and account_expired = 0 and account_removed = 0 and verified = 1 order by rand() limit 1");
 		if(count($r)) {
 			goaway($a->get_baseurl() . '/profile/' . $r[0]['nickname']);
 		}
@@ -29,9 +29,13 @@ function profile_init(&$a) {
 		$which = $a->user['nickname'];
 		$profile = $a->argv[1];		
 	}
+	else {
+		auto_redir($a, $which);
+	}
 
 	profile_load($a,$which,$profile);
 
+	$blocked = (((get_config('system','block_public')) && (! local_user()) && (! remote_user())) ? true : false);
 	$userblock = (($a->profile['hidewall'] && (! local_user()) && (! remote_user())) ? true : false);
 
 	if((x($a->profile,'page-flags')) && ($a->profile['page-flags'] == PAGE_COMMUNITY)) {
@@ -67,11 +71,23 @@ function profile_init(&$a) {
 
 function profile_content(&$a, $update = 0) {
 
-        if (x($a->category)) {
-	        $category = $a->category;
+	$category = $datequery = $datequery2 = '';
+
+	if($a->argc > 2) {
+		for($x = 2; $x < $a->argc; $x ++) {
+			if(is_a_date_arg($a->argv[$x])) {
+				if($datequery)
+					$datequery2 = escape_tags($a->argv[$x]);
+				else
+					$datequery = escape_tags($a->argv[$x]);
+			}
+			else
+				$category = $a->argv[$x];
+		}
 	}
-        else {
-	        $category = ((x($_GET,'category')) ? $_GET['category'] : '');
+
+	if(! x($category)) {
+		$category = ((x($_GET,'category')) ? $_GET['category'] : '');
 	}
 
 	if(get_config('system','block_public') && (! local_user()) && (! remote_user())) {
@@ -82,6 +98,8 @@ function profile_content(&$a, $update = 0) {
 	require_once('include/security.php');
 	require_once('include/conversation.php');
 	require_once('include/acl_selectors.php');
+	require_once('include/items.php');
+
 	$groups = array();
 
 	$tab = 'posts';
@@ -97,11 +115,22 @@ function profile_content(&$a, $update = 0) {
 		}
 	}
 
+
 	$contact = null;
 	$remote_contact = false;
 
-	if(remote_user()) {
-		$contact_id = $_SESSION['visitor_id'];
+	$contact_id = 0;
+
+	if(is_array($_SESSION['remote'])) {
+		foreach($_SESSION['remote'] as $v) {
+			if($v['uid'] == $a->profile['profile_uid']) {
+				$contact_id = $v['cid'];
+				break;
+			}
+		}
+	}
+
+	if($contact_id) {
 		$groups = init_groups_visitor($contact_id);
 		$r = q("SELECT * FROM `contact` WHERE `id` = %d AND `uid` = %d LIMIT 1",
 			intval($contact_id),
@@ -155,6 +184,7 @@ function profile_content(&$a, $update = 0) {
 
 		$celeb = ((($a->profile['page-flags'] == PAGE_SOAPBOX) || ($a->profile['page-flags'] == PAGE_COMMUNITY)) ? true : false);
 
+		$a->page['aside'] .= posted_date_widget($a->get_baseurl(true) . '/profile/' . $a->profile['nickname'],$a->profile['profile_uid'],true);	
 		$a->page['aside'] .= categories_widget($a->get_baseurl(true) . '/profile/' . $a->profile['nickname'],(x($category) ? xmlify($category) : ''));
 
 		if(can_write_wall($a,$a->profile['profile_uid'])) {
@@ -188,7 +218,8 @@ function profile_content(&$a, $update = 0) {
 
 		$r = q("SELECT distinct(parent) AS `item_id`, `contact`.`uid` AS `contact-uid`
 			FROM `item` LEFT JOIN `contact` ON `contact`.`id` = `item`.`contact-id`
-			WHERE `item`.`uid` = %d AND `item`.`visible` = 1 AND `item`.`deleted` = 0
+			WHERE `item`.`uid` = %d AND `item`.`visible` = 1 AND
+			(`item`.`deleted` = 0 OR item.verb = '" . ACTIVITY_LIKE ."' OR item.verb = '" . ACTIVITY_DISLIKE . "')
 			and `item`.`moderated` = 0 and `item`.`unseen` = 1
 			AND `contact`.`blocked` = 0 AND `contact`.`pending` = 0
 			AND `item`.`wall` = 1
@@ -200,23 +231,38 @@ function profile_content(&$a, $update = 0) {
 	}
 	else {
 
-                if(x($category)) {
-		        $sql_extra .= file_tag_file_query('item',$category,'category');
+		if(x($category)) {
+			$sql_extra .= protect_sprintf(file_tag_file_query('item',$category,'category'));
 		}
 
-		$r = q("SELECT COUNT(*) AS `total`
-			FROM `item` LEFT JOIN `contact` ON `contact`.`id` = `item`.`contact-id`
-			WHERE `item`.`uid` = %d AND `item`.`visible` = 1 AND `item`.`deleted` = 0
-			and `item`.`moderated` = 0 AND `contact`.`blocked` = 0 AND `contact`.`pending` = 0 
-			AND `item`.`id` = `item`.`parent` AND `item`.`wall` = 1
-			$sql_extra ",
-			intval($a->profile['profile_uid'])
-		);
-
-		if(count($r)) {
-			$a->set_pager_total($r[0]['total']);
-			$a->set_pager_itemspage(40);
+		if($datequery) {
+			$sql_extra2 .= protect_sprintf(sprintf(" AND item.created <= '%s' ", dbesc(datetime_convert(date_default_timezone_get(),'',$datequery))));
 		}
+		if($datequery2) {
+			$sql_extra2 .= protect_sprintf(sprintf(" AND item.created >= '%s' ", dbesc(datetime_convert(date_default_timezone_get(),'',$datequery2))));
+		}
+
+		if( (! get_config('alt_pager', 'global')) && (! get_pconfig($a->profile['profile_uid'],'system','alt_pager')) ) {
+		    $r = q("SELECT COUNT(*) AS `total`
+			    FROM `item` LEFT JOIN `contact` ON `contact`.`id` = `item`.`contact-id`
+			    WHERE `item`.`uid` = %d AND `item`.`visible` = 1 AND `item`.`deleted` = 0
+			    and `item`.`moderated` = 0 AND `contact`.`blocked` = 0 AND `contact`.`pending` = 0 
+			    AND `item`.`id` = `item`.`parent` AND `item`.`wall` = 1
+			    $sql_extra $sql_extra2 ",
+			    intval($a->profile['profile_uid'])
+		    );
+
+	        if(count($r)) {
+		        $a->set_pager_total($r[0]['total']);
+			}
+		}
+
+		$itemspage_network = get_pconfig(local_user(),'system','itemspage_network');
+		$itemspage_network = ((intval($itemspage_network)) ? $itemspage_network : 40);
+		if(($a->force_max_items > 0) && ($a->force_max_items < $itemspage_network))
+			$itemspage_network = $a->force_max_items;
+
+		$a->set_pager_itemspage($itemspage_network);
 
 		$pager_sql = sprintf(" LIMIT %d, %d ",intval($a->pager['start']), intval($a->pager['itemspage']));
 
@@ -225,7 +271,7 @@ function profile_content(&$a, $update = 0) {
 			WHERE `item`.`uid` = %d AND `item`.`visible` = 1 AND `item`.`deleted` = 0
 			and `item`.`moderated` = 0 AND `contact`.`blocked` = 0 AND `contact`.`pending` = 0
 			AND `item`.`id` = `item`.`parent` AND `item`.`wall` = 1
-			$sql_extra
+			$sql_extra $sql_extra2
 			ORDER BY `item`.`created` DESC $pager_sql ",
 			intval($a->profile['profile_uid'])
 
@@ -261,19 +307,9 @@ function profile_content(&$a, $update = 0) {
 		$items = array();
 	}
 
-	if($is_owner && ! $update) {
+	if($is_owner && (! $update) && (! get_config('theme','hide_eventlist'))) {
 		$o .= get_birthdays();
 		$o .= get_events();
-	}
-
-	if((! $update) && ($tab === 'posts')) {
-
-		// This is ugly, but we can't pass the profile_uid through the session to the ajax updater,
-		// because browser prefetching might change it on us. We have to deliver it with the page.
-
-		$o .= '<div id="live-profile"></div>' . "\r\n";
-		$o .= "<script> var profile_uid = " . $a->profile['profile_uid'] 
-			. "; var netargs = '?f='; var profile_page = " . $a->pager['page'] . "; </script>\r\n";
 	}
 
 
@@ -287,7 +323,12 @@ function profile_content(&$a, $update = 0) {
 	$o .= conversation($a,$items,'profile',$update);
 
 	if(! $update) {
-		$o .= paginate($a);
+		if( get_config('alt_pager', 'global') || get_pconfig($a->profile['profile_uid'],'system','alt_pager') ) {
+			$o .= alt_pager($a,count($items));
+		}
+		else {
+			$o .= paginate($a);
+		}
 	}
 
 	return $o;

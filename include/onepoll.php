@@ -2,7 +2,14 @@
 
 require_once("boot.php");
 
-function onepoll_run($argv, $argc){
+function RemoveReply($subject) {
+	while (in_array(strtolower(substr($subject, 0, 3)), array("re:", "aw:")))
+		$subject = trim(substr($subject, 4));
+
+	return($subject);
+}
+
+function onepoll_run(&$argv, &$argc){
 	global $a, $db;
 
 	if(is_null($a)) {
@@ -11,7 +18,7 @@ function onepoll_run($argv, $argc){
   
 	if(is_null($db)) {
 	    @include(".htconfig.php");
-    	require_once("dba.php");
+    	require_once("include/dba.php");
 	    $db = new dba($db_host, $db_user, $db_pass, $db_data);
     	unset($db_host, $db_user, $db_pass, $db_data);
   	};
@@ -36,11 +43,6 @@ function onepoll_run($argv, $argc){
 
 	logger('onepoll: start');
 	
-	$abandon_days = intval(get_config('system','account_abandon_days'));
-	if($abandon_days < 1)
-		$abandon_days = 0;
-
-
 	$manual_id  = 0;
 	$generation = 0;
 	$hub_update = false;
@@ -54,20 +56,13 @@ function onepoll_run($argv, $argc){
 		logger('onepoll: no contact');
 		return;
 	}
-
-	if(was_recently_delayed($contact_id))
-		return;
+	
 
 	$d = datetime_convert();
 
 	// Only poll from those with suitable relationships,
 	// and which have a polling address and ignore Diaspora since 
 	// we are unable to match those posts with a Diaspora GUID and prevent duplicates.
-
-	$abandon_sql = (($abandon_days) 
-		? sprintf(" AND `user`.`login_date` > UTC_TIMESTAMP() - INTERVAL %d DAY ", intval($abandon_days)) 
-		: '' 
-	);
 
 	$contacts = q("SELECT `contact`.* FROM `contact` 
 		WHERE ( `rel` = %d OR `rel` = %d ) AND `poll` != ''
@@ -88,14 +83,13 @@ function onepoll_run($argv, $argc){
 
 	$contact = $contacts[0];
 
-
 	$xml = false;
 
 	$t = $contact['last-update'];
 
 	if($contact['subhub']) {
-		$interval = get_config('system','pushpoll_frequency');
-		$contact['priority'] = (($interval !== false) ? intval($interval) : 3);
+		$poll_interval = get_config('system','pushpoll_frequency');
+		$contact['priority'] = (($poll_interval !== false) ? intval($poll_interval) : 3);
 		$hub_update = false;
 
 		if(datetime_convert('UTC','UTC', 'now') > datetime_convert('UTC','UTC', $t . " + 1 day"))
@@ -124,6 +118,7 @@ function onepoll_run($argv, $argc){
 
 	if($contact['network'] === NETWORK_DFRN) {
 
+		
 		$idtosend = $orig_id = (($contact['dfrn-id']) ? $contact['dfrn-id'] : $contact['issued-id']);
 		if(intval($contact['duplex']) && $contact['dfrn-id'])
 			$idtosend = '0:' . $orig_id;
@@ -133,21 +128,30 @@ function onepoll_run($argv, $argc){
 		// they have permission to write to us. We already filtered this in the contact query.
 		$perm = 'rw';
 
+		// But this may be our first communication, so set the writable flag if it isn't set already.
+
+		if(! intval($contact['writable']))
+			q("update contact set writable = 1 where id = %d limit 1", intval($contact['id']));
+
+
 		$url = $contact['poll'] . '?dfrn_id=' . $idtosend 
 			. '&dfrn_version=' . DFRN_PROTOCOL_VERSION 
 			. '&type=data&last_update=' . $last_update 
 			. '&perm=' . $perm ;
 
 		$handshake_xml = fetch_url($url);
+		$html_code = $a->get_curl_code();
 
 		logger('onepoll: handshake with url ' . $url . ' returns xml: ' . $handshake_xml, LOGGER_DATA);
 
 
-		if(! $handshake_xml) {
+		if((! strlen($handshake_xml)) || ($html_code >= 400) || (! $html_code)) {
 			logger("poller: $url appears to be dead - marking for death ");
+
 			// dead connection - might be a transient event, or this might
 			// mean the software was uninstalled or the domain expired. 
 			// Will keep trying for one month.
+
 			mark_for_death($contact);
 
 			// set the last-update so we don't keep polling
@@ -161,6 +165,9 @@ function onepoll_run($argv, $argc){
 
 		if(! strstr($handshake_xml,'<?xml')) {
 			logger('poller: response from ' . $url . ' did not contain XML.');
+
+			mark_for_death($contact);
+
 			$r = q("UPDATE `contact` SET `last-update` = '%s' WHERE `id` = %d LIMIT 1",
 				dbesc(datetime_convert()),
 				intval($contact['id'])
@@ -245,6 +252,9 @@ function onepoll_run($argv, $argc){
 
 		$stat_writeable = ((($contact['notify']) && ($contact['rel'] == CONTACT_IS_FOLLOWER || $contact['rel'] == CONTACT_IS_FRIEND)) ? 1 : 0);
 
+		if($contact['network'] === NETWORK_OSTATUS && get_pconfig($importer_uid,'system','ostatus_autofriend'))
+			$stat_writeable = 1;
+
 		if($stat_writeable != $contact['writable']) {
 			q("UPDATE `contact` SET `writable` = %d WHERE `id` = %d LIMIT 1",
 				intval($stat_writeable),
@@ -282,7 +292,7 @@ function onepoll_run($argv, $argc){
 			openssl_private_decrypt(hex2bin($mailconf[0]['pass']),$password,$x[0]['prvkey']);
 			$mbox = email_connect($mailbox,$mailconf[0]['user'],$password);
 			unset($password);
-			logger("Mail: Connect");
+			logger("Mail: Connect to " . $mailconf[0]['user']);
 			if($mbox) {
 				q("UPDATE `mailacct` SET `last_check` = '%s' WHERE `id` = %d AND `uid` = %d LIMIT 1",
 					dbesc(datetime_convert()),
@@ -296,153 +306,202 @@ function onepoll_run($argv, $argc){
 			$msgs = email_poll($mbox,$contact['addr']);
 
 			if(count($msgs)) {
-				logger("Mail: Parsing ".count($msgs)." mails.", LOGGER_DEBUG);
+				logger("Mail: Parsing ".count($msgs)." mails for ".$mailconf[0]['user'], LOGGER_DEBUG);
 
-				foreach($msgs as $msg_uid) {
-					logger("Mail: Parsing mail ".$msg_uid, LOGGER_DATA);
+				$metas = email_msg_meta($mbox,implode(',',$msgs));
+				if(count($metas) != count($msgs)) {
+					logger("onepoll: for " . $mailconf[0]['user'] . " there are ". count($msgs) . " messages but received " . count($metas) . " metas", LOGGER_DEBUG);
+				}
+				else {
+					$msgs = array_combine($msgs, $metas);
 
-					$datarray = array();
-					$meta = email_msg_meta($mbox,$msg_uid);
-					$headers = email_msg_headers($mbox,$msg_uid);
+					foreach($msgs as $msg_uid => $meta) {
+						logger("Mail: Parsing mail ".$msg_uid, LOGGER_DATA);
 
-					// look for a 'references' header and try and match with a parent item we have locally.
+						$datarray = array();
+	//					$meta = email_msg_meta($mbox,$msg_uid);
+	//					$headers = email_msg_headers($mbox,$msg_uid);
 
-					$raw_refs = ((x($headers,'references')) ? str_replace("\t",'',$headers['references']) : '');
-					$datarray['uri'] = msgid2iri(trim($meta->message_id,'<>'));
+						$datarray['uri'] = msgid2iri(trim($meta->message_id,'<>'));
 
-					if($raw_refs) {
-						$refs_arr = explode(' ', $raw_refs);
-						if(count($refs_arr)) {
-							for($x = 0; $x < count($refs_arr); $x ++)
-								$refs_arr[$x] = "'" . msgid2iri(str_replace(array('<','>',' '),array('','',''),dbesc($refs_arr[$x]))) . "'";
+						// Have we seen it before?
+						$r = q("SELECT * FROM `item` WHERE `uid` = %d AND `uri` = '%s' LIMIT 1",
+							intval($importer_uid),
+							dbesc($datarray['uri'])
+						);
+
+						if(count($r)) {
+							logger("Mail: Seen before ".$msg_uid." for ".$mailconf[0]['user'],LOGGER_DEBUG);
+							if($meta->deleted && ! $r[0]['deleted']) {
+								q("UPDATE `item` SET `deleted` = 1, `changed` = '%s' WHERE `id` = %d LIMIT 1",
+									dbesc(datetime_convert()),
+									intval($r[0]['id'])
+								);
+							}
+							switch ($mailconf[0]['action']) {
+								case 0:
+									logger("Mail: Seen before ".$msg_uid." for ".$mailconf[0]['user'].". Doing nothing.", LOGGER_DEBUG);
+									break;
+								case 1:
+									logger("Mail: Deleting ".$msg_uid." for ".$mailconf[0]['user']);
+									imap_delete($mbox, $msg_uid, FT_UID);
+									break;
+								case 2:
+									logger("Mail: Mark as seen ".$msg_uid." for ".$mailconf[0]['user']);
+									imap_setflag_full($mbox, $msg_uid, "\\Seen", ST_UID);
+									break;
+								case 3:
+									logger("Mail: Moving ".$msg_uid." to ".$mailconf[0]['movetofolder']." for ".$mailconf[0]['user']);
+									imap_setflag_full($mbox, $msg_uid, "\\Seen", ST_UID);
+									if ($mailconf[0]['movetofolder'] != "")
+										imap_mail_move($mbox, $msg_uid, $mailconf[0]['movetofolder'], FT_UID);
+									break;
+							}
+							continue;
 						}
-						$qstr = implode(',',$refs_arr);
-						$r = q("SELECT `uri` , `parent-uri` FROM `item` WHERE `uri` IN ( $qstr ) AND `uid` = %d LIMIT 1",
+
+
+						// look for a 'references' or an 'in-reply-to' header and try to match with a parent item we have locally.
+
+	//					$raw_refs = ((x($headers,'references')) ? str_replace("\t",'',$headers['references']) : '');
+						$raw_refs = ((property_exists($meta,'references')) ? str_replace("\t",'',$meta->references) : '');
+						if(! trim($raw_refs))
+							$raw_refs = ((property_exists($meta,'in_reply_to')) ? str_replace("\t",'',$meta->in_reply_to) : '');
+						$raw_refs = trim($raw_refs);  // Don't allow a blank reference in $refs_arr
+
+						if($raw_refs) {
+							$refs_arr = explode(' ', $raw_refs);
+							if(count($refs_arr)) {
+								for($x = 0; $x < count($refs_arr); $x ++)
+									$refs_arr[$x] = "'" . msgid2iri(str_replace(array('<','>',' '),array('','',''),dbesc($refs_arr[$x]))) . "'";
+							}
+							$qstr = implode(',',$refs_arr);
+							$r = q("SELECT `uri` , `parent-uri` FROM `item` WHERE `uri` IN ( $qstr ) AND `uid` = %d LIMIT 1",
+								intval($importer_uid)
+							);
+							if(count($r))
+								$datarray['parent-uri'] = $r[0]['parent-uri'];  // Set the parent as the top-level item
+	//							$datarray['parent-uri'] = $r[0]['uri'];
+						}
+
+						// Decoding the header
+						$subject = imap_mime_header_decode($meta->subject);
+						$datarray['title'] = "";
+						foreach($subject as $subpart)
+							if ($subpart->charset != "default")
+								$datarray['title'] .= iconv($subpart->charset, 'UTF-8//IGNORE', $subpart->text);
+							else
+								$datarray['title'] .= $subpart->text;
+
+						$datarray['title'] = notags(trim($datarray['title']));
+
+						//$datarray['title'] = notags(trim($meta->subject));
+						$datarray['created'] = datetime_convert('UTC','UTC',$meta->date);
+
+						// Is it a reply?
+						$reply = ((substr(strtolower($datarray['title']), 0, 3) == "re:") or
+							(substr(strtolower($datarray['title']), 0, 3) == "re-") or
+							($raw_refs != ""));
+
+						// Remove Reply-signs in the subject
+						$datarray['title'] = RemoveReply($datarray['title']);
+
+						// If it seems to be a reply but a header couldn't be found take the last message with matching subject
+						if(!x($datarray,'parent-uri') and $reply) {
+							//$r = q("SELECT `uri` , `parent-uri` FROM `item` WHERE MATCH (`title`) AGAINST ('".'"%s"'."' IN BOOLEAN MODE) AND `uid` = %d ORDER BY `created` DESC LIMIT 1",
+							$r = q("SELECT `uri` , `parent-uri` FROM `item` WHERE `title` = \"%s\" AND `uid` = %d ORDER BY `created` DESC LIMIT 1",
+								dbesc(protect_sprintf($datarray['title'])),
+								intval($importer_uid));
+							if(count($r))
+								$datarray['parent-uri'] = $r[0]['parent-uri'];
+						}
+
+						if(! x($datarray,'parent-uri'))
+							$datarray['parent-uri'] = $datarray['uri'];
+
+
+						$r = email_get_msg($mbox,$msg_uid, $reply);
+						if(! $r) {
+							logger("Mail: can't fetch msg ".$msg_uid." for ".$mailconf[0]['user']);
+							continue;
+						}
+						$datarray['body'] = escape_tags($r['body']);
+
+						logger("Mail: Importing ".$msg_uid." for ".$mailconf[0]['user']);
+
+						// some mailing lists have the original author as 'from' - add this sender info to msg body.
+						// todo: adding a gravatar for the original author would be cool
+
+						if(! stristr($meta->from,$contact['addr'])) {
+							$from = imap_mime_header_decode($meta->from);
+							$fromdecoded = "";
+							foreach($from as $frompart)
+								if ($frompart->charset != "default")
+									$fromdecoded .= iconv($frompart->charset, 'UTF-8//IGNORE', $frompart->text);
+								else
+									$fromdecoded .= $frompart->text;
+
+							$fromarr = imap_rfc822_parse_adrlist($fromdecoded, $a->get_hostname());
+
+							$frommail = $fromarr[0]->mailbox."@".$fromarr[0]->host;
+
+							if (isset($fromarr[0]->personal))
+								$fromname = $fromarr[0]->personal;
+							else
+								$fromname = $frommail;
+
+							//$datarray['body'] = "[b]".t('From: ') . escape_tags($fromdecoded) . "[/b]\n\n" . $datarray['body'];
+
+							$datarray['author-name'] = $fromname;
+							$datarray['author-link'] = "mailto:".$frommail;
+							$datarray['author-avatar'] = $contact['photo'];
+
+							$datarray['owner-name'] = $contact['name'];
+							$datarray['owner-link'] = "mailto:".$contact['addr'];
+							$datarray['owner-avatar'] = $contact['photo'];
+
+						} else {
+							$datarray['author-name'] = $contact['name'];
+							$datarray['author-link'] = 'mailbox';
+							$datarray['author-avatar'] = $contact['photo'];
+						}
+
+						$datarray['uid'] = $importer_uid;
+						$datarray['contact-id'] = $contact['id'];
+						if($datarray['parent-uri'] === $datarray['uri'])
+							$datarray['private'] = 1;
+						if(($contact['network'] === NETWORK_MAIL) && (! get_pconfig($importer_uid,'system','allow_public_email_replies'))) {
+							$datarray['private'] = 1;
+							$datarray['allow_cid'] = '<' . $contact['id'] . '>';
+						}
+
+						$stored_item = item_store($datarray);
+						q("UPDATE `item` SET `last-child` = 0 WHERE `parent-uri` = '%s' AND `uid` = %d",
+							dbesc($datarray['parent-uri']),
 							intval($importer_uid)
 						);
-						if(count($r))
-							$datarray['parent-uri'] = $r[0]['uri'];
-					}
-
-
-					if(! x($datarray,'parent-uri'))
-						$datarray['parent-uri'] = $datarray['uri'];
-
-					// Have we seen it before?
-					$r = q("SELECT * FROM `item` WHERE `uid` = %d AND `uri` = '%s' LIMIT 1",
-						intval($importer_uid),
-						dbesc($datarray['uri'])
-					);
-
-					if(count($r)) {
-//						logger("Mail: Seen before ".$msg_uid);
-						if($meta->deleted && ! $r[0]['deleted']) {
-							q("UPDATE `item` SET `deleted` = 1, `changed` = '%s' WHERE `id` = %d LIMIT 1",
-								dbesc(datetime_convert()),
-								intval($r[0]['id'])
-							);
-						}
+						q("UPDATE `item` SET `last-child` = 1 WHERE `id` = %d LIMIT 1",
+							intval($stored_item)
+						);
 						switch ($mailconf[0]['action']) {
 							case 0:
+								logger("Mail: Seen before ".$msg_uid." for ".$mailconf[0]['user'].". Doing nothing.", LOGGER_DEBUG);
 								break;
 							case 1:
-								logger("Mail: Deleting ".$msg_uid);
+								logger("Mail: Deleting ".$msg_uid." for ".$mailconf[0]['user']);
 								imap_delete($mbox, $msg_uid, FT_UID);
 								break;
 							case 2:
-								logger("Mail: Mark as seen ".$msg_uid);
+								logger("Mail: Mark as seen ".$msg_uid." for ".$mailconf[0]['user']);
 								imap_setflag_full($mbox, $msg_uid, "\\Seen", ST_UID);
 								break;
 							case 3:
-								logger("Mail: Moving ".$msg_uid." to ".$mailconf[0]['movetofolder']);
+								logger("Mail: Moving ".$msg_uid." to ".$mailconf[0]['movetofolder']." for ".$mailconf[0]['user']);
 								imap_setflag_full($mbox, $msg_uid, "\\Seen", ST_UID);
 								if ($mailconf[0]['movetofolder'] != "")
 									imap_mail_move($mbox, $msg_uid, $mailconf[0]['movetofolder'], FT_UID);
 								break;
 						}
-						continue;
-					}
-
-					// Decoding the header
-					$subject = imap_mime_header_decode($meta->subject);
-					$datarray['title'] = "";
-					foreach($subject as $subpart)
-						if ($subpart->charset != "default")
-							$datarray['title'] .= iconv($subpart->charset, 'UTF-8//IGNORE', $subpart->text);
-						else
-							$datarray['title'] .= $subpart->text;
-
-					$datarray['title'] = notags(trim($datarray['title']));
-
-					//$datarray['title'] = notags(trim($meta->subject));
-					$datarray['created'] = datetime_convert('UTC','UTC',$meta->date);
-
-					// Is it  reply?
-					$reply = ((substr(strtolower($datarray['title']), 0, 3) == "re:") or
-						(substr(strtolower($datarray['title']), 0, 3) == "re-") or
-						(raw_refs != ""));
-
-					$r = email_get_msg($mbox,$msg_uid, $reply);
-					if(! $r) {
-						logger("Mail: can't fetch msg ".$msg_uid);
-						continue;
-					}
-					$datarray['body'] = escape_tags($r['body']);
-
-					logger("Mail: Importing ".$msg_uid);
-
-					// some mailing lists have the original author as 'from' - add this sender info to msg body.
-					// todo: adding a gravatar for the original author would be cool
-
-					if(! stristr($meta->from,$contact['addr'])) {
-						$from = imap_mime_header_decode($meta->from);
-						$fromdecoded = "";
-						foreach($from as $frompart)
-							if ($frompart->charset != "default")
-								$fromdecoded .= iconv($frompart->charset, 'UTF-8//IGNORE', $frompart->text);
-							else
-								$fromdecoded .= $frompart->text;
-
-						$datarray['body'] = "[b]".t('From: ') . escape_tags($fromdecoded) . "[/b]\n\n" . $datarray['body'];
-					}
-
-					$datarray['uid'] = $importer_uid;
-					$datarray['contact-id'] = $contact['id'];
-					if($datarray['parent-uri'] === $datarray['uri'])
-						$datarray['private'] = 1;
-					if(($contact['network'] === NETWORK_MAIL) && (! get_pconfig($importer_uid,'system','allow_public_email_replies'))) {
-						$datarray['private'] = 1;
-						$datarray['allow_cid'] = '<' . $contact['id'] . '>';
-					}
-					$datarray['author-name'] = $contact['name'];
-					$datarray['author-link'] = 'mailbox';
-					$datarray['author-avatar'] = $contact['photo'];
-
-					$stored_item = item_store($datarray);
-					q("UPDATE `item` SET `last-child` = 0 WHERE `parent-uri` = '%s' AND `uid` = %d",
-						dbesc($datarray['parent-uri']),
-						intval($importer_uid)
-					);
-					q("UPDATE `item` SET `last-child` = 1 WHERE `id` = %d LIMIT 1",
-						intval($stored_item)
-					);
-					switch ($mailconf[0]['action']) {
-						case 0:
-							break;
-						case 1:
-							logger("Mail: Deleting ".$msg_uid);
-							imap_delete($mbox, $msg_uid, FT_UID);
-							break;
-						case 2:
-							logger("Mail: Mark as seen ".$msg_uid);
-							imap_setflag_full($mbox, $msg_uid, "\\Seen", ST_UID);
-							break;
-						case 3:
-							logger("Mail: Moving ".$msg_uid." to ".$mailconf[0]['movetofolder']);
-							imap_setflag_full($mbox, $msg_uid, "\\Seen", ST_UID);
-							if ($mailconf[0]['movetofolder'] != "")
-								imap_mail_move($mbox, $msg_uid, $mailconf[0]['movetofolder'], FT_UID);
-							break;
 					}
 				}
 			}
@@ -456,7 +515,7 @@ function onepoll_run($argv, $argc){
 
 	if($xml) {
 		logger('poller: received xml : ' . $xml, LOGGER_DATA);
-			if((! strstr($xml,'<?xml')) && (! strstr($xml,'<rss'))) {
+		if((! strstr($xml,'<?xml')) && (! strstr($xml,'<rss'))) {
 			logger('poller: post_handshake: response from ' . $url . ' did not contain XML.');
 			$r = q("UPDATE `contact` SET `last-update` = '%s' WHERE `id` = %d LIMIT 1",
 				dbesc(datetime_convert()),
@@ -476,6 +535,9 @@ function onepoll_run($argv, $argc){
 		$hubmode = 'subscribe';
 		if($contact['network'] === NETWORK_DFRN || $contact['blocked'] || $contact['readonly'])
 			$hubmode = 'unsubscribe';
+
+		if($contact['network'] === NETWORK_OSTATUS && (! $contact['hub-verify']))
+			$hub_update = true;
 
 		if((strlen($hub)) && ($hub_update) && ($contact['rel'] != CONTACT_IS_FOLLOWER)) {
 			logger('poller: hub ' . $hubmode . ' : ' . $hub . ' contact name : ' . $contact['name'] . ' local user : ' . $importer['name']);

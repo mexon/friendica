@@ -18,19 +18,17 @@
 if(! function_exists('load_config')) {
 function load_config($family) {
 	global $a;
-	$r = q("SELECT * FROM `config` WHERE `cat` = '%s'",
-		dbesc($family)
-	);
+	$r = q("SELECT * FROM `config` WHERE `cat` = '%s'", dbesc($family));
 	if(count($r)) {
 		foreach($r as $rr) {
 			$k = $rr['k'];
-			if ($rr['cat'] === 'config') {
+			if ($family === 'config') {
 				$a->config[$k] = $rr['v'];
 			} else {
 				$a->config[$family][$k] = $rr['v'];
 			}
 		}
-	} else if ($rr['cat'] != 'config') {
+	} else if ($family != 'config') {
 		// Negative caching
 		$a->config[$family] = "!<unset>!";
 	}
@@ -70,7 +68,7 @@ function get_config($family, $key, $instore = false) {
 	);
 	if(count($ret)) {
 		// manage array value
-		$val = (preg_match("|^a:[0-9]+:{.*}$|", $ret[0]['v'])?unserialize( $ret[0]['v']):$ret[0]['v']);
+		$val = (preg_match("|^a:[0-9]+:{.*}$|s", $ret[0]['v'])?unserialize( $ret[0]['v']):$ret[0]['v']);
 		$a->config[$family][$key] = $val;
 		return $val;
 	}
@@ -87,6 +85,15 @@ function get_config($family, $key, $instore = false) {
 if(! function_exists('set_config')) {
 function set_config($family,$key,$value) {
 	global $a;
+
+	// If $a->config[$family] has been previously set to '!<unset>!', then
+	// $a->config[$family][$key] will evaluate to $a->config[$family][0], and
+	// $a->config[$family][$key] = $value will be equivalent to
+	// $a->config[$family][0] = $value[0] (this causes infuriating bugs),
+	// so unset the family before assigning a value to a family's key
+	if($a->config[$family] === '!<unset>!')
+		unset($a->config[$family]);
+
 	// manage array value
 	$dbvalue = (is_array($value)?serialize($value):$value);
 	$dbvalue = (is_bool($dbvalue) ? intval($dbvalue) : $dbvalue);
@@ -128,7 +135,7 @@ function load_pconfig($uid,$family) {
 			$k = $rr['k'];
 			$a->config[$uid][$family][$k] = $rr['v'];
 		}
-	} else if ($rr['cat'] != 'config') {
+	} else if ($family != 'config') {
 		// Negative caching
 		$a->config[$uid][$family] = "!<unset>!";
 	}
@@ -164,7 +171,7 @@ function get_pconfig($uid,$family, $key, $instore = false) {
 	);
 
 	if(count($ret)) {
-		$val = (preg_match("|^a:[0-9]+:{.*}$|", $ret[0]['v'])?unserialize( $ret[0]['v']):$ret[0]['v']);
+		$val = (preg_match("|^a:[0-9]+:{.*}$|s", $ret[0]['v'])?unserialize( $ret[0]['v']):$ret[0]['v']);
 		$a->config[$uid][$family][$key] = $val;
 		return $val;
 	}

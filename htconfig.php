@@ -54,8 +54,8 @@ $a->config['php_path'] = 'php';
 // You shouldn't need to change anything else.
 // Location of global directory submission page. 
 
-$a->config['system']['directory_submit_url'] = 'http://dir.friendika.com/submit';
-$a->config['system']['directory_search_url'] = 'http://dir.friendika.com/directory?search=';
+$a->config['system']['directory_submit_url'] = 'http://dir.friendica.com/submit';
+$a->config['system']['directory_search_url'] = 'http://dir.friendica.com/directory?search=';
 
 // PuSH - aka pubsubhubbub URL. This makes delivery of public posts as fast as private posts
 
@@ -91,3 +91,6 @@ $a->config['system']['lockpath'] = "";
 
 // If enabled, the MyBB fulltext engine is used
 // $a->config['system']['use_fulltext_engine'] = true;
+
+// Use the new "share" element
+// $a->config['system']['new_share'] = true;

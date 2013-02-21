@@ -146,7 +146,7 @@ function dfrn_confirm_post(&$a,$handsfree = null) {
 			 */
 			require_once('include/crypto.php');
 
-			$res = new_keypair(1024);
+			$res = new_keypair(4096);
 
 			$private_key = $res['prvkey'];
 			$public_key  = $res['pubkey'];
@@ -671,7 +671,7 @@ function dfrn_confirm_post(&$a,$handsfree = null) {
 		else
 			$photo = $a->get_baseurl() . '/images/person-175.jpg';
 				
-		require_once("Photo.php");
+		require_once("include/Photo.php");
 
 		$photos = import_profile_photo($photo,$local_uid,$dfrn_record);
 
@@ -746,10 +746,11 @@ function dfrn_confirm_post(&$a,$handsfree = null) {
 				'$dfrn_url' => $r[0]['url'],
 				'$uid' => $newuid )
 			);
-	
-			$res = mail($r[0]['email'], sprintf( t("Connection accepted at %s") , $a->config['sitename']),
+			require_once('include/email.php');
+
+			$res = mail($r[0]['email'], email_header_encode( sprintf( t("Connection accepted at %s") , $a->config['sitename']),'UTF-8'),
 				$email_tpl,
-				'From: ' . t('Administrator') . '@' . $_SERVER['SERVER_NAME'] . "\n"
+				'From: ' . 'Administrator' . '@' . $_SERVER['SERVER_NAME'] . "\n"
 				. 'Content-type: text/plain; charset=UTF-8' . "\n"
 				. 'Content-transfer-encoding: 8bit' );
 

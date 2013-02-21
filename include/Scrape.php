@@ -352,10 +352,11 @@ function probe_url($url, $mode = PROBE_NORMAL) {
 	$email_conversant = false;
 
 	$twitter = ((strpos($url,'twitter.com') !== false) ? true : false);
+	$lastfm  = ((strpos($url,'last.fm/user') !== false) ? true : false);
 
 	$at_addr = ((strpos($url,'@') !== false) ? true : false);
 
-	if(! $twitter) {
+	if((! $twitter) && (! $lastfm)) {
 
 		if(strpos($url,'mailto:') !== false && $at_addr) {
 			$url = str_replace('mailto:','',$url);
@@ -393,7 +394,10 @@ function probe_url($url, $mode = PROBE_NORMAL) {
 				}
 				if($link['@attributes']['rel'] === 'diaspora-public-key') {
 					$diaspora_key = base64_decode(unamp($link['@attributes']['href']));
-					$pubkey = rsatopem($diaspora_key);
+					if(strstr($diaspora_key,'RSA '))
+						$pubkey = rsatopem($diaspora_key);
+					else
+						$pubkey = $diaspora_key;
 					$diaspora = true;
 				}
 			}
@@ -431,7 +435,7 @@ function probe_url($url, $mode = PROBE_NORMAL) {
 					intval(local_user())
 				);
 				if(count($x) && count($r)) {
-				    $mailbox = construct_mailbox_name($r[0]);
+					$mailbox = construct_mailbox_name($r[0]);
 					$password = '';
 					openssl_private_decrypt(hex2bin($r[0]['pass']),$password,$x[0]['prvkey']);
 					$mbox = email_connect($mailbox,$r[0]['user'],$password);
@@ -454,10 +458,10 @@ function probe_url($url, $mode = PROBE_NORMAL) {
 						$poll = 'email ' . random_string();
 						$priority = 0;
 						$x = email_msg_meta($mbox,$msgs[0]);
-						if(stristr($x->from,$orig_url))
-							$adr = imap_rfc822_parse_adrlist($x->from,'');
-						elseif(stristr($x->to,$orig_url))
-							$adr = imap_rfc822_parse_adrlist($x->to,'');
+						if(stristr($x[0]->from,$orig_url))
+							$adr = imap_rfc822_parse_adrlist($x[0]->from,'');
+						elseif(stristr($x[0]->to,$orig_url))
+							$adr = imap_rfc822_parse_adrlist($x[0]->to,'');
 						if(isset($adr)) {
 							foreach($adr as $feadr) {
 								if((strcasecmp($feadr->mailbox,$name) == 0)
@@ -550,6 +554,13 @@ function probe_url($url, $mode = PROBE_NORMAL) {
 			logger('probe_url: scrape_vcard: ' . print_r($vcard,true), LOGGER_DATA);
 		}
 
+		if($diaspora && $addr) {
+			// Diaspora returns the name as the nick. As the nick will never be updated,
+			// let's use the Diaspora nickname (the first part of the handle) as the nick instead
+			$addr_parts = explode('@', $addr);
+			$vcard['nick'] = $addr_parts[0];
+		}
+
 		if($twitter) {		
 			logger('twitter: setup');
 			$tid = basename($url);
@@ -559,9 +570,18 @@ function probe_url($url, $mode = PROBE_NORMAL) {
 			else
 				$poll = $tapi . '?screen_name=' . $tid;
 			$profile = 'http://twitter.com/#!/' . $tid;
-			$vcard['photo'] = 'https://api.twitter.com/1/users/profile_image/' . $tid;
+			//$vcard['photo'] = 'https://api.twitter.com/1/users/profile_image/' . $tid;
+			$vcard['photo'] = 'https://api.twitter.com/1/users/profile_image?screen_name=' . $tid . '&size=bigger';
 			$vcard['nick'] = $tid;
-			$vcard['fn'] = $tid . '@twitter';
+			$vcard['fn'] = $tid;
+		}
+
+		if($lastfm) {
+			$profile = $url;
+			$poll = str_replace(array('www.','last.fm/'),array('','ws.audioscrobbler.com/1.0/'),$url) . '/recenttracks.rss';
+			$vcard['nick'] = basename($url);
+			$vcard['fn'] = $vcard['nick'] . t(' on Last.fm');
+			$network = NETWORK_FEED;
 		}
 
 		if(! x($vcard,'fn'))
@@ -569,6 +589,12 @@ function probe_url($url, $mode = PROBE_NORMAL) {
 				$vcard['fn'] = $vcard['nick'];
 
 		$check_feed = false;
+
+		if(stristr($url,'tumblr.com') && (! stristr($url,'/rss'))) {
+			$poll = $url . '/rss';
+			$check_feed = true;
+			// Will leave it to others to figure out how to grab the avatar, which is on the $url page in the open graph meta links
+		}
 
 		if($twitter || ! $poll)
 			$check_feed = true;

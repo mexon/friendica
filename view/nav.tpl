@@ -10,7 +10,7 @@
 
 	{{ if $nav.register }}<a id="nav-register-link" class="nav-commlink $nav.register.2 $sel.register" href="$nav.register.0" title="$nav.register.3" >$nav.register.1</a>{{ endif }}
 		
-	{{ if $nav.help }} <a id="nav-help-link" class="nav-link $nav.help.2" target="friendika-help" href="$nav.help.0" title="$nav.help.3" >$nav.help.1</a>{{ endif }}
+	{{ if $nav.help }} <a id="nav-help-link" class="nav-link $nav.help.2" target="friendica-help" href="$nav.help.0" title="$nav.help.3" >$nav.help.1</a>{{ endif }}
 		
 	{{ if $nav.apps }}<a id="nav-apps-link" class="nav-link $nav.apps.2" href="$nav.apps.0" title="$nav.apps.3" >$nav.apps.1</a>{{ endif }}
 
@@ -64,5 +64,5 @@
 </nav>
 
 <ul id="nav-notifications-template" style="display:none;" rel="template">
-	<li class="{4}"><a href="{0}"><img src="{1}" height="24" width="24" alt="" />{2} <span class="notif-when">{3}</span></a></li>
+	<li class="{4}"><a href="{0}"><img data-src="{1}" height="24" width="24" alt="" />{2} <span class="notif-when">{3}</span></a></li>
 </ul>

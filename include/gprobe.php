@@ -4,7 +4,7 @@ require_once("boot.php");
 require_once('include/Scrape.php');
 require_once('include/socgraph.php');
 
-function gprobe_run($argv, $argc){
+function gprobe_run(&$argv, &$argc){
 	global $a, $db;
 
 	if(is_null($a)) {
@@ -13,7 +13,7 @@ function gprobe_run($argv, $argc){
   
 	if(is_null($db)) {
 	    @include(".htconfig.php");
-    	require_once("dba.php");
+    	require_once("include/dba.php");
 	    $db = new dba($db_host, $db_user, $db_pass, $db_data);
     	unset($db_host, $db_user, $db_pass, $db_data);
   	};

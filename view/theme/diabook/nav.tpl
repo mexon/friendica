@@ -68,7 +68,7 @@
 			<ul id="nav-site-menu" class="menu-popup">
 				{{ if $nav.manage }}<li><a class="$nav.manage.2" href="$nav.manage.0" title="$nav.manage.3">$nav.manage.1</a></li>{{ endif }}				
 					
-				{{ if $nav.help }} <li><a class="$nav.help.2" target="friendika-help" href="$nav.help.0" title="$nav.help.3" >$nav.help.1</a></li>{{ endif }}									
+				{{ if $nav.help }} <li><a class="$nav.help.2" target="friendica-help" href="$nav.help.0" title="$nav.help.3" >$nav.help.1</a></li>{{ endif }}									
 										
 										 <li><a class="$nav.search.2" href="friendica" title="Site Info / Impressum" >Info/Impressum</a></li>
 										
@@ -137,14 +137,14 @@
 
 
 <div id="scrollup" style="position: fixed; bottom: 5px; right: 10px;z-index: 97;"><a id="down" onclick="scrolldown()" ><img id="scroll_top_bottom" src="view/theme/diabook/icons/scroll_bottom.png" style="display:cursor !important;" alt="back to top" title="Scroll to bottom"></a></div>
-<div style="position: fixed; bottom: 3px; left: 25px;">$langselector</div>
+<div style="position: fixed; bottom: 61px; left: 6px;">$langselector</div>
 <div style="position: fixed; bottom: 23px; left: 5px;"><a href="http://pad.toktan.org/p/diabook" target="blank" ><img src="view/theme/diabook/icons/bluebug.png" title="report bugs for the theme diabook"/></a></div>
 
 
 
 
 <ul id="nav-notifications-template" style="display:none;" rel="template">
-	<li class="{4}"><a href="{0}"><img src="{1}">{2} <span class="notif-when">{3}</span></a></li>
+	<li class="{4}"><a href="{0}"><img data-src="{1}">{2} <span class="notif-when">{3}</span></a></li>
 </ul>
 
 
@@ -158,7 +158,7 @@
 
 {{ if $nav.register }}<a id="nav-register-link" class="nav-commlink $nav.register.2" href="$nav.register.0" title="$nav.register.3" >$nav.register.1</a>{{ endif }}
 	
-<a id="nav-help-link" class="nav-link $nav.help.2" target="friendika-help" href="$nav.help.0" title="$nav.help.3" >$nav.help.1</a>
+<a id="nav-help-link" class="nav-link $nav.help.2" target="friendica-help" href="$nav.help.0" title="$nav.help.3" >$nav.help.1</a>
 	
 {{ if $nav.apps }}<a id="nav-apps-link" class="nav-link $nav.apps.2" href="$nav.apps.0" title="$nav.apps.3" >$nav.apps.1</a>{{ endif }}
 

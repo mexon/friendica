@@ -248,10 +248,14 @@ ACL.prototype.populate = function(data){
 	that.list_content.height(height);
 	$(data.items).each(function(){
 		html = "<div class='acl-list-item {4} {5}' title='{6}' id='{2}{3}'>"+that.item_tpl+"</div>";
-		html = html.format( this.photo, this.name, this.type, this.id, '', this.network, this.link );
+		html = html.format(this.photo, this.name, this.type, this.id, '', this.network, this.link);
 		if (this.uids!=undefined) that.group_uids[this.id] = this.uids;
 		//console.log(html);
 		that.list_content.append(html);
+	});
+	$(".acl-list-item img[data-src]", that.list_content).each(function(i, el){
+		// Add src attribute for images with a data-src attribute
+		$(el).attr('src', $(el).data("src"));
 	});
 	that.update_view();
 }

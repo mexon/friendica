@@ -12,7 +12,9 @@ function oembed_replacecb($matches){
 
 function oembed_fetch_url($embedurl){
 
-	$txt = Cache::get($embedurl);
+	$a = get_app();
+
+	$txt = Cache::get($a->videowidth . $embedurl);
 
 	// These media files should now be caught in bbcode.php
 	// left here as a fallback in case this is called from another source
@@ -38,7 +40,7 @@ function oembed_fetch_url($embedurl){
 					$entries = $xpath->query("//link[@type='application/json+oembed']");
 					foreach($entries as $e){
 						$href = $e->getAttributeNode("href")->nodeValue;
-						$txt = fetch_url($href . '&maxwidth=425');
+						$txt = fetch_url($href . '&maxwidth=' . $a->videowidth);
 						break;
 					}
 				}
@@ -47,7 +49,7 @@ function oembed_fetch_url($embedurl){
 		
 		if ($txt==false || $txt==""){
 			// try oohembed service
-			$ourl = "http://oohembed.com/oohembed/?url=".urlencode($embedurl).'&maxwidth=425';  
+			$ourl = "http://oohembed.com/oohembed/?url=".urlencode($embedurl).'&maxwidth=' . $a->videowidth;  
 			$txt = fetch_url($ourl);
 		}
 		
@@ -55,7 +57,7 @@ function oembed_fetch_url($embedurl){
 		if ($txt[0]!="{") $txt='{"type":"error"}';
 	
 		//save in cache
-		Cache::set($embedurl,$txt);
+		Cache::set($a->videowidth . $embedurl,$txt);
 
 	}
 	
@@ -65,19 +67,22 @@ function oembed_fetch_url($embedurl){
 }
 	
 function oembed_format_object($j){
-	$embedurl = $j->embedurl;
+	$a = get_app();
+    $embedurl = $j->embedurl;
 	$jhtml = oembed_iframe($j->embedurl,(isset($j->width) ? $j->width : null), (isset($j->height) ? $j->height : null) );
 	$ret="<span class='oembed ".$j->type."'>";
 	switch ($j->type) {
 		case "video": {
 			if (isset($j->thumbnail_url)) {
-				$tw = (isset($j->thumbnail_width)) ? $j->thumbnail_width:200;
-				$th = (isset($j->thumbnail_height)) ? $j->thumbnail_height:180;
-				$tr = $tw/$th;
+				$tw = (isset($j->thumbnail_width) && intval($j->thumbnail_width)) ? $j->thumbnail_width:200;
+				$th = (isset($j->thumbnail_height) && intval($j->thumbnail_height)) ? $j->thumbnail_height:180;
+				// make sure we don't attempt divide by zero, fallback is a 1:1 ratio
+				$tr = (($th) ? $tw/$th : 1);
 				
 				$th=120; $tw = $th*$tr;
 				$tpl=get_markup_template('oembed_video.tpl');
 				$ret.=replace_macros($tpl, array(
+                    '$baseurl' => $a->get_baseurl(),
 					'$embedurl'=>$embedurl,
 					'$escapedhtml'=>base64_encode($jhtml),
 					'$tw'=>$tw,
@@ -91,7 +96,8 @@ function oembed_format_object($j){
 			$ret.="<br>";
 		}; break;
 		case "photo": {
-			$ret.= "<img width='".$j->width."' height='".$j->height."' src='".$j->url."'>";
+			$ret.= "<img width='".$j->width."' src='".$j->url."'>";
+			//$ret.= "<img width='".$j->width."' height='".$j->height."' src='".$j->url."'>";
 			$ret.="<br>";
 		}; break;  
 		case "link": {
@@ -111,7 +117,7 @@ function oembed_format_object($j){
 		if (isset($j->provider_name)) $ret.=" on ".$j->provider_name;
 	} else {
 		// add <a> for html2bbcode conversion
-		$ret .= "<a href='$embedurl' rel='oembed'/>";
+		$ret .= "<a href='$embedurl' rel='oembed'></a>";
 	}
 	$ret.="<br style='clear:left'></span>";
 	return  mb_convert_encoding($ret, 'HTML-ENTITIES', mb_detect_encoding($ret));

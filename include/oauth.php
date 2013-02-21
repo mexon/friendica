@@ -133,7 +133,7 @@ class FKOAuth1 extends OAuthServer {
 	function loginUser($uid){
 		logger("FKOAuth1::loginUser $uid");
 		$a = get_app();
-		$r = q("SELECT * FROM `user` WHERE uid=%d AND `blocked` = 0 AND `account_expired` = 0 AND `verified` = 1 LIMIT 1",
+		$r = q("SELECT * FROM `user` WHERE uid=%d AND `blocked` = 0 AND `account_expired` = 0 AND `account_removed` = 0 AND `verified` = 1 LIMIT 1",
 			intval($uid)
 		);
 		if(count($r)){
@@ -145,10 +145,12 @@ class FKOAuth1 extends OAuthServer {
 		}
 		$_SESSION['uid'] = $record['uid'];
 		$_SESSION['theme'] = $record['theme'];
+		$_SESSION['mobile-theme'] = get_pconfig($record['uid'], 'system', 'mobile_theme');
 		$_SESSION['authenticated'] = 1;
 		$_SESSION['page_flags'] = $record['page-flags'];
 		$_SESSION['my_url'] = $a->get_baseurl() . '/profile/' . $record['nickname'];
 		$_SESSION['addr'] = $_SERVER['REMOTE_ADDR'];
+		$_SESSION["allow_api"] = true;
 
 		//notice( t("Welcome back ") . $record['username'] . EOL);
 		$a->user = $record;

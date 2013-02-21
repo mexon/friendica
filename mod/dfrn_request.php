@@ -110,7 +110,7 @@ function dfrn_request_post(&$a) {
 					 * Scrape the other site's profile page to pick up the dfrn links, key, fn, and photo
 					 */
 
-					require_once('Scrape.php');
+					require_once('include/Scrape.php');
 	
 					$parms = scrape_dfrn($dfrn_url);
 	
@@ -168,6 +168,21 @@ function dfrn_request_post(&$a) {
 
 				if($r) {
 					info( t("Introduction complete.") . EOL);
+				}
+
+				$r = q("select id from contact where uid = %d and url = '%s' and `site-pubkey` = '%s' limit 1",
+					intval(local_user()),
+					dbesc($dfrn_url),
+					$parms['key'] // this was already escaped
+				);
+				if(count($r)) {
+					$g = q("select def_gid from user where uid = %d limit 1",
+						intval(local_user())
+					);
+					if($g && intval($g[0]['def_gid'])) {
+						require_once('include/group.php');
+						group_add_member(local_user(),'',$r[0]['id'],$g[0]['def_gid']);
+					}
 				}
 
 				/**
@@ -343,6 +358,7 @@ function dfrn_request_post(&$a) {
 					intval($uid)
 				);
 				if(! count($r)) {
+
 					notice( t('This account has not been configured for email. Request failed.') . EOL);
 					return;
 				}
@@ -489,7 +505,7 @@ function dfrn_request_post(&$a) {
 				}
 			
 
-				require_once('Scrape.php');
+				require_once('include/Scrape.php');
 
 				$parms = scrape_dfrn(($hcard) ? $hcard : $url);
 
@@ -601,7 +617,7 @@ function dfrn_request_post(&$a) {
 			 *
 			 */
 
-			$url = str_replace('{uri}', $a->get_baseurl() . '/dfrn_poll/' . $nickname, $url);
+			$url = str_replace('{uri}', $a->get_baseurl() . '/profile/' . $nickname, $url);
 			goaway($url);
 			// NOTREACHED
 			// END $network === NETWORK_OSTATUS
@@ -741,8 +757,10 @@ function dfrn_request_content(&$a) {
 		 */
  
 		if((get_config('system','block_public')) && (! local_user()) && (! remote_user())) {
-			notice( t('Public access denied.') . EOL);
-			return;
+			if(! get_config('system','local_block')) {
+				notice( t('Public access denied.') . EOL);
+				return;
+			}
 		}
 
 

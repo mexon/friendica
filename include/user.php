@@ -7,6 +7,7 @@ require_once('include/text.php');
 require_once('include/pgettext.php');
 require_once('include/datetime.php');
 
+
 function create_user($arr) {
 
 	// Required: { username, nickname, email } or { openid_url }
@@ -99,11 +100,11 @@ function create_user($arr) {
 
 
 	if(! allowed_email($email))
-			$result['message'] .= t('Your email domain is not among those allowed on this site.') . EOL;
+		$result['message'] .= t('Your email domain is not among those allowed on this site.') . EOL;
 
 	if((! valid_email($email)) || (! validate_email($email)))
 		$result['message'] .= t('Not a valid email address.') . EOL;
-
+		
 	// Disallow somebody creating an account using openid that uses the admin email address,
 	// since openid bypasses email verification. We'll allow it if there is not yet an admin account.
 
@@ -147,12 +148,17 @@ function create_user($arr) {
 
 	require_once('include/crypto.php');
 
-	$keys = new_keypair(1024);
+	$keys = new_keypair(4096);
 
 	if($keys === false) {
 		$result['message'] .= t('SERIOUS ERROR: Generation of security keys failed.') . EOL;
 		return $result;
 	}
+
+	$default_service_class = get_config('system','default_service_class');
+	if(! $default_service_class)
+		$default_service_class = '';
+
 
 	$prvkey = $keys['prvkey'];
 	$pubkey = $keys['pubkey'];
@@ -173,8 +179,8 @@ function create_user($arr) {
 	$spubkey = $sres['pubkey'];
 
 	$r = q("INSERT INTO `user` ( `guid`, `username`, `password`, `email`, `openid`, `nickname`,
-		`pubkey`, `prvkey`, `spubkey`, `sprvkey`, `register_date`, `verified`, `blocked`, `timezone` )
-		VALUES ( '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', %d, %d, 'UTC' )",
+		`pubkey`, `prvkey`, `spubkey`, `sprvkey`, `register_date`, `verified`, `blocked`, `timezone`, `service_class` )
+		VALUES ( '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', %d, %d, 'UTC', '%s' )",
 		dbesc(generate_user_guid()),
 		dbesc($username),
 		dbesc($new_password_encoded),
@@ -187,7 +193,8 @@ function create_user($arr) {
 		dbesc($sprvkey),
 		dbesc(datetime_convert()),
 		intval($verified),
-		intval($blocked)
+		intval($blocked),
+		dbesc($default_service_class)
 	);
 
 	if($r) {
@@ -271,6 +278,26 @@ function create_user($arr) {
 		require_once('include/group.php');
 		group_add($newuid, t('Friends'));
 
+		$r = q("SELECT id FROM `group` WHERE uid = %d AND name = '%s'",
+			intval($newuid),
+			dbesc(t('Friends'))
+		);
+		if($r && count($r)) {
+			$def_gid = $r[0]['id'];
+
+			q("UPDATE user SET def_gid = %d WHERE uid = %d",
+				intval($r[0]['id']),
+				intval($newuid)
+			);
+		}
+
+		if(get_config('system', 'newuser_private') && $def_gid) {
+			q("UPDATE user SET allow_gid = '%s' WHERE uid = %d",
+			   dbesc("<" . $def_gid . ">"),
+			   intval($newuid)
+			);
+		}
+
 	}
 
 	// if we have no OpenID photo try to look up an avatar
@@ -284,7 +311,11 @@ function create_user($arr) {
 
 		$filename = basename($photo);
 		$img_str = fetch_url($photo,true);
-		$img = new Photo($img_str);
+		// guess mimetype from headers or filename
+		$type = guess_image_type($photo,true);
+
+		
+		$img = new Photo($img_str, $type);
 		if($img->is_valid()) {
 
 			$img->scaleImageSquare(175);

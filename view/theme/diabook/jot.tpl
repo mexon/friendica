@@ -14,7 +14,9 @@
 		<input type="hidden" name="post_id" value="$post_id" />
 		<input type="hidden" name="preview" id="jot-preview" value="0" />
 		<input name="title" id="jot-title" type="text" placeholder="$placeholdertitle" value="$title" class="jothidden" style="display:none">
-		<div id="jot-category-wrap"><input name="category" id="jot-category" type="text" placeholder="$placeholdercategory" value="$category" class="jothidden" style="display:none" /></div>		
+		{{ if $placeholdercategory }}
+		<div id="jot-category-wrap"><input name="category" id="jot-category" type="text" placeholder="$placeholdercategory" value="$category" class="jothidden" style="display:none" /></div>
+		{{ endif }}
 		<div id="character-counter" class="grey"></div>		
 		<img id="profile-jot-text-loading" src="images/rotator.gif" alt="$wait" title="$wait" style="display: none;" />
 		<textarea rows="5" cols="64" class="profile-jot-text" id="profile-jot-text" name="body" >{{ if $content }}$content{{ else }}$share{{ endif }}</textarea>
@@ -70,7 +72,7 @@
 	<div style="display: none;">
 		<div id="profile-jot-acl-wrapper" style="width:auto;height:auto;overflow:auto;">
 			$acl
-			<hr style="clear:both"/>
+			<hr style="clear:both;"/>
 			<div id="profile-jot-email-label">$emailcc</div><input type="text" name="emailcc" id="profile-jot-email" title="$emtitle" />
 			<div id="profile-jot-email-end"></div>
 			$jotnets

@@ -44,18 +44,18 @@ function nav(&$a) {
 
 	if(local_user()) {
 		$nav['logout'] = Array('logout',t('Logout'), "", t('End this session'));
-		
+
 		// user menu
 		$nav['usermenu'][] = Array('profile/' . $a->user['nickname'], t('Status'), "", t('Your posts and conversations'));
 		$nav['usermenu'][] = Array('profile/' . $a->user['nickname']. '?tab=profile', t('Profile'), "", t('Your profile page'));
 		$nav['usermenu'][] = Array('photos/' . $a->user['nickname'], t('Photos'), "", t('Your photos'));
 		$nav['usermenu'][] = Array('events/', t('Events'), "", t('Your events'));
 		$nav['usermenu'][] = Array('notes/', t('Personal notes'), "", t('Your personal photos'));
-		
+
 		// user info
 		$r = q("SELECT micro FROM contact WHERE uid=%d AND self=1", intval($a->user['uid']));
 		$userinfo = array(
-			'icon' => (count($r) ? $r[0]['micro']: $a->get_baseurl($ssl_state)."/images/person-48.jpg"),
+			'icon' => (count($r) ? $a->get_cached_avatar_image($r[0]['micro']) : $a->get_baseurl($ssl_state)."/images/person-48.jpg"),
 			'name' => $a->user['username'],
 		);
 		
@@ -111,6 +111,7 @@ function nav(&$a) {
 	if(local_user()) {
 
 		$nav['network'] = array('network', t('Network'), "", t('Conversations from your friends'));
+		$nav['net_reset'] = array('network/0?f=&order=comment&nets=all', t('Network Reset'), "", t('Load Network page with no filters'));
 
 		$nav['home'] = array('profile/' . $a->user['nickname'], t('Home'), "", t('Your posts and conversations'));
 
@@ -129,13 +130,17 @@ function nav(&$a) {
 		$nav['messages']['inbox'] = array('message', t('Inbox'), "", t('Inbox'));
 		$nav['messages']['outbox']= array('message/sent', t('Outbox'), "", t('Outbox'));
 		$nav['messages']['new'] = array('message/new', t('New Message'), "", t('New Message'));
-		
+
 		if(is_array($a->identities) && count($a->identities) > 1) {
 			$nav['manage'] = array('manage', t('Manage'), "", t('Manage other pages'));
 		}
 
+		$nav['delegations'] = Array('delegate', t('Delegations'), "", t('Delegate Page Management'));
+
 		$nav['settings'] = array('settings', t('Settings'),"", t('Account settings'));
-		$nav['profiles'] = array('profiles', t('Profiles'),"", t('Manage/edit profiles'));
+		if(feature_enabled(local_user(),'multi_profiles'))
+			$nav['profiles'] = array('profiles', t('Profiles'),"", t('Manage/Edit Profiles'));
+
 		$nav['contacts'] = array('contacts', t('Contacts'),"", t('Manage/edit friends and contacts'));
 	}
 
@@ -162,6 +167,7 @@ function nav(&$a) {
 	$tpl = get_markup_template('nav.tpl');
 
 	$a->page['nav'] .= replace_macros($tpl, array(
+        '$baseurl' => $a->get_baseurl(),
 		'$langselector' => lang_selector(),
 		'$sitelocation' => $sitelocation,
 		'$nav' => $nav,

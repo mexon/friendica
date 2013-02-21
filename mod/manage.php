@@ -63,6 +63,7 @@ function manage_post(&$a) {
 	unset($_SESSION['administrator']);
 	unset($_SESSION['cid']);
 	unset($_SESSION['theme']);
+	unset($_SESSION['mobile-theme']);
 	unset($_SESSION['page_flags']);
 	unset($_SESSION['return_url']);
 	if(x($_SESSION,'submanage'))
@@ -74,7 +75,10 @@ function manage_post(&$a) {
 	if($limited_id)
 		$_SESSION['submanage'] = $original_id;
 
-	goaway($a->get_baseurl(true) . '/profile/' . $a->user['nickname']);
+	$ret = array();
+	call_hooks('home_init',$ret);
+
+	goaway( $a->get_baseurl() . "/profile/" . $a->user['nickname'] );
 	// NOTREACHED
 }
 
@@ -96,7 +100,7 @@ function manage_content(&$a) {
 
 	$o .= '<div id="identity-selector-wrapper">' . "\r\n";
 	$o .= '<form action="manage" method="post" >' . "\r\n";
-	$o .= '<select name="identity" size="4">' . "\r\n";
+	$o .= '<select name="identity" size="4" onchange="this.form.submit();" >' . "\r\n";
 
 	foreach($a->identities as $rr) {
 		$selected = (($rr['nickname'] === $a->user['nickname']) ? ' selected="selected" ' : '');
@@ -106,7 +110,8 @@ function manage_content(&$a) {
 	$o .= '</select>' . "\r\n";
 	$o .= '<div id="identity-select-break"></div>' . "\r\n";
 
-	$o .= '<input id="identity-submit" type="submit" name="submit" value="' . t('Submit') . '" /></div></form>' . "\r\n";
+//	$o .= '<input id="identity-submit" type="submit" name="submit" value="' . t('Submit') . '" />';
+	$o .= '</div></form>' . "\r\n";
 
 	return $o;
 

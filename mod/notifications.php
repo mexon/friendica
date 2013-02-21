@@ -69,6 +69,9 @@ function notifications_content(&$a) {
 
 	nav_set_selected('notifications');		
 
+	$json = (($a->argc > 1 && $a->argv[$a->argc - 1] === 'json') ? true : false);
+
+
 	$o = '';
 	$tabs = array(
 		array(
@@ -141,7 +144,8 @@ function notifications_content(&$a) {
 				if($rr['fid']) {
 
 					$return_addr = bin2hex($a->user['nickname'] . '@' . $a->get_hostname() . (($a->path) ? '/' . $a->path : ''));
-					$notif_content .= replace_macros($sugg,array(
+
+					$notif_content .= replace_macros($sugg, array(
 						'$str_notifytype' => t('Notification type: '),
 						'$notify_type' => t('Friend Suggestion'),
 						'$intro_id' => $rr['intro_id'],
@@ -158,7 +162,7 @@ function notifications_content(&$a) {
 						'$note' => $rr['note'],
 						'$request' => $rr['frequest'] . '?addr=' . $return_addr,
 						'$ignore' => t('Ignore'),
-						'$discard' => t('Discard')
+						'$discard' => t('Discard'),
 
 					));
 
@@ -187,7 +191,7 @@ function notifications_content(&$a) {
 					));
 				}			
 
-				$notif_content .= replace_macros($tpl,array(
+				$notif_content .= replace_macros($tpl, array(
 					'$str_notifytype' => t('Notification type: '),
 					'$notify_type' => (($rr['network'] !== NETWORK_OSTATUS) ? t('Friend/Connect Request') : t('New Follower')),
 					'$dfrn_text' => $dfrn_text,	
@@ -204,15 +208,15 @@ function notifications_content(&$a) {
 					'$approve' => t('Approve'),
 					'$note' => $rr['note'],
 					'$ignore' => t('Ignore'),
-					'$discard' => t('Discard')
+					'$discard' => t('Discard'),
 
 				));
 			}
 		}
 		else
 			info( t('No introductions.') . EOL);
-		
-		$o .= replace_macros($notif_tpl,array(
+
+		$o .= replace_macros($notif_tpl, array(
 			'$notif_header' => t('Notifications'),
 			'$tabs' => $tabs,
 			'$notif_content' => $notif_content,
@@ -229,7 +233,7 @@ function notifications_content(&$a) {
 				`item`.`author-link`, `item`.`author-avatar`, `item`.`created`, `item`.`object` as `object`, 
 				`pitem`.`author-name` as `pname`, `pitem`.`author-link` as `plink` 
 				FROM `item` INNER JOIN `item` as `pitem` ON  `pitem`.`id`=`item`.`parent`
-				WHERE `item`.`unseen` = 1 AND `item`.`visible` = 1 AND
+				WHERE `item`.`unseen` = 1 AND `item`.`visible` = 1 AND `pitem`.`parent` != 0
 				 `item`.`deleted` = 0 AND `item`.`uid` = %d AND `item`.`wall` = 0 ORDER BY `item`.`created` DESC" ,
 			intval(local_user())
 		);
@@ -242,7 +246,7 @@ function notifications_content(&$a) {
 		
 		$notif_content = '';
 		
-		if (count($r) > 0) {
+		if ($r) {
 			
 			foreach ($r as $it) {
 				switch($it['verb']){
@@ -298,7 +302,7 @@ function notifications_content(&$a) {
 			$notif_content = t('No more network notifications.');
 		}
 		
-		$o .= replace_macros($notif_tpl,array(
+		$o .= replace_macros($notif_tpl, array(
 			'$notif_header' => t('Network Notifications'),
 			'$tabs' => $tabs,
 			'$notif_content' => $notif_content,
@@ -328,7 +332,7 @@ function notifications_content(&$a) {
 			$notif_content .= t('No more system notifications.');
 		}
 		
-		$o .= replace_macros($notif_tpl,array(
+		$o .= replace_macros($notif_tpl, array(
 			'$notif_header' => t('System Notifications'),
 			'$tabs' => $tabs,
 			'$notif_content' => $notif_content,
@@ -423,7 +427,7 @@ function notifications_content(&$a) {
 			$notif_content = t('No more personal notifications.');
 		}
 		
-		$o .= replace_macros($notif_tpl,array(
+		$o .= replace_macros($notif_tpl, array(
 			'$notif_header' => t('Personal Notifications'),
 			'$tabs' => $tabs,
 			'$notif_content' => $notif_content,
@@ -504,7 +508,7 @@ function notifications_content(&$a) {
 			$notif_content = t('No more home notifications.');
 		}
 		
-		$o .= replace_macros($notif_tpl,array(
+		$o .= replace_macros($notif_tpl, array(
 			'$notif_header' => t('Home Notifications'),
 			'$tabs' => $tabs,
 			'$notif_content' => $notif_content,

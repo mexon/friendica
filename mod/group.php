@@ -82,7 +82,10 @@ function group_content(&$a) {
 		$switchtotext = 400;
 
 	$tpl = get_markup_template('group_edit.tpl');
-	$context = array('$submit' => t('Submit'));
+
+	$context = array(
+			'$submit' => t('Submit'),
+	);
 
 	if(($a->argc == 2) && ($a->argv[1] === 'new')) {
 		

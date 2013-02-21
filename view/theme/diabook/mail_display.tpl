@@ -4,7 +4,7 @@
 </div>
 
 {{ for $mails as $mail }}
-	<div id="tread-wrapper-$mail.id" class="tread-wrapper">
+	<div id="tread-wrapper-$mail_item.id" class="tread-wrapper">
 		{{ inc mail_conv.tpl }}{{endinc}}
 	</div>
 {{ endfor }}

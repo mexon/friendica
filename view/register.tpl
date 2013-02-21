@@ -11,10 +11,12 @@
 	<p id="register-fill-desc">$fillwith</p>
 	<p id="register-fill-ext">$fillext</p>
 
+{{ if $oidlabel }}
 	<div id="register-openid-wrapper" >
-			$oidhtml
+    	<label for="register-openid" id="label-register-openid" >$oidlabel</label><input 	type="text" maxlength="60" size="32" name="openid_url" class="openid" id="register-openid" value="$openid" >
 	</div>
 	<div id="register-openid-end" ></div>
+{{ endif }}
 
 {{ if $invitations }}
 
@@ -55,6 +57,7 @@
 		<input type="submit" name="submit" id="register-submit-button" value="$regbutt" />
 	</div>
 	<div id="register-submit-end" ></div>
+    
 </form>
 
 $license

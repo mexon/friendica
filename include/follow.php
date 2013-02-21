@@ -62,6 +62,11 @@ function new_contact($uid,$url,$interactive = false) {
 		}
 	}
 	
+
+
+
+
+
 	// This extra param just confuses things, remove it
 	if($ret['network'] === NETWORK_DIASPORA)
 		$ret['url'] = str_replace('?absolute=true','',$ret['url']);
@@ -89,11 +94,19 @@ function new_contact($uid,$url,$interactive = false) {
 		$ret['notify'] = '';
 	}
 
+
+
+
+
+
 	if(! $ret['notify']) {
 		$result['message'] .=  t('Limited profile. This person will be unable to receive direct/personal notifications from you.') . EOL;
 	}
 
 	$writeable = ((($ret['network'] === NETWORK_OSTATUS) && ($ret['notify'])) ? 1 : 0);
+
+	$subhub = (($ret['network'] === NETWORK_OSTATUS) ? true : false);
+
 	$hidden = (($ret['network'] === NETWORK_MAIL) ? 1 : 0);
 
 	if($ret['network'] === NETWORK_MAIL) {
@@ -116,8 +129,9 @@ function new_contact($uid,$url,$interactive = false) {
 	if(count($r)) {
 		// update contact
 		if($r[0]['rel'] == CONTACT_IS_FOLLOWER || ($network === NETWORK_DIASPORA && $r[0]['rel'] == CONTACT_IS_SHARING)) {
-			q("UPDATE `contact` SET `rel` = %d , `readonly` = 0 WHERE `id` = %d AND `uid` = %d LIMIT 1",
+			q("UPDATE `contact` SET `rel` = %d , `subhub` = %d, `readonly` = 0 WHERE `id` = %d AND `uid` = %d LIMIT 1",
 				intval(CONTACT_IS_FRIEND),
+				intval($subhub),
 				intval($r[0]['id']),
 				intval($uid)
 			);
@@ -125,14 +139,40 @@ function new_contact($uid,$url,$interactive = false) {
 	}
 	else {
 
+
+		// check service class limits
+
+		$r = q("select count(*) as total from contact where uid = %d and pending = 0 and self = 0",
+			intval($uid)
+		);
+		if(count($r))
+			$total_contacts = $r[0]['total'];
+
+		if(! service_class_allows($uid,'total_contacts',$total_contacts)) {
+			$result['message'] .= upgrade_message();
+			return $result;
+		}
+
+		$r = q("select count(network) as total from contact where uid = %d and network = '%s' and pending = 0 and self = 0",
+			intval($uid),
+			dbesc($network)
+		);
+		if(count($r))
+			$total_network = $r[0]['total'];
+
+		if(! service_class_allows($uid,'total_contacts_' . $network,$total_network)) {
+			$result['message'] .= upgrade_message();
+			return $result;
+		}
+
 		$new_relation = (($ret['network'] === NETWORK_MAIL) ? CONTACT_IS_FRIEND : CONTACT_IS_SHARING);
 		if($ret['network'] === NETWORK_DIASPORA)
 			$new_relation = CONTACT_IS_FOLLOWER;
 
 		// create contact record 
 		$r = q("INSERT INTO `contact` ( `uid`, `created`, `url`, `nurl`, `addr`, `alias`, `batch`, `notify`, `poll`, `poco`, `name`, `nick`, `photo`, `network`, `pubkey`, `rel`, `priority`,
-			`writable`, `hidden`, `blocked`, `readonly`, `pending` )
-			VALUES ( %d, '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', %d, %d, %d, %d, 0, 0, 0 ) ",
+			`writable`, `hidden`, `blocked`, `readonly`, `pending`, `subhub` )
+			VALUES ( %d, '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', %d, %d, %d, %d, 0, 0, 0, %d ) ",
 			intval($uid),
 			dbesc(datetime_convert()),
 			dbesc($ret['url']),
@@ -151,7 +191,8 @@ function new_contact($uid,$url,$interactive = false) {
 			intval($new_relation),
 			intval($ret['priority']),
 			intval($writeable),
-			intval($hidden)
+			intval($hidden),
+			intval($subhub)
 		);
 	}
 
@@ -177,7 +218,7 @@ function new_contact($uid,$url,$interactive = false) {
 		group_add_member($uid,'',$contact_id,$g[0]['def_gid']);
 	}
 
-	require_once("Photo.php");
+	require_once("include/Photo.php");
 
 	$photos = import_profile_photo($ret['photo'],$uid,$contact_id);
 

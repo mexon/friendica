@@ -9,19 +9,38 @@
 // depending on the order in which they were declared in the array.   
 
 require_once("include/template_processor.php");
+require_once("include/friendica_smarty.php");
 
 if(! function_exists('replace_macros')) {  
 function replace_macros($s,$r) {
 	global $t;
-	
-	//$ts = microtime();
-	$r =  $t->replace($s,$r);
-	//$tt = microtime() - $ts;
-	
-	//$a = get_app();
-	//$a->page['debug'] .= "$tt <br>\n";
-	return template_unescape($r);
 
+//	$ts = microtime();
+	$a = get_app();
+
+	if($a->theme['template_engine'] === 'smarty3') {
+		$template = '';
+		if(gettype($s) === 'string') {
+			$template = $s;
+			$s = new FriendicaSmarty();
+		}
+		foreach($r as $key=>$value) {
+			if($key[0] === '$') {
+				$key = substr($key, 1);
+			}
+			$s->assign($key, $value);
+		}
+		$output = $s->parsed($template);
+	}
+	else {
+		$r =  $t->replace($s,$r);
+	
+		$output = template_unescape($r);
+	}
+//	$tt = microtime() - $ts;
+//	$a = get_app();
+//	$a->page['debug'] .= "$tt <br>\n";
+	return $output;
 }}
 
 
@@ -70,7 +89,7 @@ function notags($string) {
 if(! function_exists('escape_tags')) {
 function escape_tags($string) {
 
-	return(htmlspecialchars($string));
+	return(htmlspecialchars($string, ENT_COMPAT, 'UTF-8', false));
 }}
 
 
@@ -280,6 +299,31 @@ function paginate(&$a) {
 	return $o;
 }}
 
+if(! function_exists('alt_pager')) {
+function alt_pager(&$a, $i) {
+        $o = '';
+	$stripped = preg_replace('/(&page=[0-9]*)/','',$a->query_string);
+	$stripped = str_replace('q=','',$stripped);
+	$stripped = trim($stripped,'/');
+	$pagenum = $a->pager['page'];
+        $url = $a->get_baseurl() . '/' . $stripped;
+
+        $o .= '<div class="pager">';
+
+	if($a->pager['page']>1)
+	  $o .= "<a href=\"$url"."&page=".($a->pager['page'] - 1).'" class="pager_newer">' . t('newer') . '</a>';
+        if($i>0) {
+          if($a->pager['page']>1)
+	          $o .= "&nbsp;-&nbsp;";
+	  $o .= "<a href=\"$url"."&page=".($a->pager['page'] + 1).'" class="pager_older">' . t('older') . '</a>';
+	}
+
+
+        $o .= '</div>'."\r\n";
+
+	return $o;
+}}
+
 // Turn user/group ACLs stored as angle bracketed text into arrays
 
 if(! function_exists('expand_acl')) {
@@ -311,11 +355,18 @@ function sanitise_acl(&$item) {
 
 
 // Convert an ACL array to a storable string
+// Normally ACL permissions will be an array.
+// We'll also allow a comma-separated string.
 
 if(! function_exists('perms2str')) {
 function perms2str($p) {
 	$ret = '';
-	$tmp = $p;
+
+	if(is_array($p))
+		$tmp = $p;
+	else
+		$tmp = explode(',',$p);
+
 	if(is_array($tmp)) {
 		array_walk($tmp,'sanitise_acl');
 		$ret = implode('',$tmp);
@@ -378,7 +429,7 @@ function load_view_file($s) {
 		return file_get_contents("$d/$lang/$b");
 	
 	$theme = current_theme();
-	
+
 	if(file_exists("$d/theme/$theme/$b"))
 		return file_get_contents("$d/theme/$theme/$b");
 			
@@ -389,29 +440,63 @@ if(! function_exists('get_intltext_template')) {
 function get_intltext_template($s) {
 	global $lang;
 
+	$a = get_app();
+	$engine = '';
+	if($a->theme['template_engine'] === 'smarty3')
+		$engine = "/smarty3";
+
 	if(! isset($lang))
 		$lang = 'en';
 
-	if(file_exists("view/$lang/$s"))
-		return file_get_contents("view/$lang/$s");
-	elseif(file_exists("view/en/$s"))
-		return file_get_contents("view/en/$s");
+	if(file_exists("view/$lang$engine/$s"))
+		return file_get_contents("view/$lang$engine/$s");
+	elseif(file_exists("view/en$engine/$s"))
+		return file_get_contents("view/en$engine/$s");
 	else
-		return file_get_contents("view/$s");
+		return file_get_contents("view$engine/$s");
 }}
 
 if(! function_exists('get_markup_template')) {
-function get_markup_template($s) {
-	$a=get_app();
-	$theme = current_theme();
-	
-	if(file_exists("view/theme/$theme/$s"))
-		return file_get_contents("view/theme/$theme/$s");
-	elseif (x($a->theme_info,"extends") && file_exists("view/theme/".$a->theme_info["extends"]."/$s"))
-		return file_get_contents("view/theme/".$a->theme_info["extends"]."/$s");
-	else
-		return file_get_contents("view/$s");
+function get_markup_template($s, $root = '') {
+//	$ts = microtime();
+	$a = get_app();
 
+	if($a->theme['template_engine'] === 'smarty3') {
+		$template_file = get_template_file($a, 'smarty3/' . $s, $root);
+
+		$template = new FriendicaSmarty();
+		$template->filename = $template_file;
+
+//		$tt = microtime() - $ts;
+//		$a->page['debug'] .= "$tt <br>\n";
+		return $template;
+	}
+	else {
+		$template_file = get_template_file($a, $s, $root);
+//		$file_contents = file_get_contents($template_file);
+//		$tt = microtime() - $ts;
+//		$a->page['debug'] .= "$tt <br>\n";
+//		return $file_contents;
+		return file_get_contents($template_file);
+	}	
+}}
+
+if(! function_exists("get_template_file")) {
+function get_template_file($a, $filename, $root = '') {
+	$theme = current_theme();
+
+	// Make sure $root ends with a slash /
+	if($root !== '' && $root[strlen($root)-1] !== '/')
+		$root = $root . '/';
+
+	if(file_exists("{$root}view/theme/$theme/$filename"))
+		$template_file = "{$root}view/theme/$theme/$filename";
+	elseif (x($a->theme_info,"extends") && file_exists("{$root}view/theme/{$a->theme_info["extends"]}/$filename"))
+		$template_file = "{$root}view/theme/{$a->theme_info["extends"]}/$filename";
+	else
+		$template_file = "{$root}view/$filename";
+
+	return $template_file;
 }}
 
 
@@ -478,6 +563,10 @@ function get_tags($s) {
 	// ignore anything in a code block
 
 	$s = preg_replace('/\[code\](.*?)\[\/code\]/sm','',$s);
+
+	// ignore anything in a bbtag
+
+	$s = preg_replace('/\[(.*?)\]/sm','',$s);
 
 	// Match full names against @tags including the space between first and last
 	// We will look these up afterward to see if they are full names or not recognisable.
@@ -656,6 +745,10 @@ function search($s,$id='search-box',$url='/search',$save = false) {
 
 if(! function_exists('valid_email')) {
 function valid_email($x){
+
+	if(get_config('system','disable_email_validation'))
+		return true;
+
 	if(preg_match('/^[_a-zA-Z0-9\-\+]+(\.[_a-zA-Z0-9\-\+]+)*@[a-zA-Z0-9-]+(\.[a-zA-Z0-9-]+)+$/',$x))
 		return true;
 	return false;
@@ -676,6 +769,55 @@ function linkify($s) {
 	$s = preg_replace("/\<(.*?)(src|href)=(.*?)\&amp\;(.*?)\>/ism",'<$1$2=$3&$4>',$s);
 	return($s);
 }}
+
+function get_poke_verbs() {
+	
+	// index is present tense verb
+	// value is array containing past tense verb, translation of present, translation of past
+
+	$arr = array(
+		'poke' => array( 'poked', t('poke'), t('poked')),
+		'ping' => array( 'pinged', t('ping'), t('pinged')),
+		'prod' => array( 'prodded', t('prod'), t('prodded')),
+		'slap' => array( 'slapped', t('slap'), t('slapped')),
+		'finger' => array( 'fingered', t('finger'), t('fingered')),
+		'rebuff' => array( 'rebuffed', t('rebuff'), t('rebuffed')),
+	);
+	call_hooks('poke_verbs', $arr);
+	return $arr;
+}
+
+function get_mood_verbs() {
+	
+	// index is present tense verb
+	// value is array containing past tense verb, translation of present, translation of past
+
+	$arr = array(
+		'happy'      => t('happy'),
+		'sad'        => t('sad'),
+		'mellow'     => t('mellow'),
+		'tired'      => t('tired'),
+		'perky'      => t('perky'),
+		'angry'      => t('angry'),
+		'stupefied'  => t('stupified'),
+		'puzzled'    => t('puzzled'),
+		'interested' => t('interested'),
+		'bitter'     => t('bitter'),
+		'cheerful'   => t('cheerful'),
+		'alive'      => t('alive'),
+		'annoyed'    => t('annoyed'),
+		'anxious'    => t('anxious'),
+		'cranky'     => t('cranky'),
+		'disturbed'  => t('disturbed'),
+		'frustrated' => t('frustrated'),
+		'motivated'  => t('motivated'),
+		'relaxed'    => t('relaxed'),
+		'surprised'  => t('surprised'),
+	);
+
+	call_hooks('mood_verbs', $arr);
+	return $arr;
+}
 
 
 /**
@@ -744,46 +886,44 @@ function smilies($s, $sample = false) {
 		':facepalm',
 		':like',
 		':dislike',
-		'~friendika', 
 		'~friendica'
 
 	);
 
 	$icons = array(
-		'<img src="' . $a->get_baseurl() . '/images/smiley-heart.gif" alt="<3" />',
-		'<img src="' . $a->get_baseurl() . '/images/smiley-brokenheart.gif" alt="</3" />',
-		'<img src="' . $a->get_baseurl() . '/images/smiley-brokenheart.gif" alt="<\\3" />',
-		'<img src="' . $a->get_baseurl() . '/images/smiley-smile.gif" alt=":-)" />',
-		'<img src="' . $a->get_baseurl() . '/images/smiley-wink.gif" alt=";-)" />',
-		'<img src="' . $a->get_baseurl() . '/images/smiley-frown.gif" alt=":-(" />',
-		'<img src="' . $a->get_baseurl() . '/images/smiley-tongue-out.gif" alt=":-P" />',
-		'<img src="' . $a->get_baseurl() . '/images/smiley-tongue-out.gif" alt=":-p" />',
-		'<img src="' . $a->get_baseurl() . '/images/smiley-kiss.gif" alt=":-\"" />',
-		'<img src="' . $a->get_baseurl() . '/images/smiley-kiss.gif" alt=":-\"" />',
-		'<img src="' . $a->get_baseurl() . '/images/smiley-kiss.gif" alt=":-x" />',
-		'<img src="' . $a->get_baseurl() . '/images/smiley-kiss.gif" alt=":-X" />',
-		'<img src="' . $a->get_baseurl() . '/images/smiley-laughing.gif" alt=":-D" />',
-		'<img src="' . $a->get_baseurl() . '/images/smiley-surprised.gif" alt="8-|" />',
-		'<img src="' . $a->get_baseurl() . '/images/smiley-surprised.gif" alt="8-O" />',
-		'<img src="' . $a->get_baseurl() . '/images/smiley-surprised.gif" alt=":-O" />',                
-		'<img src="' . $a->get_baseurl() . '/images/smiley-thumbsup.gif" alt="\\o/" />',
-		'<img src="' . $a->get_baseurl() . '/images/smiley-Oo.gif" alt="o.O" />',
-		'<img src="' . $a->get_baseurl() . '/images/smiley-Oo.gif" alt="O.o" />',
-		'<img src="' . $a->get_baseurl() . '/images/smiley-Oo.gif" alt="o_O" />',
-		'<img src="' . $a->get_baseurl() . '/images/smiley-Oo.gif" alt="O_o" />',
-		'<img src="' . $a->get_baseurl() . '/images/smiley-cry.gif" alt=":\'(" />',
-		'<img src="' . $a->get_baseurl() . '/images/smiley-foot-in-mouth.gif" alt=":-!" />',
-		'<img src="' . $a->get_baseurl() . '/images/smiley-undecided.gif" alt=":-/" />',
-		'<img src="' . $a->get_baseurl() . '/images/smiley-embarassed.gif" alt=":-[" />',
-		'<img src="' . $a->get_baseurl() . '/images/smiley-cool.gif" alt="8-)" />',
-		'<img src="' . $a->get_baseurl() . '/images/beer_mug.gif" alt=":beer" />',
-		'<img src="' . $a->get_baseurl() . '/images/beer_mug.gif" alt=":homebrew" />',
-		'<img src="' . $a->get_baseurl() . '/images/coffee.gif" alt=":coffee" />',
-		'<img src="' . $a->get_baseurl() . '/images/smiley-facepalm.gif" alt=":facepalm" />',
-		'<img src="' . $a->get_baseurl() . '/images/like.gif" alt=":like" />',
-		'<img src="' . $a->get_baseurl() . '/images/dislike.gif" alt=":dislike" />',
-		'<a href="http://project.friendika.com">~friendika <img src="' . $a->get_baseurl() . '/images/friendika-16.png" alt="~friendika" /></a>',
-		'<a href="http://friendica.com">~friendica <img src="' . $a->get_baseurl() . '/images/friendica-16.png" alt="~friendica" /></a>'
+		'<img class="smiley" src="' . $a->get_baseurl() . '/images/smiley-heart.gif" alt="<3" />',
+		'<img class="smiley" src="' . $a->get_baseurl() . '/images/smiley-brokenheart.gif" alt="</3" />',
+		'<img class="smiley" src="' . $a->get_baseurl() . '/images/smiley-brokenheart.gif" alt="<\\3" />',
+		'<img class="smiley" src="' . $a->get_baseurl() . '/images/smiley-smile.gif" alt=":-)" />',
+		'<img class="smiley" src="' . $a->get_baseurl() . '/images/smiley-wink.gif" alt=";-)" />',
+		'<img class="smiley" src="' . $a->get_baseurl() . '/images/smiley-frown.gif" alt=":-(" />',
+		'<img class="smiley" src="' . $a->get_baseurl() . '/images/smiley-tongue-out.gif" alt=":-P" />',
+		'<img class="smiley" src="' . $a->get_baseurl() . '/images/smiley-tongue-out.gif" alt=":-p" />',
+		'<img class="smiley" src="' . $a->get_baseurl() . '/images/smiley-kiss.gif" alt=":-\"" />',
+		'<img class="smiley" src="' . $a->get_baseurl() . '/images/smiley-kiss.gif" alt=":-\"" />',
+		'<img class="smiley" src="' . $a->get_baseurl() . '/images/smiley-kiss.gif" alt=":-x" />',
+		'<img class="smiley" src="' . $a->get_baseurl() . '/images/smiley-kiss.gif" alt=":-X" />',
+		'<img class="smiley" src="' . $a->get_baseurl() . '/images/smiley-laughing.gif" alt=":-D" />',
+		'<img class="smiley" src="' . $a->get_baseurl() . '/images/smiley-surprised.gif" alt="8-|" />',
+		'<img class="smiley" src="' . $a->get_baseurl() . '/images/smiley-surprised.gif" alt="8-O" />',
+		'<img class="smiley" src="' . $a->get_baseurl() . '/images/smiley-surprised.gif" alt=":-O" />',                
+		'<img class="smiley" src="' . $a->get_baseurl() . '/images/smiley-thumbsup.gif" alt="\\o/" />',
+		'<img class="smiley" src="' . $a->get_baseurl() . '/images/smiley-Oo.gif" alt="o.O" />',
+		'<img class="smiley" src="' . $a->get_baseurl() . '/images/smiley-Oo.gif" alt="O.o" />',
+		'<img class="smiley" src="' . $a->get_baseurl() . '/images/smiley-Oo.gif" alt="o_O" />',
+		'<img class="smiley" src="' . $a->get_baseurl() . '/images/smiley-Oo.gif" alt="O_o" />',
+		'<img class="smiley" src="' . $a->get_baseurl() . '/images/smiley-cry.gif" alt=":\'(" />',
+		'<img class="smiley" src="' . $a->get_baseurl() . '/images/smiley-foot-in-mouth.gif" alt=":-!" />',
+		'<img class="smiley" src="' . $a->get_baseurl() . '/images/smiley-undecided.gif" alt=":-/" />',
+		'<img class="smiley" src="' . $a->get_baseurl() . '/images/smiley-embarassed.gif" alt=":-[" />',
+		'<img class="smiley" src="' . $a->get_baseurl() . '/images/smiley-cool.gif" alt="8-)" />',
+		'<img class="smiley" src="' . $a->get_baseurl() . '/images/beer_mug.gif" alt=":beer" />',
+		'<img class="smiley" src="' . $a->get_baseurl() . '/images/beer_mug.gif" alt=":homebrew" />',
+		'<img class="smiley" src="' . $a->get_baseurl() . '/images/coffee.gif" alt=":coffee" />',
+		'<img class="smiley" src="' . $a->get_baseurl() . '/images/smiley-facepalm.gif" alt=":facepalm" />',
+		'<img class="smiley" src="' . $a->get_baseurl() . '/images/like.gif" alt=":like" />',
+		'<img class="smiley" src="' . $a->get_baseurl() . '/images/dislike.gif" alt=":dislike" />',
+		'<a href="http://friendica.com">~friendica <img class="smiley" src="' . $a->get_baseurl() . '/images/friendica-16.png" alt="~friendica" /></a>'
 	);
 
 	$params = array('texts' => $texts, 'icons' => $icons, 'string' => $s);
@@ -823,7 +963,7 @@ function preg_heart($x) {
 		return $x[0];
 	$t = '';
 	for($cnt = 0; $cnt < strlen($x[1]); $cnt ++)
-		$t .= '<img src="' . $a->get_baseurl() . '/images/smiley-heart.gif" alt="<3" />';
+		$t .= '<img class="smiley" src="' . $a->get_baseurl() . '/images/smiley-heart.gif" alt="<3" />';
 	$r =  str_replace($x[0],$t,$x[0]);
 	return $r;
 }
@@ -875,13 +1015,11 @@ if(! function_exists('prepare_body')) {
 function prepare_body($item,$attach = false) {
 
 	$a = get_app();
-	call_hooks('prepare_body_init', $item); 
+	call_hooks('prepare_body_init', $item);
 
-	$cache = get_config('system','itemcache');
+	$cachefile = get_cachefile($item["guid"]."-".strtotime($item["edited"])."-".hash("crc32", $item['body']));
 
-	if (($cache != '')) {
-		$cachefile = $cache."/".$item["guid"]."-".strtotime($item["edited"])."-".hash("crc32", $item['body']);
-
+	if (($cachefile != '')) {
 		if (file_exists($cachefile))
 			$s = file_get_contents($cachefile);
 		else {
@@ -897,16 +1035,19 @@ function prepare_body($item,$attach = false) {
 	$s = $prep_arr['html'];
 
 	if(! $attach) {
+		// Replace the blockquotes with quotes that are used in mails
+		$mailquote = '<blockquote type="cite" class="gmail_quote" style="margin:0 0 0 .8ex;border-left:1px #ccc solid;padding-left:1ex;">';
+		$s = str_replace(array('<blockquote>', '<blockquote class="spoiler">', '<blockquote class="author">'), array($mailquote, $mailquote, $mailquote), $s);
 		return $s;
 	}
 
-	$arr = explode(',',$item['attach']);
+	$arr = explode('[/attach],',$item['attach']);
 	if(count($arr)) {
 		$s .= '<div class="body-attach">';
 		foreach($arr as $r) {
 			$matches = false;
 			$icon = '';
-			$cnt = preg_match_all('|\[attach\]href=\"(.*?)\" length=\"(.*?)\" type=\"(.*?)\" title=\"(.*?)\"\[\/attach\]|',$r,$matches, PREG_SET_ORDER);
+			$cnt = preg_match_all('|\[attach\]href=\"(.*?)\" length=\"(.*?)\" type=\"(.*?)\" title=\"(.*?)\"|',$r,$matches, PREG_SET_ORDER);
 			if($cnt) {
 				foreach($matches as $mtch) {
 					$icontype = strtolower(substr($mtch[3],0,strpos($mtch[3],'/')));
@@ -923,7 +1064,7 @@ function prepare_body($item,$attach = false) {
 					}
 					$title = ((strlen(trim($mtch[4]))) ? escape_tags(trim($mtch[4])) : escape_tags($mtch[1]));
 					$title .= ' ' . $mtch[2] . ' ' . t('bytes');
-					if((local_user() == $item['uid']) && $item['contact-id'] != $a->contact['id'])
+					if((local_user() == $item['uid']) && ($item['contact-id'] != $a->contact['id']) && ($item['network'] == NETWORK_DFRN))
 						$the_url = $a->get_baseurl() . '/redir/' . $item['contact-id'] . '?f=1&url=' . $mtch[1];
 					else
 						$the_url = $mtch[1];
@@ -934,34 +1075,7 @@ function prepare_body($item,$attach = false) {
 		}
 		$s .= '<div class="clear"></div></div>';
 	}
-	$matches = false;
-	$cnt = preg_match_all('/<(.*?)>/',$item['file'],$matches,PREG_SET_ORDER);
-	if($cnt) {
-//		logger('prepare_text: categories: ' . print_r($matches,true), LOGGER_DEBUG);
-		foreach($matches as $mtch) {
-			if(strlen($x))
-				$x .= ',';
-			$x .= xmlify(file_tag_decode($mtch[1])) 
-				. ((local_user() == $item['uid']) ? ' <a href="' . $a->get_baseurl() . '/filerm/' . $item['id'] . '?f=&cat=' . xmlify(file_tag_decode($mtch[1])) . '" title="' . t('remove') . '" >' . t('[remove]') . '</a>' : '');
-		}
-		if(strlen($x))
-			$s .= '<div class="categorytags"><span>' . t('Categories:') . ' </span>' . $x . '</div>'; 
 
-
-	}
-	$matches = false;
-	$x = '';
-	$cnt = preg_match_all('/\[(.*?)\]/',$item['file'],$matches,PREG_SET_ORDER);
-	if($cnt) {
-//		logger('prepare_text: filed_under: ' . print_r($matches,true), LOGGER_DEBUG);
-		foreach($matches as $mtch) {
-			if(strlen($x))
-				$x .= '&nbsp;&nbsp;&nbsp;';
-			$x .= xmlify(file_tag_decode($mtch[1])) . ' <a href="' . $a->get_baseurl() . '/filerm/' . $item['id'] . '?f=&term=' . xmlify(file_tag_decode($mtch[1])) . '" title="' . t('remove') . '" >' . t('[remove]') . '</a>';
-		}
-		if(strlen($x) && (local_user() == $item['uid']))
-			$s .= '<div class="filesavetags"><span>' . t('Filed under:') . ' </span>' . $x . '</div>'; 
-	}
 
 	// Look for spoiler
 	$spoilersearch = '<blockquote class="spoiler">';
@@ -1017,6 +1131,73 @@ function prepare_text($text) {
 
 
 /**
+ * returns 
+ * [
+ *    //categories [
+ *          {
+ *               'name': 'category name',
+ *              'removeurl': 'url to remove this category',
+ *             'first': 'is the first in this array? true/false',
+ *               'last': 'is the last in this array? true/false',
+ *           } ,
+ *           ....
+ *       ],
+ *       // folders [
+ *               'name': 'folder name',
+ *               'removeurl': 'url to remove this folder',
+ *               'first': 'is the first in this array? true/false',
+ *               'last': 'is the last in this array? true/false',
+ *           } ,
+ *           ....       
+ *       ]
+ *   ]
+ */
+function get_cats_and_terms($item) {
+    $a = get_app();
+    $categories = array();
+    $folders = array();
+
+    $matches = false; $first = true;
+    $cnt = preg_match_all('/<(.*?)>/',$item['file'],$matches,PREG_SET_ORDER);
+    if($cnt) {
+        foreach($matches as $mtch) {
+            $categories[] = array(
+                'name' => xmlify(file_tag_decode($mtch[1])),
+                'url' =>  "#",
+                'removeurl' => ((local_user() == $item['uid'])?$a->get_baseurl() . '/filerm/' . $item['id'] . '?f=&cat=' . xmlify(file_tag_decode($mtch[1])):""),
+                'first' => $first,
+                'last' => false
+            );
+            $first = false;
+        }
+    }
+    if (count($categories)) $categories[count($categories)-1]['last'] = true;
+    
+
+	if(local_user() == $item['uid']) {
+	    $matches = false; $first = true;
+    	$cnt = preg_match_all('/\[(.*?)\]/',$item['file'],$matches,PREG_SET_ORDER);
+	    if($cnt) {
+    	    foreach($matches as $mtch) {
+        	    $folders[] = array(
+            	    'name' => xmlify(file_tag_decode($mtch[1])),
+                	 'url' =>  "#",
+	                'removeurl' => ((local_user() == $item['uid'])?$a->get_baseurl() . '/filerm/' . $item['id'] . '?f=&term=' . xmlify(file_tag_decode($mtch[1])):""),
+    	            'first' => $first,
+        	        'last' => false
+            	);
+	            $first = false;
+			}
+        }
+    }
+
+    if (count($folders)) $folders[count($folders)-1]['last'] = true;
+
+    return array($categories, $folders);
+}
+
+
+/**
  * return atom link elements for all of our hubs
  */
 
@@ -1059,12 +1240,13 @@ function feed_salmonlinks($nick) {
 if(! function_exists('get_plink')) {
 function get_plink($item) {
 	$a = get_app();	
-	if (x($item,'plink') && (! $item['private'])){
+	if (x($item,'plink') && ($item['private'] != 1)) {
 		return array(
 			'href' => $item['plink'],
 			'title' => t('link to source'),
 		);
-	} else {
+	} 
+	else {
 		return false;
 	}
 }}
@@ -1255,13 +1437,13 @@ function bb_translate_video($s) {
 
 function html2bb_video($s) {
 
-	$s = preg_replace('#<object[^>]+>(.*?)https+://www.youtube.com/((?:v|cp)/[A-Za-z0-9\-_=]+)(.*?)</object>#ism',
+	$s = preg_replace('#<object[^>]+>(.*?)https?://www.youtube.com/((?:v|cp)/[A-Za-z0-9\-_=]+)(.*?)</object>#ism',
 			'[youtube]$2[/youtube]', $s);
 
-	$s = preg_replace('#<iframe[^>](.*?)https+://www.youtube.com/embed/([A-Za-z0-9\-_=]+)(.*?)</iframe>#ism',
+	$s = preg_replace('#<iframe[^>](.*?)https?://www.youtube.com/embed/([A-Za-z0-9\-_=]+)(.*?)</iframe>#ism',
 			'[youtube]$2[/youtube]', $s);
 
-	$s = preg_replace('#<iframe[^>](.*?)https+://player.vimeo.com/video/([0-9]+)(.*?)</iframe>#ism',
+	$s = preg_replace('#<iframe[^>](.*?)https?://player.vimeo.com/video/([0-9]+)(.*?)</iframe>#ism',
 			'[vimeo]$2[/vimeo]', $s);
 
 	return $s;
@@ -1532,7 +1714,7 @@ function undo_post_tagging($s) {
 
 function fix_mce_lf($s) {
 	$s = str_replace("\r\n","\n",$s);
-	$s = str_replace("\n\n","\n",$s);
+//	$s = str_replace("\n\n","\n",$s);
 	return $s;
 }
 
@@ -1541,3 +1723,16 @@ function protect_sprintf($s) {
 	return(str_replace('%','%%',$s));
 }
 
+
+function is_a_date_arg($s) {
+	$i = intval($s);
+	if($i > 1900) {
+		$y = date('Y');
+		if($i <= $y+1 && strpos($s,'-') == 4) {
+			$m = intval(substr($s,5));
+			if($m > 0 && $m <= 12)
+				return true;
+		}
+	}
+	return false;
+}

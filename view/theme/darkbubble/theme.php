@@ -7,9 +7,11 @@
  */
 
 
+function darkbubble_init(&$a) {
 $a->theme_info = array(
   'extends' => 'testbubble',
 );
+set_template_engine($a, 'smarty3');
 
 
 $a->page['htmlhead'] .= <<< EOT
@@ -20,3 +22,4 @@ $('html').click(function() { $("#nav-notifications-menu" ).hide(); });
 });
 </script>
 EOT;
+}

@@ -22,7 +22,8 @@ function user_remove($uid) {
 		$r[0]['nickname']
 	);
 
-	q("DELETE FROM `contact` WHERE `uid` = %d", intval($uid));
+	// don't delete yet, will be done later when contacts have deleted my stuff
+	// q("DELETE FROM `contact` WHERE `uid` = %d", intval($uid));
 	q("DELETE FROM `gcign` WHERE `uid` = %d", intval($uid));
 	q("DELETE FROM `group` WHERE `uid` = %d", intval($uid));
 	q("DELETE FROM `group_member` WHERE `uid` = %d", intval($uid));
@@ -41,7 +42,10 @@ function user_remove($uid) {
 	q("DELETE FROM `pconfig` WHERE `uid` = %d", intval($uid));
 	q("DELETE FROM `search` WHERE `uid` = %d", intval($uid));
 	q("DELETE FROM `spam` WHERE `uid` = %d", intval($uid));
-	q("DELETE FROM `user` WHERE `uid` = %d", intval($uid));
+	// don't delete yet, will be done later when contacts have deleted my stuff
+	// q("DELETE FROM `user` WHERE `uid` = %d", intval($uid));
+	q("UPDATE `user` SET `account_removed` = 1, `account_expires_on` = UTC_TIMESTAMP() WHERE `uid` = %d", intval($uid));
+	proc_run('php', "include/notifier.php", "removeme", $uid);
 	if($uid == local_user()) {
 		unset($_SESSION['authenticated']);
 		unset($_SESSION['uid']);
@@ -139,6 +143,10 @@ function terminate_friendship($user,$self,$contact) {
  
 if(! function_exists('mark_for_death')) {
 function mark_for_death($contact) {
+
+	if($contact['archive'])
+		return;
+
 	if($contact['term-date'] == '0000-00-00 00:00:00') {
 		q("UPDATE `contact` SET `term-date` = '%s' WHERE `id` = %d LIMIT 1",
 				dbesc(datetime_convert()),
@@ -146,12 +154,24 @@ function mark_for_death($contact) {
 		);
 	}
 	else {
+
+		// TODO: We really should send a notification to the owner after 2-3 weeks
+		// so they won't be surprised when the contact vanishes and can take
+		// remedial action if this was a serious mistake or glitch
+
 		$expiry = $contact['term-date'] . ' + 32 days ';
 		if(datetime_convert() > datetime_convert('UTC','UTC',$expiry)) {
 
 			// relationship is really truly dead. 
+			// archive them rather than delete
+			// though if the owner tries to unarchive them we'll start the whole process over again
 
-			contact_remove($contact['id']);
+			q("update contact set `archive` = 1 where id = %d limit 1",
+				intval($contact['id'])
+			);
+			q("UPDATE `item` SET `private` = 2 WHERE `contact-id` = %d AND `uid` = %d", intval($contact['id']), intval($contact['uid']));
+
+			//contact_remove($contact['id']);
 
 		}
 	}
@@ -177,6 +197,7 @@ function contact_photo_menu($contact) {
 	$status_link="";
 	$photos_link="";
 	$posts_link="";
+	$poke_link="";
 
 	$sparkle = false;
 	if($contact['network'] === NETWORK_DFRN) {
@@ -196,10 +217,12 @@ function contact_photo_menu($contact) {
 		$pm_url = $a->get_baseurl() . '/message/new/' . $contact['id'];
 	}
 
+	$poke_link = $a->get_baseurl() . '/poke/?f=&c=' . $contact['id'];
 	$contact_url = $a->get_baseurl() . '/contacts/' . $contact['id'];
 	$posts_link = $a->get_baseurl() . '/network/?cid=' . $contact['id'];
 
 	$menu = Array(
+		t("Poke") => $poke_link,
 		t("View Status") => $status_link,
 		t("View Profile") => $profile_link,
 		t("View Photos") => $photos_link,		

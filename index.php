@@ -1,5 +1,6 @@
 <?php
 
+
 /**
  *
  * Friendica
@@ -13,8 +14,10 @@
  */
 
 require_once('boot.php');
+require_once('object/BaseObject.php');
 
 $a = new App;
+BaseObject::set_app($a);
 
 /**
  *
@@ -27,6 +30,8 @@ $install = ((file_exists('.htconfig.php') && filesize('.htconfig.php')) ? false 
 
 @include(".htconfig.php");
 
+
+
 $lang = get_browser_language();
 	
 load_translation_table($lang);
@@ -37,9 +42,9 @@ load_translation_table($lang);
  *
  */
 
-require_once("dba.php");
+require_once("include/dba.php");
 
-if(! $install) {
+if(!$install) {
 	$db = new dba($db_host, $db_user, $db_pass, $db_data, $install);
     	    unset($db_host, $db_user, $db_pass, $db_data);
 
@@ -50,29 +55,24 @@ if(! $install) {
 	load_config('config');
 	load_config('system');
 
-	require_once("session.php");
+	require_once("include/session.php");
 	load_hooks();
 	call_hooks('init_1');
+
+	$maintenance = get_config('system', 'maintenance');
 }
 
 
 /**
  *
  * Important stuff we always need to do.
- * Initialise authentication and  date and time. 
- * Create the HTML head for the page, even if we may not use it (xml, etc.)
+ *
  * The order of these may be important so use caution if you think they're all
  * intertwingled with no logical order and decide to sort it out. Some of the
  * dependencies have changed, but at least at one time in the recent past - the 
  * order was critical to everything working properly
  *
  */
-
-require_once("datetime.php");
-
-$a->timezone = (($default_timezone) ? $default_timezone : 'UTC');
-
-date_default_timezone_set($a->timezone);
 
 session_start();
 
@@ -92,7 +92,7 @@ if((x($_SESSION,'language')) && ($_SESSION['language'] !== $lang)) {
 	load_translation_table($lang);
 }
 
-if((x($_GET,'zrl')) && (! $install)) {
+if((x($_GET,'zrl')) && (!$install && !$maintenance)) {
 	$_SESSION['my_url'] = $_GET['zrl'];
 	$a->query_string = preg_replace('/[\?&]zrl=(.*?)([\?&]|$)/is','',$a->query_string);
 	zrl_init($a);
@@ -112,19 +112,15 @@ if((x($_GET,'zrl')) && (! $install)) {
 // header('Link: <' . $a->get_baseurl() . '/amcd>; rel="acct-mgmt";');
 
 if((x($_SESSION,'authenticated')) || (x($_POST,'auth-params')) || ($a->module === 'login'))
-	require("auth.php");
+	require("include/auth.php");
 
 if(! x($_SESSION,'authenticated'))
 	header('X-Account-Management-Status: none');
 
 
-/*
- * Create the page head after setting the language
- * and getting any auth credentials
- */
-
-$a->init_pagehead();
-
+/* set up page['htmlhead'] and page['end'] for the modules to use */
+$a->page['htmlhead'] = '';
+$a->page['end'] = '';
 
 
 if(! x($_SESSION,'sysmsg'))
@@ -142,8 +138,13 @@ if(! x($_SESSION,'sysmsg_info'))
 
 if($install)
 	$a->module = 'install';
-else
-	check_config($a);
+elseif($maintenance)
+	$a->module = 'maintenance';
+else {
+	check_url($a);
+	check_db();
+	check_plugins($a);
+}
 
 nav_set_selected('nothing');
 
@@ -244,7 +245,7 @@ if (file_exists($theme_info_file)){
 if(! x($a->page,'content'))
 	$a->page['content'] = '';
 
-if(! $install)
+if(!$install && !$maintenance)
 	call_hooks('page_content_top',$a->page['content']);
 
 /**
@@ -253,7 +254,10 @@ if(! $install)
 
 if($a->module_loaded) {
 	$a->page['page_title'] = $a->module;
+	$placeholder = '';
+
 	if(function_exists($a->module . '_init')) {
+		call_hooks($a->module . '_mod_init', $placeholder);
 		$func = $a->module . '_init';
 		$func($a);
 	}
@@ -273,21 +277,52 @@ if($a->module_loaded) {
 	if(($_SERVER['REQUEST_METHOD'] === 'POST') && (! $a->error)
 		&& (function_exists($a->module . '_post'))
 		&& (! x($_POST,'auth-params'))) {
+		call_hooks($a->module . '_mod_post', $_POST);
 		$func = $a->module . '_post';
 		$func($a);
 	}
 
 	if((! $a->error) && (function_exists($a->module . '_afterpost'))) {
+		call_hooks($a->module . '_mod_afterpost',$placeholder);
 		$func = $a->module . '_afterpost';
 		$func($a);
 	}
 
 	if((! $a->error) && (function_exists($a->module . '_content'))) {
+		$arr = array('content' => $a->page['content']);
+		call_hooks($a->module . '_mod_content', $arr);
+		$a->page['content'] = $arr['content'];
 		$func = $a->module . '_content';
-		$a->page['content'] .= $func($a);
+		$arr = array('content' => $func($a));
+		call_hooks($a->module . '_mod_aftercontent', $arr);
+		$a->page['content'] .= $arr['content'];
+	}
+
+	if(function_exists(str_replace('-','_',current_theme()) . '_content_loaded')) {
+		$func = str_replace('-','_',current_theme()) . '_content_loaded';
+		$func($a);
 	}
 
 }
+
+
+/*
+ * Create the page head after setting the language
+ * and getting any auth credentials
+ *
+ * Moved init_pagehead() and init_page_end() to after
+ * all the module functions have executed so that all
+ * theme choices made by the modules can take effect
+ */
+
+$a->init_pagehead();
+
+/**
+ * Build the page ending -- this is stuff that goes right before
+ * the closing </body> tag
+ */
+
+$a->init_page_end();
 
 // If you're just visiting, let javascript take you home
 
@@ -345,15 +380,36 @@ $a->page['content'] .=  '<div id="pause"></div>';
  *
  */
 
-if($a->module != 'install') {
+if($a->module != 'install' && $a->module != 'maintenance') {
 	nav($a);
+}
+
+/**
+ * Add a "toggle mobile" link if we're using a mobile device
+ */
+
+if($a->is_mobile || $a->is_tablet) {
+	if(isset($_SESSION['show-mobile']) && !$_SESSION['show-mobile']) {
+		$link = $a->get_baseurl() . '/toggle_mobile?address=' . curPageURL();
+	}
+	else {
+		$link = $a->get_baseurl() . '/toggle_mobile?off=1&address=' . curPageURL();
+	}
+	$a->page['footer'] = replace_macros(get_markup_template("toggle_mobile_footer.tpl"), array(
+	                     	'$toggle_link' => $link,
+	                     	'$toggle_text' => t('toggle mobile')
+    	                 ));
 }
 
 /**
  * Build the page - now that we have all the components
  */
 
-$a->page['htmlhead'] = replace_macros($a->page['htmlhead'], array('$stylesheet' => current_theme_url()));
+if(!$a->theme['stylesheet'])
+	$stylesheet = current_theme_url();
+else
+	$stylesheet = $a->theme['stylesheet'];
+$a->page['htmlhead'] = replace_macros($a->page['htmlhead'], array('$stylesheet' => $stylesheet));
 
 $page    = $a->page;
 $profile = $a->profile;

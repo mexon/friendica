@@ -1,5 +1,4 @@
 <?php
-
 require_once("boot.php");
 require_once('include/queue_fn.php');
 require_once('include/html2plain.php');
@@ -18,7 +17,33 @@ require_once('include/html2plain.php');
  * us by hosting providers. 
  */
 
-function notifier_run($argv, $argc){
+/*
+ * The notifier is typically called with:
+ *
+ *		proc_run('php', "include/notifier.php", COMMAND, ITEM_ID);
+ *
+ * where COMMAND is one of the following:
+ *
+ *		activity				(in diaspora.php, dfrn_confirm.php, profiles.php)
+ *		comment-import			(in diaspora.php, items.php)
+ *		comment-new				(in item.php)
+ *		drop					(in diaspora.php, items.php, photos.php)
+ *		edit_post				(in item.php)
+ *		event					(in events.php)
+ *		expire					(in items.php)
+ *		like					(in like.php, poke.php)
+ *		mail					(in message.php)
+ *		suggest					(in fsuggest.php)
+ *		tag						(in photos.php, poke.php, tagger.php)
+ *		tgroup					(in items.php)
+ *		wall-new				(in photos.php, item.php)
+ *		removeme				(in Contact.php)
+ *
+ * and ITEM_ID is the id of the item in the database that needs to be sent to others.
+ */
+
+
+function notifier_run(&$argv, &$argc){
 	global $a, $db;
 
 	if(is_null($a)){
@@ -27,13 +52,13 @@ function notifier_run($argv, $argc){
   
 	if(is_null($db)) {
 		@include(".htconfig.php");
-		require_once("dba.php");
+		require_once("include/dba.php");
 		$db = new dba($db_host, $db_user, $db_pass, $db_data);
 		        unset($db_host, $db_user, $db_pass, $db_data);
 	}
 
-	require_once("session.php");
-	require_once("datetime.php");
+	require_once("include/session.php");
+	require_once("include/datetime.php");
 	require_once('include/items.php');
 	require_once('include/bbcode.php');
 	require_once('include/email.php');
@@ -64,6 +89,7 @@ function notifier_run($argv, $argc){
 	$expire = false;
 	$mail = false;
 	$fsuggest = false;
+    $relocate = false;
 	$top_level = false;
 	$recipients = array();
 	$url_recipients = array();
@@ -109,8 +135,33 @@ function notifier_run($argv, $argc){
 		$recipients[] = $suggest[0]['cid'];
 		$item = $suggest[0];
 	}
-	else {
+	elseif($cmd === 'removeme') {
+		$r = q("SELECT * FROM `user` WHERE `uid` = %d LIMIT 1", intval($item_id));
+		if (! $r)
+			return;
 
+		$user = $r[0];
+		$r = q("SELECT * FROM `contact` WHERE `uid` = %d AND `self` = 1 LIMIT 1", intval($item_id));
+		if (! $r)
+			return;
+
+		$self = $r[0];
+		$r = q("SELECT * FROM `contact` WHERE `self` = 0 AND `uid` = %d", intval($item_id));
+		if(! $r)
+			return;
+
+		require_once('include/Contact.php');
+		foreach($r as $contact) {
+			terminate_friendship($user, $self, $contact);
+		}
+		return;
+	}
+    elseif($cmd === 'relocate') {
+        $normal_mode = false;
+		$relocate = true;
+        $uid = $item_id;
+    }
+	else {
 		// find ancestors
 		$r = q("SELECT * FROM `item` WHERE `id` = %d and visible = 1 and moderated = 0 LIMIT 1",
 			intval($item_id)
@@ -125,7 +176,7 @@ function notifier_run($argv, $argc){
 		$uid = $r[0]['uid'];
 		$updated = $r[0]['edited'];
 
-		// The following seems superfluous. We've already checked for "if (! intval($r[0]['parent']))" a few lines up
+		// POSSIBLE CLEANUP --> The following seems superfluous. We've already checked for "if (! intval($r[0]['parent']))" a few lines up
 		if(! $parent_id)
 			return;
 
@@ -175,7 +226,7 @@ function notifier_run($argv, $argc){
 	// fill this in with a single salmon slap if applicable
 	$slap = '';
 
-	if(! ($mail || $fsuggest)) {
+	if(! ($mail || $fsuggest || $relocate)) {
 
 		require_once('include/group.php');
 
@@ -262,7 +313,7 @@ function notifier_run($argv, $argc){
 			}
 
 			$allow_people = expand_acl($parent['allow_cid']);
-			$allow_groups = expand_groups(expand_acl($parent['allow_gid']));
+			$allow_groups = expand_groups(expand_acl($parent['allow_gid']),true);
 			$deny_people  = expand_acl($parent['deny_cid']);
 			$deny_groups  = expand_groups(expand_acl($parent['deny_gid']));
 
@@ -270,7 +321,7 @@ function notifier_run($argv, $argc){
 			// a delivery fork. private groups (forum_mode == 2) do not uplink
 
 			if((intval($parent['forum_mode']) == 1) && (! $top_level) && ($cmd !== 'uplink')) {
-				proc_run('php','include/notifier','uplink',$item_id);
+				proc_run('php','include/notifier.php','uplink',$item_id);
 			}
 
 			$conversants = array();
@@ -379,6 +430,45 @@ function notifier_run($argv, $argc){
 		);
 
 	}
+    elseif($relocate) {
+        $public_message = false;  // suggestions are not public
+
+		$sugg_template = get_markup_template('atom_relocate.tpl');
+
+		/* get site pubkey. this could be a new installation with no site keys*/
+		$pubkey = get_config('system','site_pubkey');
+		if(! $pubkey) {
+			$res = new_keypair(1024);
+			set_config('system','site_prvkey', $res['prvkey']);
+			set_config('system','site_pubkey', $res['pubkey']);
+		}
+		
+		$rp = q("SELECT `resource-id` , `scale`, type FROM `photo` 
+						WHERE `profile` = 1 AND `uid` = %d ORDER BY scale;", $uid);
+		$photos = array();
+		$ext = Photo::supportedTypes();
+		foreach($rp as $p){
+			$photos[$p['scale']] = $a->get_baseurl().'/photo/'.$p['resource-id'].'-'.$p['scale'].'.'.$ext[$p['type']];
+		}
+		unset($rp, $ext);
+		
+        $atom .= replace_macros($sugg_template, array(
+            '$name' => xmlify($owner['name']),
+            '$photo' => xmlify($photos[4]),
+            '$thumb' => xmlify($photos[5]),
+            '$micro' => xmlify($photos[6]),
+            '$url' => xmlify($owner['url']),
+            '$request' => xmlify($owner['request']),
+            '$confirm' => xmlify($owner['confirm']),
+            '$notify' => xmlify($owner['notify']),
+            '$poll' => xmlify($owner['poll']),
+            '$sitepubkey' => xmlify(get_config('system','site_pubkey')),
+            //'$pubkey' => xmlify($owner['pubkey']),
+            //'$prvkey' => xmlify($owner['prvkey']),
+		)); 
+        $recipients_relocate = q("SELECT * FROM contact WHERE uid = %d  AND self = 0 AND network = '%s'" , intval($uid), NETWORK_DFRN);
+		unset($photos);
+    }
 	else {
 		if($followup) {
 			foreach($items as $item) {  // there is only one item
@@ -399,7 +489,7 @@ function notifier_run($argv, $argc){
 
 				// private emails may be in included in public conversations. Filter them.
 
-				if(($public_message) && $item['private'])
+				if(($public_message) && $item['private'] == 1)
 					continue;
 
 
@@ -454,9 +544,12 @@ function notifier_run($argv, $argc){
 	else
 		$recip_str = implode(', ', $recipients);
 
-	$r = q("SELECT * FROM `contact` WHERE `id` IN ( %s ) AND `blocked` = 0 AND `pending` = 0 ",
-		dbesc($recip_str)
-	);
+    if ($relocate)
+        $r = $recipients_relocate;
+    else
+        $r = q("SELECT * FROM `contact` WHERE `id` IN ( %s ) AND `blocked` = 0 AND `pending` = 0 ",
+            dbesc($recip_str)
+        );
 
 
 	require_once('include/salmon.php');
@@ -468,7 +561,7 @@ function notifier_run($argv, $argc){
 	if(count($r)) {
 
 		foreach($r as $contact) {
-			if((! $mail) && (! $fsuggest) && (! $followup) && (! $contact['self'])) {
+			if((! $mail) && (! $fsuggest) && (! $followup) && (!$relocate) && (! $contact['self'])) {
 				if(($contact['network'] === NETWORK_DIASPORA) && ($public_message))
 					continue;
 				q("insert into deliverq ( `cmd`,`item`,`contact` ) values ('%s', %d, %d )",
@@ -505,7 +598,7 @@ function notifier_run($argv, $argc){
 			// potentially more than one recipient. Start a new process and space them out a bit.
 			// we will deliver single recipient types of message and email recipients here. 
 		
-			if((! $mail) && (! $fsuggest) && (! $followup)) {
+			if((! $mail) && (! $fsuggest) && (!$relocate) && (! $followup)) {
 
 				$this_batch[] = $contact['id'];
 
@@ -517,10 +610,14 @@ function notifier_run($argv, $argc){
 				}
 				continue;
 			}
+			// be sure to pick up any stragglers
+			if(count($this_batch))
+				proc_run('php','include/delivery.php',$cmd,$item_id,$this_batch);
+
 
 			$deliver_status = 0;
 
-			logger("main delivery by notifier: followup=$followup mail=$mail fsuggest=$fsuggest");
+			logger("main delivery by notifier: followup=$followup mail=$mail fsuggest=$fsuggest relocate=$relocate");
 
 			switch($contact['network']) {
 				case NETWORK_DFRN:
@@ -550,14 +647,14 @@ function notifier_run($argv, $argc){
 							AND `contact`.`pending` = 0
 							AND `contact`.`network` = '%s' AND `user`.`nickname` = '%s'
 							$sql_extra
-							AND `user`.`account_expired` = 0 LIMIT 1",
+							AND `user`.`account_expired` = 0 AND `user`.`account_removed` = 0 LIMIT 1",
 							dbesc(NETWORK_DFRN),
 							dbesc($nickname)
 						);
 
-						if(count($x)) {
-
-							if($owner['page-flags'] == PAGE_COMMUNITY && ! $x[0]['writable']) {
+						if($x && count($x)) {
+							$write_flag = ((($x[0]['rel']) && ($x[0]['rel'] != CONTACT_IS_SHARING)) ? true : false);
+							if((($owner['page-flags'] == PAGE_COMMUNITY) || ($write_flag)) && (! $x[0]['writable'])) {
 								q("update contact set writable = 1 where id = %d limit 1",
 									intval($x[0]['id'])
 								);
@@ -678,14 +775,17 @@ function notifier_run($argv, $argc){
 						$subject  = (($it['title']) ? email_header_encode($it['title'],'UTF-8') : t("\x28no subject\x29")) ;
 
 						// only expose our real email address to true friends
-
 						if(($contact['rel'] == CONTACT_IS_FRIEND) && (! $contact['blocked']))
-							$headers  = 'From: ' . email_header_encode($local_user[0]['username'],'UTF-8') . ' <' . $local_user[0]['email'] . '>' . "\n";
+							if($reply_to) {
+								$headers  = 'From: ' . email_header_encode($local_user[0]['username'],'UTF-8') . ' <' . $reply_to . '>' . "\n";
+								$headers .= 'Sender: '.$local_user[0]['email']."\n";
+							} else
+								$headers  = 'From: ' . email_header_encode($local_user[0]['username'],'UTF-8') . ' <' . $local_user[0]['email'] . '>' . "\n";
 						else
 							$headers  = 'From: ' . email_header_encode($local_user[0]['username'],'UTF-8') . ' <' . t('noreply') . '@' . $a->get_hostname() . '>' . "\n";
 
-						if($reply_to)
-							$headers .= 'Reply-to: ' . $reply_to . "\n";
+						//if($reply_to)
+						//	$headers .= 'Reply-to: ' . $reply_to . "\n";
 
 						// for testing purposes: Collect exported mails
 						//$file = tempnam("/tmp/friendica/", "mail-out2-");
@@ -694,13 +794,28 @@ function notifier_run($argv, $argc){
 						$headers .= 'Message-Id: <' . iri2msgid($it['uri']) . '>' . "\n";
 
 						if($it['uri'] !== $it['parent-uri']) {
-							$headers .= 'References: <' . iri2msgid($it['parent-uri']) . '>' . "\n";
-							if(!strlen($it['title'])) {
-								$r = q("SELECT `title` FROM `item` WHERE `parent-uri` = '%s' LIMIT 1",
-									dbesc($it['parent-uri']));
+							$headers .= "References: <".iri2msgid($it["parent-uri"]).">";
 
-								if(count($r) AND ($r[0]['title'] != ''))  
+							// If Threading is enabled, write down the correct parent
+							if (($it["thr-parent"] != "") and ($it["thr-parent"] != $it["parent-uri"]))
+								$headers .= " <".iri2msgid($it["thr-parent"]).">";
+							$headers .= "\n";
+
+							if(!$it['title']) {
+								$r = q("SELECT `title` FROM `item` WHERE `uri` = '%s' AND `uid` = %d LIMIT 1",
+									dbesc($it['parent-uri']),
+									intval($uid));
+
+								if(count($r) AND ($r[0]['title'] != ''))
 									$subject = $r[0]['title'];
+								else {
+									$r = q("SELECT `title` FROM `item` WHERE `parent-uri` = '%s' AND `uid` = %d LIMIT 1",
+										dbesc($it['parent-uri']),
+										intval($uid));
+
+									if(count($r) AND ($r[0]['title'] != ''))
+										$subject = $r[0]['title'];
+								}
 							}
 							if(strncasecmp($subject,'RE:',3))
 								$subject = 'Re: '.$subject;
@@ -876,6 +991,7 @@ function notifier_run($argv, $argc){
 
 	return;
 }
+
 
 if (array_search(__file__,get_included_files())===0){
   notifier_run($argv,$argc);

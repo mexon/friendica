@@ -47,6 +47,8 @@ function networks_widget($baseurl,$selected = '') {
 	if(! local_user())
 		return '';
 
+	if(! feature_enabled(local_user(),'networks'))
+		return '';
 	
 	$r = q("select distinct(network) from contact where uid = %d and self = 0",
 		intval(local_user())
@@ -80,6 +82,9 @@ function fileas_widget($baseurl,$selected = '') {
 	if(! local_user())
 		return '';
 
+	if(! feature_enabled(local_user(),'filing'))
+		return '';
+
 	$saved = get_pconfig(local_user(),'system','filetags');
 	if(! strlen($saved))
 		return;
@@ -106,7 +111,11 @@ function fileas_widget($baseurl,$selected = '') {
 }
 
 function categories_widget($baseurl,$selected = '') {
+
 	$a = get_app();
+
+	if(! feature_enabled($a->profile['profile_uid'],'categories'))
+		return '';
 
 	$saved = get_pconfig($a->profile['profile_uid'],'system','filetags');
 	if(! strlen($saved))
@@ -142,9 +151,16 @@ function common_friends_visitor_widget($profile_uid) {
 
 	$cid = $zcid = 0;
 
-	if(can_write_wall($a,$profile_uid))
-		$cid = remote_user();
-	else {
+	if(is_array($_SESSION['remote'])) {
+		foreach($_SESSION['remote'] as $visitor) {
+			if($visitor['uid'] == $profile_uid) {
+				$cid = $visitor['cid'];
+				break;
+			}
+		}
+	}
+
+	if(! $cid) {
 		if(get_my_url()) {
 			$r = q("select id from contact where nurl = '%s' and uid = %d limit 1",
 				dbesc(normalise_link(get_my_url())),

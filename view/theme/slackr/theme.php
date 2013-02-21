@@ -1,9 +1,11 @@
 <?php
+
+function slackr_init(&$a) {
 $a->theme_info = array(
   'extends' => 'duepuntozero',
 );
+set_template_engine($a, 'smarty3');
 
-function slackr_init(&$a) {
 $a->page['htmlhead'] .= <<< EOT
 <script>
 function insertFormatting(comment,BBcode,id) {
@@ -37,12 +39,21 @@ function insertFormatting(comment,BBcode,id) {
 	return true;
 }
 
-function cmtBbOpen(id) {
-	$(".comment-edit-bb-" + id).show();
+function cmtBbOpen(comment, id) {
+	if($(comment).hasClass('comment-edit-text-full')) {
+		$(".comment-edit-bb-" + id).show();
+		return true;
+	}
+	return false;
 }
-function cmtBbClose(id) {
-	$(".comment-edit-bb-" + id).hide();
+function cmtBbClose(comment, id) {
+//	if($(comment).hasClass('comment-edit-text-empty')) {
+//		$(".comment-edit-bb-" + id).hide();
+//		return true;
+//	}
+	return false;
 }
+
 
 function hidecal() {
 	if(editor) return;

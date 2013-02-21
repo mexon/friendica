@@ -4,12 +4,13 @@
  * Version: 0.5
  * Author: Fabio <http://kirgroup.com/profile/fabrixxm>
  * Maintainer: Fabio <http://kirgroup.com/profile/fabrixxm>
- * Maintainer: Tobias <https://diekershoff.homeunix.net/friendika/profile/tobias>
+ * Maintainer: Tobias <https://diekershoff.homeunix.net/friendica/profile/tobias>
  */
  
-$a->theme_info = array();
-
 function quattro_init(&$a) {
+$a->theme_info = array();
+set_template_engine($a, 'smarty3');
+
 $a->page['htmlhead'] .= <<< EOT
 <script>
 function insertFormatting(comment,BBcode,id) {
@@ -42,11 +43,21 @@ function insertFormatting(comment,BBcode,id) {
 	return true;
 }
 
-function cmtBbOpen(id) {
-	$(".comment-edit-bb-" + id).show();
+function showThread(id) {
+	$("#collapsed-comments-" + id).show()
+	$("#collapsed-comments-" + id + " .collapsed-comments").show()
 }
-function cmtBbClose(comment, id) {
-	$(".comment-edit-bb-" + id).hide();
+function hideThread(id) {
+	$("#collapsed-comments-" + id).hide()
+	$("#collapsed-comments-" + id + " .collapsed-comments").hide()
+}
+
+
+function cmtBbOpen(id) {
+	$("#comment-edit-bb-" + id).show();
+}
+function cmtBbClose(id) {
+	$("#comment-edit-bb-" + id).hide();
 }
 $(document).ready(function() {
 

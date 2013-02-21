@@ -1,5 +1,5 @@
 <?php
-require_once "html2bbcode.php";
+require_once("include/html2bbcode.php");
 
 function breaklines($line, $level, $wraplength = 75)
 {
@@ -90,6 +90,9 @@ function collecturls($message) {
 				$ignore = true;
 
 		if ((strpos($treffer[1], "//plus.google.com/") !== false) and (strpos($treffer[1], "/posts") !== false))
+				$ignore = false;
+
+		if ((strpos($treffer[1], "//plus.google.com/") !== false) and (strpos($treffer[1], "/photos") !== false))
 				$ignore = false;
 
 		if (!$ignore)
@@ -206,7 +209,7 @@ function html2plain($html, $wraplength = 75, $compact = false)
 	if (!$compact) {
 		$counter = 1;
 		foreach ($urls as $id=>$url)
-			if (strpos($message, $url) == false)
+			if (strpos($message, $url) === false)
 				$message .= "\n".$url." ";
 				//$message .= "\n[".($counter++)."] ".$url;
 	}

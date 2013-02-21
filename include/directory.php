@@ -1,7 +1,7 @@
 <?php
 require_once("boot.php");
 
-function directory_run($argv, $argc){
+function directory_run(&$argv, &$argc){
 	global $a, $db;
 
 	if(is_null($a)) {
@@ -10,7 +10,7 @@ function directory_run($argv, $argc){
   
 	if(is_null($db)) {
 		@include(".htconfig.php");
-		require_once("dba.php");
+		require_once("include/dba.php");
 		$db = new dba($db_host, $db_user, $db_pass, $db_data);
 				unset($db_host, $db_user, $db_pass, $db_data);
 	};
@@ -38,6 +38,7 @@ function directory_run($argv, $argc){
 
 	call_hooks('globaldir_update', $arr);
 
+	logger('Updating directory: ' . $arr['url'], LOGGER_DEBUG);
 	if(strlen($arr['url']))
 		fetch_url($dir . '?url=' . bin2hex($arr['url']));
 
