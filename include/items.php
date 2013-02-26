@@ -5,7 +5,10 @@ require_once('include/oembed.php');
 require_once('include/salmon.php');
 require_once('include/crypto.php');
 require_once('include/Photo.php');
+require_once('include/tags.php');
+require_once('include/text.php');
 require_once('include/email.php');
+require_once('include/ostatus_conversation.php');
 
 function get_feed_for(&$a, $dfrn_id, $owner_nick, $last_update, $direction = 0) {
 
@@ -26,7 +29,7 @@ function get_feed_for(&$a, $dfrn_id, $owner_nick, $last_update, $direction = 0) 
 		}
 	}
 
-	
+
 
 	// default permissions - anonymous user
 
@@ -238,7 +241,7 @@ function construct_activity_object($item) {
 					$r->link = str_replace('&','&amp;', $r->link);
 				$r->link = preg_replace('/\<link(.*?)\"\>/','<link$1"/>',$r->link);
 				$o .= $r->link;
-			}					
+			}
 			else
 				$o .= '<link rel="alternate" type="text/html" href="' . xmlify($r->link) . '" />' . "\r\n";
 		}
@@ -270,7 +273,7 @@ function construct_activity_target($item) {
 					$r->link = str_replace('&','&amp;', $r->link);
 				$r->link = preg_replace('/\<link(.*?)\"\>/','<link$1"/>',$r->link);
 				$o .= $r->link;
-			}					
+			}
 			else
 				$o .= '<link rel="alternate" type="text/html" href="' . xmlify($r->link) . '" />' . "\r\n";
 		}
@@ -667,7 +670,7 @@ function get_atom_elements($feed,$item) {
 	}
 
 	// translate OStatus unfollow to activity streams if it happened to get selected
-		
+
 	if((x($res,'verb')) && ($res['verb'] === 'http://ostatus.org/schema/1.0/unfollow'))
 		$res['verb'] = ACTIVITY_UNFOLLOW;
 
@@ -718,7 +721,7 @@ function get_atom_elements($feed,$item) {
 		if($child[NAMESPACE_ACTIVITY]['object-type'][0]['data']) {
 			$res['object-type'] = $child[NAMESPACE_ACTIVITY]['object-type'][0]['data'];
 			$res['object'] .= '<type>' . $child[NAMESPACE_ACTIVITY]['object-type'][0]['data'] . '</type>' . "\n";
-		}	
+		}
 		if(x($child[SIMPLEPIE_NAMESPACE_ATOM_10], 'id') && $child[SIMPLEPIE_NAMESPACE_ATOM_10]['id'][0]['data'])
 			$res['object'] .= '<id>' . $child[SIMPLEPIE_NAMESPACE_ATOM_10]['id'][0]['data'] . '</id>' . "\n";
 		if(x($child[SIMPLEPIE_NAMESPACE_ATOM_10], 'link') && $child[SIMPLEPIE_NAMESPACE_ATOM_10]['link'])
@@ -756,7 +759,7 @@ function get_atom_elements($feed,$item) {
 		$child = $rawobj[0]['child'];
 		if($child[NAMESPACE_ACTIVITY]['object-type'][0]['data']) {
 			$res['target'] .= '<type>' . $child[NAMESPACE_ACTIVITY]['object-type'][0]['data'] . '</type>' . "\n";
-		}	
+		}
 		if(x($child[SIMPLEPIE_NAMESPACE_ATOM_10], 'id') && $child[SIMPLEPIE_NAMESPACE_ATOM_10]['id'][0]['data'])
 			$res['target'] .= '<id>' . $child[SIMPLEPIE_NAMESPACE_ATOM_10]['id'][0]['data'] . '</id>' . "\n";
 		if(x($child[SIMPLEPIE_NAMESPACE_ATOM_10], 'link') && $child[SIMPLEPIE_NAMESPACE_ATOM_10]['link'])
@@ -826,15 +829,30 @@ function get_atom_elements($feed,$item) {
 		}
 	}
 
+	// Search for ostatus conversation url
+	$links = $item->feed->data["child"][SIMPLEPIE_NAMESPACE_ATOM_10]["feed"][0]["child"][SIMPLEPIE_NAMESPACE_ATOM_10]["entry"][0]["child"]["http://www.w3.org/2005/Atom"]["link"];
+
+	if (is_array($links)) {
+		foreach ($links as $link) {
+			$conversation = array_shift($link["attribs"]);
+
+			if ($conversation["rel"] == "ostatus:conversation") {
+				$res["ostatus_conversation"] = $conversation["href"];
+				logger('get_atom_elements: found conversation url '.$res["ostatus_conversation"]);
+			}
+		};
+	}
+
 	$arr = array('feed' => $feed, 'item' => $item, 'result' => $res);
 
 	call_hooks('parse_atom', $arr);
 
 	//if (($res["title"] != "") or (strpos($res["body"], "RT @") > 0)) {
 	//if (strpos($res["body"], "RT @") !== false) {
-	//	$debugfile = tempnam("/home/ike/log", "item-res2-");
-	//	file_put_contents($debugfile, serialize($arr));
-	//}
+	/*if (strpos($res["body"], "@") !== false) {
+		$debugfile = tempnam("/var/www/virtual/pirati.ca/phptmp/", "item-res2-");
+		file_put_contents($debugfile, serialize($arr));
+	}*/
 
 	return $res;
 }
@@ -873,13 +891,22 @@ function item_store($arr,$force_parent = false) {
 		unset($arr['dsprsig']);
 	}
 
+	// if an OStatus conversation url was passed in, it is stored and then
+	// removed from the array.
+	$ostatus_conversation = null;
+
+	if (isset($arr["ostatus_conversation"])) {
+		$ostatus_conversation = $arr["ostatus_conversation"];
+	        unset($arr["ostatus_conversation"]);
+	}
+
 	if(x($arr, 'gravity'))
 		$arr['gravity'] = intval($arr['gravity']);
 	elseif($arr['parent-uri'] === $arr['uri'])
 		$arr['gravity'] = 0;
 	elseif(activity_match($arr['verb'],ACTIVITY_POST))
 		$arr['gravity'] = 6;
-	else      
+	else
 		$arr['gravity'] = 6;   // extensible catchall
 
 	if(! x($arr,'type'))
@@ -895,8 +922,23 @@ function item_store($arr,$force_parent = false) {
 		require_once('library/langdet/Text/LanguageDetect.php');
 		$naked_body = preg_replace('/\[(.+?)\]/','',$arr['body']);
 		$l = new Text_LanguageDetect;
-		$lng = $l->detectConfidence($naked_body);
-		$arr['postopts'] = (($lng['language']) ? 'lang=' . $lng['language'] . ';' . $lng['confidence'] : '');
+		//$lng = $l->detectConfidence($naked_body);
+		//$arr['postopts'] = (($lng['language']) ? 'lang=' . $lng['language'] . ';' . $lng['confidence'] : '');
+		$lng = $l->detect($naked_body, 3);
+
+		if (sizeof($lng) > 0) {
+			$postopts = "";
+
+			foreach ($lng as $language => $score) {
+				if ($postopts == "")
+					$postopts = "lang=";
+				else
+					$postopts .= ":";
+
+				$postopts .= $language.";".$score;
+			}
+			$arr['postopts'] = $postopts;
+		}
 	}
 
 	$arr['wall']          = ((x($arr,'wall'))          ? intval($arr['wall'])                : 0);
@@ -949,9 +991,9 @@ function item_store($arr,$force_parent = false) {
 		$deny_cid  = $arr['deny_cid'];
 		$deny_gid  = $arr['deny_gid'];
 	}
-	else { 
+	else {
 
-		// find the parent and snarf the item id and ACL's
+		// find the parent and snarf the item id and ACLs
 		// and anything else we need to inherit
 
 		$r = q("SELECT * FROM `item` WHERE `uri` = '%s' AND `uid` = %d ORDER BY `id` ASC LIMIT 1",
@@ -1014,7 +1056,7 @@ function item_store($arr,$force_parent = false) {
 				logger('item_store: item parent was not found - ignoring item');
 				return 0;
 			}
-			
+
 			$parent_deleted = 0;
 		}
 	}
@@ -1055,8 +1097,8 @@ function item_store($arr,$force_parent = false) {
 	if(count($r)) {
 		$current_post = $r[0]['id'];
 		logger('item_store: created item ' . $current_post);
-	}
-	else {
+		create_tags_from_item($r[0]['id']);
+	} else {
 		logger('item_store: could not locate created item');
 		return 0;
 	}
@@ -1069,7 +1111,7 @@ function item_store($arr,$force_parent = false) {
 		);
 	}
 
-	if((! $parent_id) || ($arr['parent-uri'] === $arr['uri']))	
+	if((! $parent_id) || ($arr['parent-uri'] === $arr['uri']))
 		$parent_id = $current_post;
 
  	if(strlen($allow_cid) || strlen($allow_gid) || strlen($deny_cid) || strlen($deny_gid))
@@ -1090,6 +1132,11 @@ function item_store($arr,$force_parent = false) {
 		intval($parent_deleted),
 		intval($current_post)
 	);
+	create_tags_from_item($current_post);
+
+	// Complete ostatus threads
+	if ($ostatus_conversation)
+		complete_conversation($current_post, $ostatus_conversation);
 
         $arr['id'] = $current_post;
         $arr['parent'] = $parent_id;
@@ -1132,6 +1179,18 @@ function item_store($arr,$force_parent = false) {
 	}
 
 	tag_deliver($arr['uid'],$current_post);
+
+	// Store the fresh generated item into the cache
+	$cachefile = get_cachefile($arr["guid"]."-".hash("md5", $arr['body']));
+
+	if (($cachefile != '') AND !file_exists($cachefile)) {
+		$s = prepare_text($arr['body']);
+		$a = get_app();
+		$stamp1 = microtime(true);
+		file_put_contents($cachefile, $s);
+		$a->save_timestamp($stamp1, "file");
+		logger('item_store: put item '.$current_post.' into cachefile '.$cachefile);
+	}
 
 	return $current_post;
 }
@@ -1269,7 +1328,7 @@ function tag_deliver($uid,$item_id) {
 		intval($item_id)
 	);
 
-	proc_run('php','include/notifier.php','tgroup',$item_id);			
+	proc_run('php','include/notifier.php','tgroup',$item_id);
 
 }
 
@@ -1340,7 +1399,7 @@ function dfrn_deliver($owner,$contact,$atom, $dissolve = false) {
 	if($contact['duplex'] && $contact['dfrn-id'])
 		$idtosend = '0:' . $orig_id;
 	if($contact['duplex'] && $contact['issued-id'])
-		$idtosend = '1:' . $orig_id;		
+		$idtosend = '1:' . $orig_id;
 
 	$rino = ((function_exists('mcrypt_encrypt')) ? 1 : 0);
 
@@ -1358,7 +1417,7 @@ function dfrn_deliver($owner,$contact,$atom, $dissolve = false) {
 			break;
 		case SSL_POLICY_SELFSIGN:
 			$ssl_policy = 'self';
-			break;			
+			break;
 		case SSL_POLICY_NONE:
 		default:
 			$ssl_policy = 'none';
@@ -1411,7 +1470,7 @@ function dfrn_deliver($owner,$contact,$atom, $dissolve = false) {
 				intval(($perm == 'rw') ? 1 : 0),
 				intval($contact['id'])
 			);
-			$contact['writable'] = (string) 1 - intval($contact['writable']);			
+			$contact['writable'] = (string) 1 - intval($contact['writable']);
 		}
 	}
 
@@ -1577,7 +1636,7 @@ function consume_feed($xml,$importer,&$contact, &$hub, $datedir = 0, $pass = 0) 
 		logger('consume_feed: empty input');
 		return;
 	}
-		
+
 	$feed = new SimplePie();
 	$feed->set_raw_data($xml);
 	if($datedir)
@@ -1613,7 +1672,7 @@ function consume_feed($xml,$importer,&$contact, &$hub, $datedir = 0, $pass = 0) 
 		if($elems['name'][0]['attribs'][NAMESPACE_DFRN]['updated']) {
 			$name_updated = $elems['name'][0]['attribs'][NAMESPACE_DFRN]['updated'];
 			$new_name = $elems['name'][0]['data'];
-		} 
+		}
 		if((x($elems,'link')) && ($elems['link'][0]['attribs']['']['rel'] === 'photo') && ($elems['link'][0]['attribs'][NAMESPACE_DFRN]['updated'])) {
 			$photo_timestamp = datetime_convert('UTC','UTC',$elems['link'][0]['attribs'][NAMESPACE_DFRN]['updated']);
 			$photo_url = $elems['link'][0]['attribs']['']['href'];
@@ -1656,12 +1715,12 @@ function consume_feed($xml,$importer,&$contact, &$hub, $datedir = 0, $pass = 0) 
 					intval($contact['uid'])
 				);
 			}
-				
+
 			$img->scaleImageSquare(175);
-				
+
 			$hash = $resource_id;
 			$r = $img->store($contact['uid'], $contact['id'], $hash, basename($photo_url), 'Contact Photos', 4);
-				
+
 			$img->scaleImage(80);
 			$r = $img->store($contact['uid'], $contact['id'], $hash, basename($photo_url), 'Contact Photos', 5);
 
@@ -1670,7 +1729,7 @@ function consume_feed($xml,$importer,&$contact, &$hub, $datedir = 0, $pass = 0) 
 
 			$a = get_app();
 
-			q("UPDATE `contact` SET `avatar-date` = '%s', `photo` = '%s', `thumb` = '%s', `micro` = '%s'  
+			q("UPDATE `contact` SET `avatar-date` = '%s', `photo` = '%s', `thumb` = '%s', `micro` = '%s'
 				WHERE `uid` = %d AND `id` = %d LIMIT 1",
 				dbesc(datetime_convert()),
 				dbesc($a->get_baseurl() . '/photo/' . $hash . '-4.'.$img->getExt()),
@@ -1720,7 +1779,7 @@ function consume_feed($xml,$importer,&$contact, &$hub, $datedir = 0, $pass = 0) 
 			 * to contain a sparkle link and perhaps a photo. 
 			 *
 			 */
-			 
+
 			$bdtext = sprintf( t('%s\'s birthday'), $contact['name']);
 			$bdtext2 = sprintf( t('Happy Birthday %s'), ' [url=' . $contact['url'] . ']' . $contact['name'] . '[/url]' ) ;
 
@@ -1737,7 +1796,7 @@ function consume_feed($xml,$importer,&$contact, &$hub, $datedir = 0, $pass = 0) 
 				dbesc($bdtext2),
 				dbesc('birthday')
 			);
-			
+
 
 			// update bdyear
 
@@ -1829,6 +1888,7 @@ function consume_feed($xml,$importer,&$contact, &$hub, $datedir = 0, $pass = 0) 
 										dbesc(implode(',',$newtags)),
 										intval($i[0]['id'])
 									);
+									create_tags_from_item($i[0]['id']);
 								}
 							}
 						}
@@ -1843,6 +1903,7 @@ function consume_feed($xml,$importer,&$contact, &$hub, $datedir = 0, $pass = 0) 
 							dbesc($item['uri']),
 							intval($importer['uid'])
 						);
+						create_tags_from_itemuri($item['uri'], $importer['uid']);
 					}
 					else {
 						$r = q("UPDATE `item` SET `deleted` = 1, `edited` = '%s', `changed` = '%s',
@@ -1853,6 +1914,7 @@ function consume_feed($xml,$importer,&$contact, &$hub, $datedir = 0, $pass = 0) 
 							dbesc($uri),
 							intval($importer['uid'])
 						);
+						create_tags_from_itemuri($uri, $importer['uid']);
 						if($item['last-child']) {
 							// ensure that last-child is set in case the comment that had it just got wiped.
 							q("UPDATE `item` SET `last-child` = 0, `changed` = '%s' WHERE `parent-uri` = '%s' AND `uid` = %d ",
@@ -1966,6 +2028,7 @@ function consume_feed($xml,$importer,&$contact, &$hub, $datedir = 0, $pass = 0) 
 							dbesc($item_id),
 							intval($importer['uid'])
 						);
+						create_tags_from_itemuri($item_id, $importer['uid']);
 					}
 
 					// update last-child if it changes
@@ -2007,7 +2070,7 @@ function consume_feed($xml,$importer,&$contact, &$hub, $datedir = 0, $pass = 0) 
 						dbesc($parent_uri)
 					);
 					if($r && count($r))
-						continue; 
+						continue;
 				}
 
 				if(($datarray['verb'] === ACTIVITY_TAG) && ($datarray['object-type'] === ACTIVITY_OBJ_TAGTERM)) {
@@ -2030,6 +2093,7 @@ function consume_feed($xml,$importer,&$contact, &$hub, $datedir = 0, $pass = 0) 
 									dbesc($r[0]['tag'] . (strlen($r[0]['tag']) ? ',' : '') . $newtag),
 									intval($r[0]['id'])
 								);
+								create_tags_from_item($r[0]['id']);
 							}
 						}
 					}
@@ -2113,6 +2177,7 @@ function consume_feed($xml,$importer,&$contact, &$hub, $datedir = 0, $pass = 0) 
 							dbesc($item_id),
 							intval($importer['uid'])
 						);
+						create_tags_from_itemuri($item_id, $importer['uid']);
 					}
 
 					// update last-child if it changes
@@ -2250,7 +2315,7 @@ function local_delivery($importer,$data) {
 		if($elems['name'][0]['attribs'][NAMESPACE_DFRN]['updated']) {
 			$name_updated = $elems['name'][0]['attribs'][NAMESPACE_DFRN]['updated'];
 			$new_name = $elems['name'][0]['data'];
-		} 
+		}
 		if((x($elems,'link')) && ($elems['link'][0]['attribs']['']['rel'] === 'photo') && ($elems['link'][0]['attribs'][NAMESPACE_DFRN]['updated'])) {
 			$photo_timestamp = datetime_convert('UTC','UTC',$elems['link'][0]['attribs'][NAMESPACE_DFRN]['updated']);
 			$photo_url = $elems['link'][0]['attribs']['']['href'];
@@ -2289,12 +2354,12 @@ function local_delivery($importer,$data) {
 					intval($importer['importer_uid'])
 				);
 			}
-				
+
 			$img->scaleImageSquare(175);
-				
+
 			$hash = $resource_id;
 			$r = $img->store($importer['importer_uid'], $importer['id'], $hash, basename($photo_url), 'Contact Photos', 4);
-				
+
 			$img->scaleImage(80);
 			$r = $img->store($importer['importer_uid'], $importer['id'], $hash, basename($photo_url), 'Contact Photos', 5);
 
@@ -2303,7 +2368,7 @@ function local_delivery($importer,$data) {
 
 			$a = get_app();
 
-			q("UPDATE `contact` SET `avatar-date` = '%s', `photo` = '%s', `thumb` = '%s', `micro` = '%s'  
+			q("UPDATE `contact` SET `avatar-date` = '%s', `photo` = '%s', `thumb` = '%s', `micro` = '%s'
 				WHERE `uid` = %d AND `id` = %d LIMIT 1",
 				dbesc(datetime_convert()),
 				dbesc($a->get_baseurl() . '/photo/' . $hash . '-4.'.$img->getExt()),
@@ -2362,17 +2427,17 @@ function local_delivery($importer,$data) {
 		/** relocated user must have original key pair */
 		/*$newloc['pubkey'] = notags(unxmlify($base['pubkey'][0]['data']));
 		$newloc['prvkey'] = notags(unxmlify($base['prvkey'][0]['data']));*/
-		
+
         logger("items:relocate contact ".print_r($newloc, true).print_r($importer, true), LOGGER_DEBUG);
-        
+
         // update contact
         $r = q("SELECT photo, url FROM contact WHERE id=%d AND uid=%d;",
                     intval($importer['id']),
 					intval($importer['importer_uid']));
-		if ($r === false) 
+		if ($r === false)
 			return 1;
         $old = $r[0];
-        
+
         $x = q("UPDATE contact SET
                         name = '%s',
                         photo = '%s',
@@ -2415,7 +2480,7 @@ function local_delivery($importer,$data) {
 			if ($x === false)
 				return 1;
 		}
-		
+
 		// TODO
 		// merge with current record, current contents have priority
 		// update record, set url-updated
@@ -2489,7 +2554,7 @@ function local_delivery($importer,$data) {
 
 
 		$hash = random_string();
- 
+
 		$r = q("INSERT INTO `intro` ( `uid`, `fid`, `contact-id`, `note`, `hash`, `datetime`, `blocked` )
 			VALUES( %d, %d, %d, '%s', '%s', '%s', %d )",
 			intval($fsugg['uid']),
@@ -2543,7 +2608,7 @@ function local_delivery($importer,$data) {
 		$msg['uri'] = notags(unxmlify($base['id'][0]['data']));
 		$msg['parent-uri'] = notags(unxmlify($base['in-reply-to'][0]['data']));
 		$msg['created'] = datetime_convert(notags(unxmlify('UTC','UTC',$base['sentdate'][0]['data'])));
-		
+
 		dbesc_array($msg);
 
 		$r = dbq("INSERT INTO `mail` (`" . implode("`, `", array_keys($msg)) 
@@ -2567,12 +2632,12 @@ function local_delivery($importer,$data) {
 			'verb' => ACTIVITY_POST,
 			'otype' => 'mail'
 		);
-			
+
 		notification($notif_params);
 		return 0;
 
 		// NOTREACHED
-	}	
+	}
 
 	$community_page = 0;
 	$rawtags = $feed->get_feed_tags( NAMESPACE_DFRN, 'community');
@@ -2586,7 +2651,7 @@ function local_delivery($importer,$data) {
 		);
 		$importer['forum'] = (string) $community_page;
 	}
-	
+
 	logger('local_delivery: feed item count = ' . $feed->get_item_quantity());
 
 	// process any deleted entries
@@ -2696,14 +2761,14 @@ function local_delivery($importer,$data) {
 							if(count($i)) {
 
 								// For tags, the owner cannot remove the tag on the author's copy of the post.
-								
+
 								$owner_remove = (($item['contact-id'] == $i[0]['contact-id']) ? true: false);
 								$author_remove = (($item['origin'] && $item['self']) ? true : false);
-								$author_copy = (($item['origin']) ? true : false); 
+								$author_copy = (($item['origin']) ? true : false);
 
 								if($owner_remove && $author_copy)
 									continue;
-								if($author_remove || $owner_remove) {								
+								if($author_remove || $owner_remove) {
 									$tags = explode(',',$i[0]['tag']);
 									$newtags = array();
 									if(count($tags)) {
@@ -2715,6 +2780,7 @@ function local_delivery($importer,$data) {
 										dbesc(implode(',',$newtags)),
 										intval($i[0]['id'])
 									);
+									create_tags_from_item($i[0]['id']);
 								}
 							}
 						}
@@ -2729,6 +2795,7 @@ function local_delivery($importer,$data) {
 							dbesc($item['uri']),
 							intval($importer['importer_uid'])
 						);
+						create_tags_from_itemuri($item['uri'], $importer['importer_uid']);
 					}
 					else {
 						$r = q("UPDATE `item` SET `deleted` = 1, `edited` = '%s', `changed` = '%s',
@@ -2739,6 +2806,7 @@ function local_delivery($importer,$data) {
 							dbesc($uri),
 							intval($importer['importer_uid'])
 						);
+						create_tags_from_itemuri($uri, $importer['importer_uid']);
 						if($item['last-child']) {
 							// ensure that last-child is set in case the comment that had it just got wiped.
 							q("UPDATE `item` SET `last-child` = 0, `changed` = '%s' WHERE `parent-uri` = '%s' AND `uid` = %d ",
@@ -2746,7 +2814,7 @@ function local_delivery($importer,$data) {
 								dbesc($item['parent-uri']),
 								intval($item['uid'])
 							);
-							// who is the last child now? 
+							// who is the last child now?
 							$r = q("SELECT `id` FROM `item` WHERE `parent-uri` = '%s' AND `type` != 'activity' AND `deleted` = 0 AND `uid` = %d
 								ORDER BY `created` DESC LIMIT 1",
 									dbesc($item['parent-uri']),
@@ -2756,7 +2824,7 @@ function local_delivery($importer,$data) {
 								q("UPDATE `item` SET `last-child` = 1 WHERE `id` = %d LIMIT 1",
 									intval($r[0]['id'])
 								);
-							}	
+							}
 						}
 						// if this is a relayed delete, propagate it to other recipients
 
@@ -2850,11 +2918,11 @@ function local_delivery($importer,$data) {
 				if(count($r)) {
 					$iid = $r[0]['id'];
 					if((x($datarray,'edited') !== false) && (datetime_convert('UTC','UTC',$datarray['edited']) !== $r[0]['edited'])) {
-					
+
 						// do not accept (ignore) an earlier edit than one we currently have.
 						if(datetime_convert('UTC','UTC',$datarray['edited']) < $r[0]['edited'])
 							continue;
-  
+
 						logger('received updated comment' , LOGGER_DEBUG);
 						$r = q("UPDATE `item` SET `title` = '%s', `body` = '%s', `tag` = '%s', `edited` = '%s' WHERE `uri` = '%s' AND `uid` = %d LIMIT 1",
 							dbesc($datarray['title']),
@@ -2864,6 +2932,7 @@ function local_delivery($importer,$data) {
 							dbesc($item_id),
 							intval($importer['importer_uid'])
 						);
+						create_tags_from_itemuri($item_id, $importer['importer_uid']);
 
 						proc_run('php',"include/notifier.php","comment-import",$iid);
 
@@ -2900,14 +2969,14 @@ function local_delivery($importer,$data) {
 						dbesc($datarray['verb']),
 						dbesc($datarray['parent-uri']),
 						dbesc($datarray['parent-uri'])
-		
+
 					);
 					if($r && count($r))
-						continue; 
+						continue;
 				}
 
 				if(($datarray['verb'] === ACTIVITY_TAG) && ($datarray['object-type'] === ACTIVITY_OBJ_TAGTERM)) {
-					
+
 					$xo = parse_xml_string($datarray['object'],false);
 					$xt = parse_xml_string($datarray['target'],false);
 
@@ -2920,9 +2989,9 @@ function local_delivery($importer,$data) {
 							intval($importer['importer_uid'])
 						);
 						if(! count($tagp))
-							continue;	
+							continue;
 
-						// extract tag, if not duplicate, and this user allows tags, add to parent item						
+						// extract tag, if not duplicate, and this user allows tags, add to parent item
 
 						if($xo->id && $xo->content) {
 							$newtag = '#[url=' . $xo->id . ']'. $xo->content . '[/url]';
@@ -2936,9 +3005,10 @@ function local_delivery($importer,$data) {
 										intval($tagp[0]['id']),
 										dbesc(datetime_convert())
 									);
+									create_tags_from_item($tagp[0]['id']);
 								}
 							}
-						}													
+						}
 					}
 				}
 
@@ -2955,7 +3025,7 @@ function local_delivery($importer,$data) {
 						$parent = $r[0]['parent'];
 						$parent_uri = $r[0]['parent-uri'];
 					}
-			
+
 					if(! $is_like) {
 						$r1 = q("UPDATE `item` SET `last-child` = 0, `changed` = '%s' WHERE `uid` = %d AND `parent` = %d",
 							dbesc(datetime_convert()),
@@ -2973,7 +3043,7 @@ function local_delivery($importer,$data) {
 					if($posted_id && $parent) {
 
 						proc_run('php',"include/notifier.php","comment-import","$posted_id");
-					
+
 						if((! $is_like) && (! $importer['self'])) {
 
 							require_once('include/enotify.php');
@@ -3036,6 +3106,7 @@ function local_delivery($importer,$data) {
 							dbesc($item_id),
 							intval($importer['importer_uid'])
 						);
+						create_tags_from_itemuri($item_id, $importer['importer_uid']);
 					}
 
 					// update last-child if it changes
@@ -3072,7 +3143,7 @@ function local_delivery($importer,$data) {
 						dbesc($parent_uri)
 					);
 					if($r && count($r))
-						continue; 
+						continue;
 
 				}
 
@@ -3087,24 +3158,25 @@ function local_delivery($importer,$data) {
 							intval($importer['importer_uid'])
 						);
 						if(! count($r))
-							continue;				
+							continue;
 
-						// extract tag, if not duplicate, add to parent item						
+						// extract tag, if not duplicate, add to parent item
 						if($xo->content) {
 							if(! (stristr($r[0]['tag'],trim($xo->content)))) {
 								q("UPDATE item SET tag = '%s' WHERE id = %d LIMIT 1",
 									dbesc($r[0]['tag'] . (strlen($r[0]['tag']) ? ',' : '') . '#[url=' . $xo->id . ']'. $xo->content . '[/url]'),
 									intval($r[0]['id'])
 								);
+								create_tags_from_item($r[0]['id']);
 							}
-						}													
+						}
 					}
 				}
 
 				$posted_id = item_store($datarray);
 
 				// find out if our user is involved in this conversation and wants to be notified.
-			
+
 				if(!x($datarray['type']) || $datarray['type'] != 'activity') {
 
 					$myconv = q("SELECT `author-link`, `author-avatar`, `parent` FROM `item` WHERE `parent-uri` = '%s' AND `uid` = %d AND `parent` != 0 AND `deleted` = 0",
@@ -3118,11 +3190,11 @@ function local_delivery($importer,$data) {
 						// first make sure this isn't our own post coming back to us from a wall-to-wall event
 						if(! link_compare($datarray['author-link'],$importer_url)) {
 
-							
+
 							foreach($myconv as $conv) {
 
 								// now if we find a match, it means we're in this conversation
-	
+
 								if(! link_compare($conv['author-link'],$importer_url))
 									continue;
 
@@ -3210,6 +3282,7 @@ function local_delivery($importer,$data) {
 						dbesc($item_id),
 						intval($importer['importer_uid'])
 					);
+					create_tags_from_itemuri($item_id, $importer['importer_uid']);
 				}
 
 				// update last-child if it changes
@@ -3333,7 +3406,7 @@ function new_follower($importer,$contact,$datarray,$item,$sharing = false) {
 		// send email notification to owner?
 	}
 	else {
-	
+
 		// create contact record
 
 		$r = q("INSERT INTO `contact` ( `uid`, `created`, `url`, `nurl`, `name`, `nick`, `photo`, `network`, `rel`, 
@@ -3356,7 +3429,7 @@ function new_follower($importer,$contact,$datarray,$item,$sharing = false) {
 		if(count($r))
 				$contact_record = $r[0];
 
-		// create notification	
+		// create notification
 		$hash = random_string();
 
 		if(is_array($contact_record)) {
@@ -3394,7 +3467,7 @@ function new_follower($importer,$contact,$datarray,$item,$sharing = false) {
 					'From: ' . 'Administrator' . '@' . $_SERVER['SERVER_NAME'] . "\n"
 					. 'Content-type: text/plain; charset=UTF-8' . "\n"
 					. 'Content-transfer-encoding: 8bit' );
-			
+
 			}
 		}
 	}
@@ -3464,7 +3537,7 @@ function subscribe_to_hub($url,$importer,$contact,$hubmode = 'subscribe') {
 	post_url($url,$params);
 
 	logger('subscribe_to_hub: returns: ' . $a->get_curl_code(), LOGGER_DEBUG);
-			
+
 	return;
 
 }
@@ -3797,16 +3870,16 @@ function item_expire($uid,$days) {
 
 	$expire_items = get_pconfig($uid, 'expire','items');
 	$expire_items = (($expire_items===false)?1:intval($expire_items)); // default if not set: 1
-	
+
 	$expire_notes = get_pconfig($uid, 'expire','notes');
 	$expire_notes = (($expire_notes===false)?1:intval($expire_notes)); // default if not set: 1
 
 	$expire_starred = get_pconfig($uid, 'expire','starred');
 	$expire_starred = (($expire_starred===false)?1:intval($expire_starred)); // default if not set: 1
-	
+
 	$expire_photos = get_pconfig($uid, 'expire','photos');
 	$expire_photos = (($expire_photos===false)?0:intval($expire_photos)); // default if not set: 0
- 
+
 	logger('expire: # items=' . count($r). "; expire items: $expire_items, expire notes: $expire_notes, expire starred: $expire_starred, expire photos: $expire_photos");
 
 	foreach($r as $item) {
@@ -3929,6 +4002,7 @@ function drop_item($id,$interactive = true) {
 			dbesc(datetime_convert()),
 			intval($item['id'])
 		);
+		create_tags_from_item($item['id']);
 
 		// clean up categories and tags so they don't end up as orphans
 
@@ -3994,6 +4068,7 @@ function drop_item($id,$interactive = true) {
 				dbesc($item['parent-uri']),
 				intval($item['uid'])
 			);
+			create_tags_from_item($item['parent-uri'], $item['uid']);
 			// ignore the result
 		}
 		else {
@@ -4003,7 +4078,7 @@ function drop_item($id,$interactive = true) {
 				dbesc($item['parent-uri']),
 				intval($item['uid'])
 			);
-			// who is the last child now? 
+			// who is the last child now?
 			$r = q("SELECT `id` FROM `item` WHERE `parent-uri` = '%s' AND `type` != 'activity' AND `deleted` = 0 AND `uid` = %d ORDER BY `edited` DESC LIMIT 1",
 				dbesc($item['parent-uri']),
 				intval($item['uid'])
@@ -4035,7 +4110,7 @@ function drop_item($id,$interactive = true) {
 		goaway($a->get_baseurl() . '/' . $_SESSION['return_url']);
 		//NOTREACHED
 	}
-	
+
 }
 
 

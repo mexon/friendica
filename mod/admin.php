@@ -20,7 +20,7 @@ function admin_post(&$a){
 
 	if(x($_SESSION,'submanage') && intval($_SESSION['submanage']))
 		return;
-	
+
 
 
 	// urls
@@ -54,7 +54,7 @@ function admin_post(&$a){
 				}
 				info(t('Theme settings updated.'));
 				if(is_ajax()) return;
-				
+
 				goaway($a->get_baseurl(true) . '/admin/themes/' . $theme );
 				return;
 				break;
@@ -100,9 +100,9 @@ function admin_content(&$a) {
 		'dbsync' => Array($a->get_baseurl(true)."/admin/dbsync/", t('DB updates'), "dbsync"),
 		//'update' =>	Array($a->get_baseurl(true)."/admin/update/", t("Software Update") , "update")
 	);
-	
+
 	/* get plugins admin page */
-	
+
 	$r = q("SELECT * FROM `addon` WHERE `plugin_admin`=1");
 	$aside['plugins_admin']=Array();
 	foreach ($r as $h){
@@ -111,7 +111,7 @@ function admin_content(&$a) {
 		// temp plugins with admin
 		$a->plugins_admin[] = $plugin;
 	}
-		
+
 	$aside['logs'] = Array($a->get_baseurl(true)."/admin/logs/", t("Logs"), "logs");
 
 	$t = get_markup_template("admin_aside.tpl");
@@ -130,7 +130,6 @@ function admin_content(&$a) {
 	 * Page content
 	 */
 	$o = '';
-	
 	// urls
 	if ($a->argc > 1){
 		switch ($a->argv[1]){
@@ -161,7 +160,7 @@ function admin_content(&$a) {
 	} else {
 		$o = admin_page_summary($a);
 	}
-	
+
 	if(is_ajax()) {
 		echo $o; 
 		killme();
@@ -256,6 +255,8 @@ function admin_page_site_post(&$a){
 	$global_directory	=	((x($_POST,'directory_submit_url'))	? notags(trim($_POST['directory_submit_url']))	: '');
 	$thread_allow		=	((x($_POST,'thread_allow'))		? True						: False);
 	$newuser_private		=	((x($_POST,'newuser_private'))		? True						: False);
+	$enotify_no_content		=	((x($_POST,'enotify_no_content'))	? True						: False);
+
 	$no_multi_reg		=	((x($_POST,'no_multi_reg'))		? True						: False);
 	$no_openid		=	!((x($_POST,'no_openid'))		? True						: False);
 	$no_regfullname		=	!((x($_POST,'no_regfullname'))		? True						: False);
@@ -372,6 +373,7 @@ function admin_page_site_post(&$a){
 	}
 	set_config('system','thread_allow', $thread_allow);
 	set_config('system','newuser_private', $newuser_private);
+	set_config('system','enotify_no_content', $enotify_no_content);
 
 	set_config('system','block_extended_register', $no_multi_reg);
 	set_config('system','no_openid', $no_openid);
@@ -447,13 +449,13 @@ function admin_page_site(&$a) {
         foreach ($users as $user) {
             $user_names[$user['nickname']] = $user['username'];
         }
-	
+
 	/* Banner */
 	$banner = get_config('system','banner');
 	if($banner == false) 
 		$banner = '<a href="http://friendica.com"><img id="logo-img" src="images/friendica-32.png" alt="logo" /></a><span id="logo-text"><a href="http://friendica.com">Friendica</a></span>';
 	$banner = htmlspecialchars($banner);
-	
+
 	//echo "<pre>"; var_dump($lang_choices); die("</pre>");
 
 	/* Register policy */
@@ -506,6 +508,7 @@ function admin_page_site(&$a) {
 		'$global_directory'	=> array('directory_submit_url', t("Global directory update URL"), get_config('system','directory_submit_url'), t("URL to update the global directory. If this is not set, the global directory is completely unavailable to the application.")),
 		'$thread_allow'		=> array('thread_allow', t("Allow threaded items"), get_config('system','thread_allow'), t("Allow infinite level threading for items on this site.")),
 		'$newuser_private'	=> array('newuser_private', t("Private posts by default for new users"), get_config('system','newuser_private'), t("Set default post permissions for all new members to the default privacy group rather than public.")),
+		'$enotify_no_content'	=> array('enotify_no_content', t("Don't include post content in email notifications"), get_config('system','enotify_no_content'), t("Don't include the content of a post/comment/private message/etc. in the email notifications that are sent out from this site, as a privacy measure.")),
 
 		'$no_multi_reg'		=> array('no_multi_reg', t("Block multiple registrations"),  get_config('system','block_extended_register'), t("Disallow users to register additional accounts for use as pages.")),
 		'$no_openid'		=> array('no_openid', t("OpenID support"), !get_config('system','no_openid'), t("OpenID support for registration and logins.")),
@@ -691,7 +694,7 @@ function admin_page_users(&$a){
 	}
 	
 	
-	$users = q("SELECT `user` . * , `contact`.`name` , `contact`.`url` , `contact`.`micro`, `lastitem`.`lastitem_date`
+	$users = q("SELECT `user` . * , `contact`.`name` , `contact`.`url` , `contact`.`micro`, `lastitem`.`lastitem_date`, `user`.`account_expired`
 				FROM
 					(SELECT MAX(`item`.`changed`) as `lastitem_date`, `item`.`uid`
 					FROM `item`
@@ -715,7 +718,7 @@ function admin_page_users(&$a){
 			t('Normal Account'), 
 			t('Soapbox Account'),
 			t('Community/Celebrity Account'),
-			t('Automatic Friend Account')
+                        t('Automatic Friend Account')
 		);
 		$e['page-flags'] = $accounts[$e['page-flags']];
 		$e['register_date'] = relative_date($e['register_date']);
@@ -753,6 +756,7 @@ function admin_page_users(&$a){
 		'$block' => t('Block'),
 		'$unblock' => t('Unblock'),
         '$siteadmin' => t('Site admin'),
+        '$accountexpired' => t('Account expired'),
 		
 		'$h_users' => t('Users'),
 		'$th_users' => array( t('Name'), t('Email'), t('Register date'), t('Last login'), t('Last item'),  t('Account') ),
@@ -780,7 +784,7 @@ function admin_page_users(&$a){
  * @return string
  */
 function admin_page_plugins(&$a){
-	
+
 	/**
 	 * Single plugin
 	 */
@@ -790,9 +794,9 @@ function admin_page_plugins(&$a){
 			notice( t("Item not found.") );
 			return '';
 		}
-		
+
 		if (x($_GET,"a") && $_GET['a']=="t"){
-            check_form_security_token_redirectOnErr('/admin/plugins', 'admin_themes', 't');
+			check_form_security_token_redirectOnErr('/admin/plugins', 'admin_themes', 't');
 
 			// Toggle plugin status
 			$idx = array_search($plugin, $a->plugins);
@@ -817,52 +821,53 @@ function admin_page_plugins(&$a){
 		} else {
 			$status="off"; $action= t("Enable");
 		}
-		
+
 		$readme=Null;
 		if (is_file("addon/$plugin/README.md")){
 			$readme = file_get_contents("addon/$plugin/README.md");
 			$readme = Markdown($readme);
 		} else if (is_file("addon/$plugin/README")){
 			$readme = "<pre>". file_get_contents("addon/$plugin/README") ."</pre>";
-		} 
-		
+		}
+
 		$admin_form="";
 		if (is_array($a->plugins_admin) && in_array($plugin, $a->plugins_admin)){
 			@require_once("addon/$plugin/$plugin.php");
 			$func = $plugin.'_plugin_admin';
 			$func($a, $admin_form);
 		}
-		
+
 		$t = get_markup_template("admin_plugins_details.tpl");
+
 		return replace_macros($t, array(
 			'$title' => t('Administration'),
 			'$page' => t('Plugins'),
 			'$toggle' => t('Toggle'),
 			'$settings' => t('Settings'),
 			'$baseurl' => $a->get_baseurl(true),
-		
+
 			'$plugin' => $plugin,
 			'$status' => $status,
 			'$action' => $action,
 			'$info' => get_plugin_info($plugin),
 			'$str_author' => t('Author: '),
-			'$str_maintainer' => t('Maintainer: '),			
-		
+			'$str_maintainer' => t('Maintainer: '),
+
 			'$admin_form' => $admin_form,
 			'$function' => 'plugins',
 			'$screenshot' => '',
 			'$readme' => $readme,
 
-            '$form_security_token' => get_form_security_token("admin_themes"),
+			'$form_security_token' => get_form_security_token("admin_themes"),
 		));
-	} 
-	 
-	 
-	
+	}
+
+
+
 	/**
 	 * List plugins
 	 */
-	
+
 	$plugins = array();
 	$files = glob("addon/*/");
 	if($files) {
@@ -874,7 +879,7 @@ function admin_page_plugins(&$a){
 			}
 		}
 	}
-	
+
 	$t = get_markup_template("admin_plugins.tpl");
 	return replace_macros($t, array(
 		'$title' => t('Administration'),
@@ -945,7 +950,7 @@ function rebuild_theme_table($themes) {
 	return $o;
 }
 
-	
+
 /**
  * Themes admin page
  *
@@ -953,7 +958,7 @@ function rebuild_theme_table($themes) {
  * @return string
  */
 function admin_page_themes(&$a){
-	
+
 	$allowed_themes_str = get_config('system','allowed_themes');
 	$allowed_themes_raw = explode(',',$allowed_themes_str);
 	$allowed_themes = array();
@@ -989,9 +994,9 @@ function admin_page_themes(&$a){
 			notice( t("Item not found.") );
 			return '';
 		}
-		
+
 		if (x($_GET,"a") && $_GET['a']=="t"){
-            check_form_security_token_redirectOnErr('/admin/themes', 'admin_themes', 't');
+			check_form_security_token_redirectOnErr('/admin/themes', 'admin_themes', 't');
 
 			// Toggle theme status
 
@@ -1019,28 +1024,27 @@ function admin_page_themes(&$a){
 		} else {
 			$status="off"; $action= t("Enable");
 		}
-		
+
 		$readme=Null;
 		if (is_file("view/theme/$theme/README.md")){
 			$readme = file_get_contents("view/theme/$theme/README.md");
 			$readme = Markdown($readme);
 		} else if (is_file("view/theme/$theme/README")){
 			$readme = "<pre>". file_get_contents("view/theme/$theme/README") ."</pre>";
-		} 
-		
+		}
+
 		$admin_form="";
 		if (is_file("view/theme/$theme/config.php")){
 			require_once("view/theme/$theme/config.php");
 			if(function_exists("theme_admin")){
 				$admin_form = theme_admin($a);
 			}
-			
+
 		}
-		
 
 		$screenshot = array( get_theme_screenshot($theme), t('Screenshot'));
 		if(! stristr($screenshot[0],$theme))
-			$screenshot = null;		
+			$screenshot = null;
 
 		$t = get_markup_template("admin_plugins_details.tpl");
 		return replace_macros($t, array(
@@ -1049,7 +1053,7 @@ function admin_page_themes(&$a){
 			'$toggle' => t('Toggle'),
 			'$settings' => t('Settings'),
 			'$baseurl' => $a->get_baseurl(true),
-		
+
 			'$plugin' => $theme,
 			'$status' => $status,
 			'$action' => $action,
@@ -1063,21 +1067,19 @@ function admin_page_themes(&$a){
 
 			'$form_security_token' => get_form_security_token("admin_themes"),
 		));
-	} 
-	 
-	 
-	
+	}
+
 	/**
 	 * List themes
 	 */
-	
+
 	$xthemes = array();
 	if($themes) {
 		foreach($themes as $th) {
 			$xthemes[] = array($th['name'],(($th['allowed']) ? "on" : "off"), get_theme_info($th['name']));
 		}
 	}
-	
+
 	$t = get_markup_template("admin_plugins.tpl");
 	return replace_macros($t, array(
 		'$title' => t('Administration'),
