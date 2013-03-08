@@ -41,8 +41,6 @@ function onepoll_run(&$argv, &$argc){
 
 	load_hooks();
 
-	logger('onepoll: start');
-	
 	$manual_id  = 0;
 	$generation = 0;
 	$hub_update = false;
@@ -57,7 +55,8 @@ function onepoll_run(&$argv, &$argc){
 		return;
 	}
 	
-
+	logger("onepoll ($contact_id): start");
+	
 	$d = datetime_convert();
 
 	// Only poll from those with suitable relationships,
@@ -515,9 +514,9 @@ function onepoll_run(&$argv, &$argc){
 	}
 
 	if($xml) {
-		logger('poller: received xml : ' . $xml, LOGGER_DATA);
+		logger("poller ({$contact['id']}): received xml : $xml", LOGGER_DATA);
 		if((! strstr($xml,'<?xml')) && (! strstr($xml,'<rss'))) {
-			logger('poller: post_handshake: response from ' . $url . ' did not contain XML.');
+			logger("poller ({$contact['id']}): post_handshake: response from $url did not contain XML.");
 			$r = q("UPDATE `contact` SET `last-update` = '%s' WHERE `id` = %d LIMIT 1",
 				dbesc(datetime_convert()),
 				intval($contact['id'])
