@@ -428,6 +428,7 @@ function get_atom_elements($feed,$item) {
 	$res['title'] = unxmlify($item->get_title());
 	$res['body'] = unxmlify($item->get_content());
 	$res['plink'] = unxmlify($item->get_link(0));
+        logger('@@@ get_atom_elements for uri ' . $res['uri']);
 
 	// removing the content of the title if its identically to the body
 	// This helps with auto generated titles e.g. from tumblr
@@ -609,19 +610,27 @@ function get_atom_elements($feed,$item) {
 
 
 	$rawcreated = $item->get_item_tags(SIMPLEPIE_NAMESPACE_ATOM_10,'published');
-	if($rawcreated)
+	if($rawcreated) {
 		$res['created'] = unxmlify($rawcreated[0]['data']);
+                logger('@@@ get_atom_elements for uri ' . $res['uri'] . ' rawcreated ' . $rawcreated . ' result is ' . $res['created']);
+        }
 
 
 	$rawedited = $item->get_item_tags(SIMPLEPIE_NAMESPACE_ATOM_10,'updated');
-	if($rawedited)
+	if($rawedited) {
 		$res['edited'] = unxmlify($rawedited[0]['data']);
+                logger('@@@ get_atom_elements for uri ' . $res['uri'] . ' rawedited ' . $rawedited . ' result is ' . $res['edited']);
+        }
 
-	if((x($res,'edited')) && (! (x($res,'created'))))
+	if((x($res,'edited')) && (! (x($res,'created')))) {
 		$res['created'] = $res['edited']; 
+                logger('@@@ get_atom_elements for uri ' . $res['uri'] . ' setting created time to edited time ' . $res['created']);
+        }
 
-	if(! $res['created'])
+	if(! $res['created']) {
 		$res['created'] = $item->get_date('c');
+                logger('@@@ get_atom_elements for uri ' . $res['uri'] . ' setting created time to now ' . $res['created']);
+        }
 
 
 	// Disallow time travelling posts
@@ -630,10 +639,14 @@ function get_atom_elements($feed,$item) {
 	$d2 = x($res,'edited') ? datetime_convert('UTC', 'UTC', $res['edited']) : null;
 	$d3 = strtotime('now');
 
-	if($d1 > $d3)
+	if($d1 > $d3) {
 		$res['created'] = datetime_convert();
-	if($d2 > $d3)
+                logger('@@@ get_atom_elements for uri ' . $res['uri'] . ' created in future, setting to now ' . $res['created']);
+        }
+	if($d2 > $d3) {
 		$res['edited'] = datetime_convert();
+                logger('@@@ get_atom_elements for uri ' . $res['uri'] . ' edited in future, setting to now ' . $res['edited']);
+        }
 
 	$rawowner = $item->get_item_tags(NAMESPACE_DFRN, 'owner');
 	if($rawowner[0]['child'][SIMPLEPIE_NAMESPACE_ATOM_10]['name'][0]['data'])
@@ -951,10 +964,13 @@ function item_store($arr,$force_parent = false) {
 	$arr['owner-link']    = ((x($arr,'owner-link'))    ? notags(trim($arr['owner-link']))    : '');
 	$arr['owner-avatar']  = ((x($arr,'owner-avatar'))  ? notags(trim($arr['owner-avatar']))  : '');
 	$arr['created']       = ((x($arr,'created') !== false) ? datetime_convert('UTC','UTC',$arr['created']) : datetime_convert());
+        logger('@@@ get_atom_elements for uri ' . $res['uri'] . ' set final created to ' . $arr['created']);
 	$arr['edited']        = ((x($arr,'edited')  !== false) ? datetime_convert('UTC','UTC',$arr['edited'])  : datetime_convert());
+        logger('@@@ get_atom_elements for uri ' . $res['uri'] . ' set final edited to ' . $arr['edited']);
 	$arr['commented']     = datetime_convert();
 	$arr['received']      = datetime_convert();
 	$arr['changed']       = datetime_convert();
+        logger('@@@ get_atom_elements for uri ' . $res['uri'] . ' set final commented, changed and title to ' . $arr['received']);
 	$arr['title']         = ((x($arr,'title'))         ? notags(trim($arr['title']))         : '');
 	$arr['location']      = ((x($arr,'location'))      ? notags(trim($arr['location']))      : '');
 	$arr['coord']         = ((x($arr,'coord'))         ? notags(trim($arr['coord']))         : '');
