@@ -1165,6 +1165,7 @@ function item_store($arr,$force_parent = false) {
 
 	// update the commented timestamp on the parent
 
+        logger('@@@ update item ' . $parent_id . ' -1');
 	q("UPDATE `item` set `commented` = '%s', `changed` = '%s' WHERE `id` = %d LIMIT 1",
 		dbesc(datetime_convert()),
 		dbesc(datetime_convert()),
@@ -2043,6 +2044,7 @@ function consume_feed($xml,$importer,&$contact, &$hub, $datedir = 0, $pass = 0) 
 						if(datetime_convert('UTC','UTC',$datarray['edited']) < $r[0]['edited'])
 							continue;
 
+                                                logger('@@@ update item ' . $item_id . ' 1');
 						$r = q("UPDATE `item` SET `title` = '%s', `body` = '%s', `tag` = '%s', `edited` = '%s' WHERE `uri` = '%s' AND `uid` = %d LIMIT 1",
 							dbesc($datarray['title']),
 							dbesc($datarray['body']),
@@ -2058,11 +2060,13 @@ function consume_feed($xml,$importer,&$contact, &$hub, $datedir = 0, $pass = 0) 
 
 					$allow = $item->get_item_tags( NAMESPACE_DFRN, 'comment-allow');
 					if(($allow) && ($allow[0]['data'] != $r[0]['last-child'])) {
+                                            logger('@@@ update item ' . $parent_uri . ' 4');
 						$r = q("UPDATE `item` SET `last-child` = 0, `changed` = '%s' WHERE `parent-uri` = '%s' AND `uid` = %d",
 							dbesc(datetime_convert()),
 							dbesc($parent_uri),
 							intval($importer['uid'])
 						);
+                                            logger('@@@ update item ' . $item_id . ' 5');
 						$r = q("UPDATE `item` SET `last-child` = %d , `changed` = '%s'  WHERE `uri` = '%s' AND `uid` = %d LIMIT 1",
 							intval($allow[0]['data']),
 							dbesc(datetime_convert()),
@@ -2192,6 +2196,7 @@ function consume_feed($xml,$importer,&$contact, &$hub, $datedir = 0, $pass = 0) 
 						if(datetime_convert('UTC','UTC',$datarray['edited']) < $r[0]['edited'])
 							continue;
 
+                                                logger('@@@ update item ' . $item_id . ' 6');
 						$r = q("UPDATE `item` SET `title` = '%s', `body` = '%s', `tag` = '%s', `edited` = '%s' WHERE `uri` = '%s' AND `uid` = %d LIMIT 1",
 							dbesc($datarray['title']),
 							dbesc($datarray['body']),
@@ -2207,6 +2212,7 @@ function consume_feed($xml,$importer,&$contact, &$hub, $datedir = 0, $pass = 0) 
 
 					$allow = $item->get_item_tags( NAMESPACE_DFRN, 'comment-allow');
 					if($allow && $allow[0]['data'] != $r[0]['last-child']) {
+                                            logger('@@@ update item ' . $item_id . ' 7');
 						$r = q("UPDATE `item` SET `last-child` = %d , `changed` = '%s' WHERE `uri` = '%s' AND `uid` = %d LIMIT 1",
 							intval($allow[0]['data']),
 							dbesc(datetime_convert()),
@@ -2810,6 +2816,7 @@ function local_delivery($importer,$data) {
 					}
 
 					if($item['uri'] == $item['parent-uri']) {
+                                            logger('@@@ update item ' . $item['uri'] . ' 8');
 						$r = q("UPDATE `item` SET `deleted` = 1, `edited` = '%s', `changed` = '%s',
 							`body` = '', `title` = ''
 							WHERE `parent-uri` = '%s' AND `uid` = %d",
@@ -2821,6 +2828,7 @@ function local_delivery($importer,$data) {
 						create_tags_from_itemuri($item['uri'], $importer['importer_uid']);
 					}
 					else {
+                                            logger('@@@ update item ' . $item['uri'] . ' 9');
 						$r = q("UPDATE `item` SET `deleted` = 1, `edited` = '%s', `changed` = '%s',
 							`body` = '', `title` = ''
 							WHERE `uri` = '%s' AND `uid` = %d LIMIT 1",
@@ -2832,6 +2840,7 @@ function local_delivery($importer,$data) {
 						create_tags_from_itemuri($uri, $importer['importer_uid']);
 						if($item['last-child']) {
 							// ensure that last-child is set in case the comment that had it just got wiped.
+                                                    logger('@@@ update item '. $item['parent-uri'] . ' 11');
 							q("UPDATE `item` SET `last-child` = 0, `changed` = '%s' WHERE `parent-uri` = '%s' AND `uid` = %d ",
 								dbesc(datetime_convert()),
 								dbesc($item['parent-uri']),
@@ -2844,6 +2853,7 @@ function local_delivery($importer,$data) {
 									intval($importer['importer_uid'])
 							);
 							if(count($r)) {
+                                                            logger('@@@ update item ' . $r[0]['id'] . ' 12');
 								q("UPDATE `item` SET `last-child` = 1 WHERE `id` = %d LIMIT 1",
 									intval($r[0]['id'])
 								);
@@ -2947,6 +2957,7 @@ function local_delivery($importer,$data) {
 							continue;
 
 						logger('received updated comment' , LOGGER_DEBUG);
+                                                logger('@@@ update item ' . $item_id . ' 13');
 						$r = q("UPDATE `item` SET `title` = '%s', `body` = '%s', `tag` = '%s', `edited` = '%s' WHERE `uri` = '%s' AND `uid` = %d LIMIT 1",
 							dbesc($datarray['title']),
 							dbesc($datarray['body']),
@@ -3050,12 +3061,14 @@ function local_delivery($importer,$data) {
 					}
 
 					if(! $is_like) {
+                                            logger('@@@ update item ' . $r[0]['parent'] . ' 14');
 						$r1 = q("UPDATE `item` SET `last-child` = 0, `changed` = '%s' WHERE `uid` = %d AND `parent` = %d",
 							dbesc(datetime_convert()),
 							intval($importer['importer_uid']),
 							intval($r[0]['parent'])
 						);
 
+                                                logger('@@@ update item ' . $posted_id . ' 15');
 						$r2 = q("UPDATE `item` SET `last-child` = 1, `changed` = '%s' WHERE `uid` = %d AND `id` = %d LIMIT 1",
 							dbesc(datetime_convert()),
 							intval($importer['importer_uid']),
@@ -3121,6 +3134,7 @@ function local_delivery($importer,$data) {
 						if(datetime_convert('UTC','UTC',$datarray['edited']) < $r[0]['edited'])
 							continue;
 
+                                                logger('@@@ update item ' . $item_id . ' 16');
 						$r = q("UPDATE `item` SET `title` = '%s', `body` = '%s', `tag` = '%s', `edited` = '%s' WHERE `uri` = '%s' AND `uid` = %d LIMIT 1",
 							dbesc($datarray['title']),
 							dbesc($datarray['body']),
@@ -3136,11 +3150,13 @@ function local_delivery($importer,$data) {
 
 					$allow = $item->get_item_tags( NAMESPACE_DFRN, 'comment-allow');
 					if(($allow) && ($allow[0]['data'] != $r[0]['last-child'])) {
+                                            logger('@@@ update item ' . $parent_uri . ' 18');
 						$r = q("UPDATE `item` SET `last-child` = 0, `changed` = '%s' WHERE `parent-uri` = '%s' AND `uid` = %d",
 							dbesc(datetime_convert()),
 							dbesc($parent_uri),
 							intval($importer['importer_uid'])
 						);
+                                                logger('@@@ update item ' . $item_id . ' 19');
 						$r = q("UPDATE `item` SET `last-child` = %d , `changed` = '%s'  WHERE `uri` = '%s' AND `uid` = %d LIMIT 1",
 							intval($allow[0]['data']),
 							dbesc(datetime_convert()),
@@ -3297,6 +3313,7 @@ function local_delivery($importer,$data) {
 					if(datetime_convert('UTC','UTC',$datarray['edited']) < $r[0]['edited'])
 						continue;
 
+                                        logger('@@@ update item ' . $item_id . ' 20');
 					$r = q("UPDATE `item` SET `title` = '%s', `body` = '%s', `tag` = '%s', `edited` = '%s' WHERE `uri` = '%s' AND `uid` = %d LIMIT 1",
 						dbesc($datarray['title']),
 						dbesc($datarray['body']),
@@ -3312,6 +3329,7 @@ function local_delivery($importer,$data) {
 
 				$allow = $item->get_item_tags( NAMESPACE_DFRN, 'comment-allow');
 				if($allow && $allow[0]['data'] != $r[0]['last-child']) {
+                                    logger('@@@ update item ' . $item_id . ' 21');
 					$r = q("UPDATE `item` SET `last-child` = %d , `changed` = '%s' WHERE `uri` = '%s' AND `uid` = %d LIMIT 1",
 						intval($allow[0]['data']),
 						dbesc(datetime_convert()),
@@ -4096,6 +4114,7 @@ function drop_item($id,$interactive = true) {
 		}
 		else {
 			// ensure that last-child is set in case the comment that had it just got wiped.
+                    logger('@@@ update item ' . $item['parent-uri'] . ' 30');
 			q("UPDATE `item` SET `last-child` = 0, `changed` = '%s' WHERE `parent-uri` = '%s' AND `uid` = %d ",
 				dbesc(datetime_convert()),
 				dbesc($item['parent-uri']),
@@ -4107,6 +4126,7 @@ function drop_item($id,$interactive = true) {
 				intval($item['uid'])
 			);
 			if(count($r)) {
+                            logger('@@@ update item ' . $r[0]['id'] . ' 31');
 				q("UPDATE `item` SET `last-child` = 1 WHERE `id` = %d LIMIT 1",
 					intval($r[0]['id'])
 				);
