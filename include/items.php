@@ -612,14 +612,14 @@ function get_atom_elements($feed,$item) {
 	$rawcreated = $item->get_item_tags(SIMPLEPIE_NAMESPACE_ATOM_10,'published');
 	if($rawcreated) {
 		$res['created'] = unxmlify($rawcreated[0]['data']);
-                logger('@@@ get_atom_elements for uri ' . $res['uri'] . ' rawcreated ' . $rawcreated . ' result is ' . $res['created']);
+                logger('@@@ get_atom_elements for uri ' . $res['uri'] . ' rawcreated ' . print_r($rawcreated, true) . ' result is ' . $res['created']);
         }
 
 
 	$rawedited = $item->get_item_tags(SIMPLEPIE_NAMESPACE_ATOM_10,'updated');
 	if($rawedited) {
 		$res['edited'] = unxmlify($rawedited[0]['data']);
-                logger('@@@ get_atom_elements for uri ' . $res['uri'] . ' rawedited ' . $rawedited . ' result is ' . $res['edited']);
+                logger('@@@ get_atom_elements for uri ' . $res['uri'] . ' rawedited ' . print_r($rawedited, true) . ' result is ' . $res['edited']);
         }
 
 	if((x($res,'edited')) && (! (x($res,'created')))) {
@@ -635,6 +635,11 @@ function get_atom_elements($feed,$item) {
 
 	// Disallow time travelling posts
 
+if ($res['created']) {
+logger('@@@ get_atom_elements there is a created ' . $res['created'] . ' converted is ' . datetime_convert('UTC', 'UTC', $res['created']));
+} else {
+logger('@@@ get_atom_elements there is no created');
+}
 	$d1 = x($res,'created') ? datetime_convert('UTC', 'UTC', $res['created']) : null;
 	$d2 = x($res,'edited') ? datetime_convert('UTC', 'UTC', $res['edited']) : null;
 	$d3 = strtotime('now');
