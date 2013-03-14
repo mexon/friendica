@@ -32,9 +32,7 @@ $install = ((file_exists('.htconfig.php') && filesize('.htconfig.php')) ? false 
 
 
 
-$lang = get_browser_language();
 
-load_translation_table($lang);
 
 /**
  *
@@ -62,6 +60,9 @@ if(!$install) {
 	$maintenance = get_config('system', 'maintenance');
 }
 
+$lang = get_browser_language();
+
+load_translation_table($lang);
 
 /**
  *
@@ -181,6 +182,10 @@ if(strlen($a->module)) {
 	 * First see if we have a plugin which is masquerading as a module.
 	 *
 	 */
+
+	// Compatibility with the Android Diaspora client
+	if ($a->module == "stream")
+		$a->module = "network";
 
 	if(is_array($a->plugins) && in_array($a->module,$a->plugins) && file_exists("addon/{$a->module}/{$a->module}.php")) {
 		include_once("addon/{$a->module}/{$a->module}.php");
