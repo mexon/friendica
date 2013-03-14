@@ -428,7 +428,6 @@ function get_atom_elements($feed,$item) {
 	$res['title'] = unxmlify($item->get_title());
 	$res['body'] = unxmlify($item->get_content());
 	$res['plink'] = unxmlify($item->get_link(0));
-        logger('@@@ get_atom_elements for uri ' . $res['uri']);
 
 	// removing the content of the title if its identically to the body
 	// This helps with auto generated titles e.g. from tumblr
@@ -612,14 +611,14 @@ function get_atom_elements($feed,$item) {
 	$rawcreated = $item->get_item_tags(SIMPLEPIE_NAMESPACE_ATOM_10,'published');
 	if($rawcreated) {
 		$res['created'] = unxmlify($rawcreated[0]['data']);
-                logger('@@@ get_atom_elements for uri ' . $res['uri'] . ' rawcreated ' . print_r($rawcreated, true) . ' result is ' . $res['created']);
+                logger('@@@ get_atom_elements for uri ' . $res['uri'] . ' created is ' . $res['created']);
         }
 
 
 	$rawedited = $item->get_item_tags(SIMPLEPIE_NAMESPACE_ATOM_10,'updated');
 	if($rawedited) {
 		$res['edited'] = unxmlify($rawedited[0]['data']);
-                logger('@@@ get_atom_elements for uri ' . $res['uri'] . ' rawedited ' . print_r($rawedited, true) . ' result is ' . $res['edited']);
+                logger('@@@ get_atom_elements for uri ' . $res['uri'] . ' edited is ' . $res['edited']);
         }
 
 	if((x($res,'edited')) && (! (x($res,'created')))) {
@@ -2196,6 +2195,7 @@ function consume_feed($xml,$importer,&$contact, &$hub, $datedir = 0, $pass = 0) 
 
 				if(count($r)) {
 					if((x($datarray,'edited') !== false) && (datetime_convert('UTC','UTC',$datarray['edited']) !== $r[0]['edited'])) {  
+logger('@@@ update item 6, edited is ' . $datarray['edited'] . ' existing is ' . $r[0]['edited']);
 
 						// do not accept (ignore) an earlier edit than one we currently have.
 						if(datetime_convert('UTC','UTC',$datarray['edited']) < $r[0]['edited'])
