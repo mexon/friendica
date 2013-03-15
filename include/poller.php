@@ -185,6 +185,7 @@ function poller_run(&$argv, &$argc){
 		return;
 	}
 
+	$num_pollers = 0;
 	foreach($contacts as $c) {
 
 		$res = q("SELECT * FROM `contact` WHERE `id` = %d LIMIT 1",
@@ -263,8 +264,13 @@ function poller_run(&$argv, &$argc){
 			}
 
 			proc_run('php','include/onepoll.php',$contact['id']);
+			$num_pollers++;
 			if($interval)
 				@time_sleep_until(microtime(true) + (float) $interval);
+		}
+		if ($num_pollers > 10) {
+			logger("poller: won't start more than 10 pollers at once");
+			break;
 		}
 	}
 
