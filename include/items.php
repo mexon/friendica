@@ -1599,14 +1599,18 @@ function dfrn_deliver($owner,$contact,$atom, $dissolve = false) {
 
 /*
   This function returns true if $update has an edited timestamp newer
-  than $existing.  So that means $update contains new data which
-  should override what's already there.  If either timestamp is empty
-  it assumes that the update is newer.  If the timestamps are equal it
-  returns false.
+  than $existing, i.e. $update contains new data which should override
+  what's already there.  If there is no timestamp yet, the update is
+  assumed to be newer.  If the update has no timestamp, the existing
+  item is assumed to be up-to-date.  If the timestamps are equal it
+  assumes the update has been seen before and should be ignored.
   */
 function edited_timestamp_is_newer($existing, $update) {
-    if (!x($existing,'edited') || !$existing['edited']) {
+    if (!$existing['edited']) {
         return true;
+    }
+    if (!x($existing,'edited')) {
+        return false;
     }
     if (!x($update,'edited') || !$update['edited']) {
         return true;
