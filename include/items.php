@@ -630,11 +630,6 @@ function get_atom_elements($feed,$item) {
 
 	// Disallow time travelling posts
 
-if ($res['created']) {
-logger('@@@ get_atom_elements there is a created ' . $res['created'] . ' converted is ' . datetime_convert('UTC', 'UTC', $res['created']));
-} else {
-logger('@@@ get_atom_elements there is no created');
-}
 	$d1 = x($res,'created') ? datetime_convert('UTC', 'UTC', $res['created']) : null;
 	$d2 = x($res,'edited') ? datetime_convert('UTC', 'UTC', $res['edited']) : null;
 	$d3 = strtotime('now');
@@ -2036,7 +2031,6 @@ function consume_feed($xml,$importer,&$contact, &$hub, $datedir = 0, $pass = 0) 
 						if(datetime_convert('UTC','UTC',$datarray['edited']) < $r[0]['edited'])
 							continue;
 
-                                                logger('@@@ update item body ' . $item_id . ' 1');
 						$r = q("UPDATE `item` SET `title` = '%s', `body` = '%s', `tag` = '%s', `edited` = '%s' WHERE `uri` = '%s' AND `uid` = %d LIMIT 1",
 							dbesc($datarray['title']),
 							dbesc($datarray['body']),
@@ -2181,13 +2175,11 @@ function consume_feed($xml,$importer,&$contact, &$hub, $datedir = 0, $pass = 0) 
 
 				if(count($r)) {
 					if (edited_timestamp_is_newer($r[0], $datarray)) {  
-logger('@@@ update item 6, edited is ' . $datarray['edited'] . ' existing is ' . $r[0]['edited']);
 
 						// do not accept (ignore) an earlier edit than one we currently have.
 						if(datetime_convert('UTC','UTC',$datarray['edited']) < $r[0]['edited'])
 							continue;
 
-                                                logger('@@@ update item body ' . $item_id . ' 6');
 						$r = q("UPDATE `item` SET `title` = '%s', `body` = '%s', `tag` = '%s', `edited` = '%s' WHERE `uri` = '%s' AND `uid` = %d LIMIT 1",
 							dbesc($datarray['title']),
 							dbesc($datarray['body']),
@@ -2806,7 +2798,6 @@ function local_delivery($importer,$data) {
 					}
 
 					if($item['uri'] == $item['parent-uri']) {
-                                            logger('@@@ update item body ' . $item['uri'] . ' 8');
 						$r = q("UPDATE `item` SET `deleted` = 1, `edited` = '%s', `changed` = '%s',
 							`body` = '', `title` = ''
 							WHERE `parent-uri` = '%s' AND `uid` = %d",
@@ -2818,7 +2809,6 @@ function local_delivery($importer,$data) {
 						create_tags_from_itemuri($item['uri'], $importer['importer_uid']);
 					}
 					else {
-                                            logger('@@@ update item body ' . $item['uri'] . ' 9');
 						$r = q("UPDATE `item` SET `deleted` = 1, `edited` = '%s', `changed` = '%s',
 							`body` = '', `title` = ''
 							WHERE `uri` = '%s' AND `uid` = %d LIMIT 1",
@@ -2945,7 +2935,6 @@ function local_delivery($importer,$data) {
 							continue;
 
 						logger('received updated comment' , LOGGER_DEBUG);
-                                                logger('@@@ update item body ' . $item_id . ' 13');
 						$r = q("UPDATE `item` SET `title` = '%s', `body` = '%s', `tag` = '%s', `edited` = '%s' WHERE `uri` = '%s' AND `uid` = %d LIMIT 1",
 							dbesc($datarray['title']),
 							dbesc($datarray['body']),
@@ -3120,7 +3109,6 @@ function local_delivery($importer,$data) {
 						if(datetime_convert('UTC','UTC',$datarray['edited']) < $r[0]['edited'])
 							continue;
 
-                                                logger('@@@ update item body ' . $item_id . ' 16');
 						$r = q("UPDATE `item` SET `title` = '%s', `body` = '%s', `tag` = '%s', `edited` = '%s' WHERE `uri` = '%s' AND `uid` = %d LIMIT 1",
 							dbesc($datarray['title']),
 							dbesc($datarray['body']),
@@ -3297,7 +3285,6 @@ function local_delivery($importer,$data) {
 					if(datetime_convert('UTC','UTC',$datarray['edited']) < $r[0]['edited'])
 						continue;
 
-                                        logger('@@@ update item body ' . $item_id . ' 20');
 					$r = q("UPDATE `item` SET `title` = '%s', `body` = '%s', `tag` = '%s', `edited` = '%s' WHERE `uri` = '%s' AND `uid` = %d LIMIT 1",
 						dbesc($datarray['title']),
 						dbesc($datarray['body']),
