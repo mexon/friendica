@@ -77,6 +77,7 @@ function onepoll_run(&$argv, &$argc){
 	);
 
 	if(! count($contacts)) {
+		logger('onepoll: could not find contact with id ' . $contact_id, LOGGER_NORMAL);
 		return;
 	}
 
@@ -103,8 +104,10 @@ function onepoll_run(&$argv, &$argc){
 	$r = q("SELECT `contact`.*, `user`.`page-flags` FROM `contact` LEFT JOIN `user` on `contact`.`uid` = `user`.`uid` WHERE `user`.`uid` = %d AND `contact`.`self` = 1 LIMIT 1",
 		intval($importer_uid)
 	);
-	if(! count($r))
+	if(! count($r)) {
+		logger('onepoll: could not find importer with uid ' . $importer_uid, LOGGER_NORMAL);
 		return;
+	}
 
 	$importer = $r[0];
 
