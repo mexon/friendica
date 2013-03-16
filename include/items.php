@@ -1606,14 +1606,11 @@ function dfrn_deliver($owner,$contact,$atom, $dissolve = false) {
   assumes the update has been seen before and should be ignored.
   */
 function edited_timestamp_is_newer($existing, $update) {
-    if (!$existing['edited']) {
+    if (!x($existing,'edited') || !$existing['edited']) {
         return true;
-    }
-    if (!x($existing,'edited')) {
-        return false;
     }
     if (!x($update,'edited') || !$update['edited']) {
-        return true;
+        return false;
     }
     $existing_edited = datetime_convert('UTC', 'UTC', $existing['edited']);
     $update_edited = datetime_convert('UTC', 'UTC', $update['edited']);
