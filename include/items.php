@@ -609,23 +609,19 @@ function get_atom_elements($feed,$item) {
 
 
 	$rawcreated = $item->get_item_tags(SIMPLEPIE_NAMESPACE_ATOM_10,'published');
-	if($rawcreated) {
+	if($rawcreated)
 		$res['created'] = unxmlify($rawcreated[0]['data']);
-        }
 
 
 	$rawedited = $item->get_item_tags(SIMPLEPIE_NAMESPACE_ATOM_10,'updated');
-	if($rawedited) {
+	if($rawedited)
 		$res['edited'] = unxmlify($rawedited[0]['data']);
-        }
 
-	if((x($res,'edited')) && (! (x($res,'created')))) {
+	if((x($res,'edited')) && (! (x($res,'created'))))
 		$res['created'] = $res['edited']; 
-        }
 
-	if(! $res['created']) {
+	if(! $res['created'])
 		$res['created'] = $item->get_date('c');
-        }
 
 
 	// Disallow time travelling posts
