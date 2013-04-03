@@ -150,7 +150,7 @@ and save your changes.
 	
 	Check your database settings. It usually means your database could not 
 be opened or accessed. If the database resides on the same machine, check that
-the database server name is "localhost".
+the database server name is "localhost". 
 
 #####################################################################
 - 500 Internal Error
