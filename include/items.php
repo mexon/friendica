@@ -623,19 +623,20 @@ function get_atom_elements($feed,$item) {
 	if(! $res['created'])
 		$res['created'] = $item->get_date('c');
 
+	if(! $res['edited'])
+		$res['edited'] = $item->get_date('c');
+
 
 	// Disallow time travelling posts
 
-	$d1 = x($res,'created') ? datetime_convert('UTC', 'UTC', $res['created']) : null;
-	$d2 = x($res,'edited') ? datetime_convert('UTC', 'UTC', $res['edited']) : null;
+	$d1 = strtotime($res['created']);
+	$d2 = strtotime($res['edited']);
 	$d3 = strtotime('now');
 
-	if($d1 > $d3) {
+	if($d1 > $d3)
 		$res['created'] = datetime_convert();
-        }
-	if($d2 > $d3) {
+	if($d2 > $d3)
 		$res['edited'] = datetime_convert();
-        }
 
 	$rawowner = $item->get_item_tags(NAMESPACE_DFRN, 'owner');
 	if($rawowner[0]['child'][SIMPLEPIE_NAMESPACE_ATOM_10]['name'][0]['data'])
