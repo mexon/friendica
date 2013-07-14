@@ -1632,7 +1632,6 @@ function edited_timestamp_is_newer($existing, $update) {
 }
 
 function update_if_newer($existing, $update) {
-    logger('@@@ update_if_newer item ' . $update['uri'] . ' uid ' . $existing['uid'] . ' existing uid ' . $existing['uid'] . ' update uid ' . $update['uid']);
     if (!edited_timestamp_is_newer($existing, $update)) {
         return;
     }
@@ -2063,7 +2062,6 @@ function consume_feed($xml,$importer,&$contact, &$hub, $datedir = 0, $pass = 0) 
 				// Update content if 'updated' changes
 
 				if(count($r)) {
-                                    logger('@@@ update_if_newer 1');
                                     update_if_newer($r[0], $datarray);
 
 					// update last-child if it changes
@@ -2198,7 +2196,6 @@ function consume_feed($xml,$importer,&$contact, &$hub, $datedir = 0, $pass = 0) 
 				// Update content if 'updated' changes
 
 				if(count($r)) {
-                                    logger('@@@ update_if_newer 2');
                                     update_if_newer($r[0], $datarray);
 
 					// update last-child if it changes
@@ -2937,8 +2934,6 @@ function local_delivery($importer,$data) {
 				// Update content if 'updated' changes
 
 				if(count($r)) {
-                                    logger('@@@ update_if_newer 3');
-                                    logger('@@@ importer ' . print_r($importer, true));
                                     if (update_if_newer($r[0], $datarray)) {
                                         proc_run('php',"include/notifier.php","comment-import",$r[0]['id']);
                                     }
@@ -3096,7 +3091,6 @@ function local_delivery($importer,$data) {
 				// Update content if 'updated' changes
 
 				if(count($r)) {
-                                    logger('@@@ update_if_newer 4');
                                     update_if_newer($r[0], $datarray);
 
 					// update last-child if it changes
@@ -3258,7 +3252,6 @@ function local_delivery($importer,$data) {
 			// Update content if 'updated' changes
 
 			if(count($r)) {
-                                    logger('@@@ update_if_newer 5');
                             update_if_newer($r[0], $datarray);
 
 				// update last-child if it changes
