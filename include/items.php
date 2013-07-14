@@ -1620,33 +1620,33 @@ function dfrn_deliver($owner,$contact,$atom, $dissolve = false) {
   assumes the update has been seen before and should be ignored.
   */
 function edited_timestamp_is_newer($existing, $update) {
-    if (!x($existing,'edited') || !$existing['edited']) {
-        return true;
-    }
-    if (!x($update,'edited') || !$update['edited']) {
-        return false;
-    }
-    $existing_edited = datetime_convert('UTC', 'UTC', $existing['edited']);
-    $update_edited = datetime_convert('UTC', 'UTC', $update['edited']);
-    return (strcmp($existing_edited, $update_edited) < 0);
+	if (!x($existing,'edited') || !$existing['edited']) {
+		return true;
+	}
+	if (!x($update,'edited') || !$update['edited']) {
+		return false;
+	}
+	$existing_edited = datetime_convert('UTC', 'UTC', $existing['edited']);
+	$update_edited = datetime_convert('UTC', 'UTC', $update['edited']);
+	return (strcmp($existing_edited, $update_edited) < 0);
 }
 
 function update_if_newer($existing, $update) {
-    if (!edited_timestamp_is_newer($existing, $update)) {
-        return;
-    }
-    $update['uid'] = $existing['uid'];
-    call_hooks('update_post_remote', $update);
-    $r = q("UPDATE `item` SET `title` = '%s', `body` = '%s', `tag` = '%s', `edited` = '%s' WHERE `uri` = '%s' AND `uid` = %d LIMIT 1",
-           dbesc($update['title']),
-           dbesc($update['body']),
-           dbesc($update['tag']),
-           dbesc(datetime_convert('UTC','UTC',$update['edited'])),
-           dbesc($update['uri']),
-           intval($existing['uid'])
-        );
-    create_tags_from_itemuri($update['uri'], $existing['uid']);
-    return true;
+	if (!edited_timestamp_is_newer($existing, $update)) {
+		return;
+	}
+	$update['uid'] = $existing['uid'];
+	call_hooks('update_post_remote', $update);
+	$r = q("UPDATE `item` SET `title` = '%s', `body` = '%s', `tag` = '%s', `edited` = '%s' WHERE `uri` = '%s' AND `uid` = %d LIMIT 1",
+		dbesc($update['title']),
+		dbesc($update['body']),
+		dbesc($update['tag']),
+		dbesc(datetime_convert('UTC','UTC',$update['edited'])),
+		dbesc($update['uri']),
+		intval($existing['uid'])
+		);
+	create_tags_from_itemuri($update['uri'], $existing['uid']);
+	return true;
 }
 
 /**
@@ -2062,7 +2062,7 @@ function consume_feed($xml,$importer,&$contact, &$hub, $datedir = 0, $pass = 0) 
 				// Update content if 'updated' changes
 
 				if(count($r)) {
-                                    update_if_newer($r[0], $datarray);
+					update_if_newer($r[0], $datarray);
 
 					// update last-child if it changes
 
@@ -2196,7 +2196,7 @@ function consume_feed($xml,$importer,&$contact, &$hub, $datedir = 0, $pass = 0) 
 				// Update content if 'updated' changes
 
 				if(count($r)) {
-                                    update_if_newer($r[0], $datarray);
+					update_if_newer($r[0], $datarray);
 
 					// update last-child if it changes
 
@@ -2934,10 +2934,10 @@ function local_delivery($importer,$data) {
 				// Update content if 'updated' changes
 
 				if(count($r)) {
-                                    if (update_if_newer($r[0], $datarray)) {
-                                        proc_run('php',"include/notifier.php","comment-import",$r[0]['id']);
-                                    }
-                                    continue;
+					if (update_if_newer($r[0], $datarray)) {
+						proc_run('php',"include/notifier.php","comment-import",$r[0]['id']);
+					}
+					continue;
 				}
 
 
@@ -3091,7 +3091,7 @@ function local_delivery($importer,$data) {
 				// Update content if 'updated' changes
 
 				if(count($r)) {
-                                    update_if_newer($r[0], $datarray);
+					update_if_newer($r[0], $datarray);
 
 					// update last-child if it changes
 
@@ -3252,7 +3252,7 @@ function local_delivery($importer,$data) {
 			// Update content if 'updated' changes
 
 			if(count($r)) {
-                            update_if_newer($r[0], $datarray);
+				update_if_newer($r[0], $datarray);
 
 				// update last-child if it changes
 
