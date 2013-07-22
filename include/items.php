@@ -1620,15 +1620,33 @@ function dfrn_deliver($owner,$contact,$atom, $dissolve = false) {
   assumes the update has been seen before and should be ignored.
   */
 function edited_timestamp_is_newer($existing, $update) {
-    if (!x($existing,'edited') || !$existing['edited']) {
-        return true;
-    }
-    if (!x($update,'edited') || !$update['edited']) {
-        return false;
-    }
-    $existing_edited = datetime_convert('UTC', 'UTC', $existing['edited']);
-    $update_edited = datetime_convert('UTC', 'UTC', $update['edited']);
-    return (strcmp($existing_edited, $update_edited) < 0);
+	if (!x($existing,'edited') || !$existing['edited']) {
+		return true;
+	}
+	if (!x($update,'edited') || !$update['edited']) {
+		return false;
+	}
+	$existing_edited = datetime_convert('UTC', 'UTC', $existing['edited']);
+	$update_edited = datetime_convert('UTC', 'UTC', $update['edited']);
+	return (strcmp($existing_edited, $update_edited) < 0);
+}
+
+function update_if_newer($existing, $update) {
+	if (!edited_timestamp_is_newer($existing, $update)) {
+		return;
+	}
+	$update['uid'] = $existing['uid'];
+	call_hooks('update_post_remote', $update);
+	$r = q("UPDATE `item` SET `title` = '%s', `body` = '%s', `tag` = '%s', `edited` = '%s' WHERE `uri` = '%s' AND `uid` = %d LIMIT 1",
+		dbesc($update['title']),
+		dbesc($update['body']),
+		dbesc($update['tag']),
+		dbesc(datetime_convert('UTC','UTC',$update['edited'])),
+		dbesc($update['uri']),
+		intval($existing['uid'])
+		);
+	create_tags_from_itemuri($update['uri'], $existing['uid']);
+	return true;
 }
 
 /**
@@ -2044,22 +2062,7 @@ function consume_feed($xml,$importer,&$contact, &$hub, $datedir = 0, $pass = 0) 
 				// Update content if 'updated' changes
 
 				if(count($r)) {
-					if (edited_timestamp_is_newer($r[0], $datarray)) {  
-
-						// do not accept (ignore) an earlier edit than one we currently have.
-						if(datetime_convert('UTC','UTC',$datarray['edited']) < $r[0]['edited'])
-							continue;
-
-						$r = q("UPDATE `item` SET `title` = '%s', `body` = '%s', `tag` = '%s', `edited` = '%s' WHERE `uri` = '%s' AND `uid` = %d LIMIT 1",
-							dbesc($datarray['title']),
-							dbesc($datarray['body']),
-							dbesc($datarray['tag']),
-							dbesc(datetime_convert('UTC','UTC',$datarray['edited'])),
-							dbesc($item_id),
-							intval($importer['uid'])
-						);
-						create_tags_from_itemuri($item_id, $importer['uid']);
-					}
+					update_if_newer($r[0], $datarray);
 
 					// update last-child if it changes
 
@@ -2193,22 +2196,7 @@ function consume_feed($xml,$importer,&$contact, &$hub, $datedir = 0, $pass = 0) 
 				// Update content if 'updated' changes
 
 				if(count($r)) {
-					if (edited_timestamp_is_newer($r[0], $datarray)) {  
-
-						// do not accept (ignore) an earlier edit than one we currently have.
-						if(datetime_convert('UTC','UTC',$datarray['edited']) < $r[0]['edited'])
-							continue;
-
-						$r = q("UPDATE `item` SET `title` = '%s', `body` = '%s', `tag` = '%s', `edited` = '%s' WHERE `uri` = '%s' AND `uid` = %d LIMIT 1",
-							dbesc($datarray['title']),
-							dbesc($datarray['body']),
-							dbesc($datarray['tag']),
-							dbesc(datetime_convert('UTC','UTC',$datarray['edited'])),
-							dbesc($item_id),
-							intval($importer['uid'])
-						);
-						create_tags_from_itemuri($item_id, $importer['uid']);
-					}
+					update_if_newer($r[0], $datarray);
 
 					// update last-child if it changes
 
@@ -2946,28 +2934,9 @@ function local_delivery($importer,$data) {
 				// Update content if 'updated' changes
 
 				if(count($r)) {
-					$iid = $r[0]['id'];
-					if (edited_timestamp_is_newer($r[0], $datarray)) {
-
-						// do not accept (ignore) an earlier edit than one we currently have.
-						if(datetime_convert('UTC','UTC',$datarray['edited']) < $r[0]['edited'])
-							continue;
-
-						logger('received updated comment' , LOGGER_DEBUG);
-						$r = q("UPDATE `item` SET `title` = '%s', `body` = '%s', `tag` = '%s', `edited` = '%s' WHERE `uri` = '%s' AND `uid` = %d LIMIT 1",
-							dbesc($datarray['title']),
-							dbesc($datarray['body']),
-							dbesc($datarray['tag']),
-							dbesc(datetime_convert('UTC','UTC',$datarray['edited'])),
-							dbesc($item_id),
-							intval($importer['importer_uid'])
-						);
-						create_tags_from_itemuri($item_id, $importer['importer_uid']);
-
-						proc_run('php',"include/notifier.php","comment-import",$iid);
-
+					if (update_if_newer($r[0], $datarray)) {
+						proc_run('php',"include/notifier.php","comment-import",$r[0]['id']);
 					}
-
 					continue;
 				}
 
@@ -3122,22 +3091,7 @@ function local_delivery($importer,$data) {
 				// Update content if 'updated' changes
 
 				if(count($r)) {
-					if (edited_timestamp_is_newer($r[0], $datarray)) {  
-
-						// do not accept (ignore) an earlier edit than one we currently have.
-						if(datetime_convert('UTC','UTC',$datarray['edited']) < $r[0]['edited'])
-							continue;
-
-						$r = q("UPDATE `item` SET `title` = '%s', `body` = '%s', `tag` = '%s', `edited` = '%s' WHERE `uri` = '%s' AND `uid` = %d LIMIT 1",
-							dbesc($datarray['title']),
-							dbesc($datarray['body']),
-							dbesc($datarray['tag']),
-							dbesc(datetime_convert('UTC','UTC',$datarray['edited'])),
-							dbesc($item_id),
-							intval($importer['importer_uid'])
-						);
-						create_tags_from_itemuri($item_id, $importer['importer_uid']);
-					}
+					update_if_newer($r[0], $datarray);
 
 					// update last-child if it changes
 
@@ -3298,22 +3252,7 @@ function local_delivery($importer,$data) {
 			// Update content if 'updated' changes
 
 			if(count($r)) {
-				if (edited_timestamp_is_newer($r[0], $datarray)) {  
-
-					// do not accept (ignore) an earlier edit than one we currently have.
-					if(datetime_convert('UTC','UTC',$datarray['edited']) < $r[0]['edited'])
-						continue;
-
-					$r = q("UPDATE `item` SET `title` = '%s', `body` = '%s', `tag` = '%s', `edited` = '%s' WHERE `uri` = '%s' AND `uid` = %d LIMIT 1",
-						dbesc($datarray['title']),
-						dbesc($datarray['body']),
-						dbesc($datarray['tag']),
-						dbesc(datetime_convert('UTC','UTC',$datarray['edited'])),
-						dbesc($item_id),
-						intval($importer['importer_uid'])
-					);
-					create_tags_from_itemuri($item_id, $importer['importer_uid']);
-				}
+				update_if_newer($r[0], $datarray);
 
 				// update last-child if it changes
 
