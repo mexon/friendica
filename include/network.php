@@ -102,7 +102,7 @@ function fetch_url($url,$binary = false, &$redirects = 0, $timeout = 0, $accept_
 			$newurl = $old_location_info["scheme"]."://".$old_location_info["host"].$newurl;
 		if (filter_var($newurl, FILTER_VALIDATE_URL)) {
 			$redirects++;
-			return fetch_url($newurl,$binary,$redirects,$timeout);
+			return fetch_url($newurl,$binary,$redirects,$timeout,$accept_content,$cookiejar);
 		}
 	}
 
