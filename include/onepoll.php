@@ -41,6 +41,8 @@ function onepoll_run(&$argv, &$argc){
 
 	load_hooks();
 
+	logger('onepoll: start');
+
 	$manual_id  = 0;
 	$generation = 0;
 	$hub_update = false;
@@ -57,6 +59,18 @@ function onepoll_run(&$argv, &$argc){
 	
 	logger("onepoll ($contact_id): start");
 	
+
+	// Test
+	$lockpath = get_config('system','lockpath');
+	if ($lockpath != '') {
+		$pidfile = new pidfile($lockpath, 'onepoll'.$contact_id.'.lck');
+		if($pidfile->is_already_running()) {
+			logger("onepoll: Already running for contact ".$contact_id);
+			exit;
+		}
+	}
+
+
 	$d = datetime_convert();
 
 	// Only poll from those with suitable relationships,
@@ -543,10 +557,10 @@ function onepoll_run(&$argv, &$argc){
 		if($contact['network'] === NETWORK_DFRN || $contact['blocked'] || $contact['readonly'])
 			$hubmode = 'unsubscribe';
 
-		if($contact['network'] === NETWORK_OSTATUS && (! $contact['hub-verify']))
+		if(($contact['network'] === NETWORK_OSTATUS ||  $contact['network'] == NETWORK_FEED) && (! $contact['hub-verify']))
 			$hub_update = true;
 
-		if((strlen($hub)) && ($hub_update) && ($contact['rel'] != CONTACT_IS_FOLLOWER)) {
+		if((strlen($hub)) && ($hub_update) && (($contact['rel'] != CONTACT_IS_FOLLOWER) || $contact['network'] == NETWORK_FEED) ) {
 			logger('poller: hub ' . $hubmode . ' : ' . $hub . ' contact name : ' . $contact['name'] . ' local user : ' . $importer['name']);
 			$hubs = explode(',', $hub);
 			if(count($hubs)) {

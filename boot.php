@@ -12,7 +12,7 @@ require_once('library/Mobile_Detect/Mobile_Detect.php');
 require_once('include/features.php');
 
 define ( 'FRIENDICA_PLATFORM',     'Friendica');
-define ( 'FRIENDICA_VERSION',      '3.1.1714' );
+define ( 'FRIENDICA_VERSION',      '3.1.1743' );
 define ( 'DFRN_PROTOCOL_VERSION',  '2.23'    );
 define ( 'DB_UPDATE_VERSION',      1163      );
 define ( 'EOL',                    "<br />\r\n"     );
@@ -635,7 +635,11 @@ if(! class_exists('App')) {
 		function set_pager_itemspage($n) {
 			$this->pager['itemspage'] = ((intval($n) > 0) ? intval($n) : 0);
 			$this->pager['start'] = ($this->pager['page'] * $this->pager['itemspage']) - $this->pager['itemspage'];
-
+		}
+		
+		function set_pager_page($n) {
+			$this->pager['page'] = $n;
+			$this->pager['start'] = ($this->pager['page'] * $this->pager['itemspage']) - $this->pager['itemspage'];
 		}
 
 		function init_pagehead() {
