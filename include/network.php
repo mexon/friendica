@@ -14,6 +14,7 @@ function fetch_url($url,$binary = false, &$redirects = 0, $timeout = 0, $accept_
 	$a = get_app();
 
 	$ch = @curl_init($url);
+	$a->set_curl_redirect_url($url);
 	if(($redirects > 8) || (! $ch))
 		return false;
 
@@ -102,6 +103,7 @@ function fetch_url($url,$binary = false, &$redirects = 0, $timeout = 0, $accept_
 			$newurl = $old_location_info["scheme"]."://".$old_location_info["host"].$newurl;
 		if (filter_var($newurl, FILTER_VALIDATE_URL)) {
 			$redirects++;
+			$a->set_curl_redirect_url($newurl);
 			return fetch_url($newurl,$binary,$redirects,$timeout,$accept_content,$cookiejar);
 		}
 	}
