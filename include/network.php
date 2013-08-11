@@ -74,6 +74,7 @@ function fetch_url($url,$binary = false, &$redirects = 0, $timeout = 0, $accept_
 	$base = $s;
 	$curl_info = @curl_getinfo($ch);
 	$http_code = $curl_info['http_code'];
+	$a->set_curl_code($http_code);
 //	logger('fetch_url:' . $http_code . ' data: ' . $s);
 	$header = '';
 
@@ -108,7 +109,6 @@ function fetch_url($url,$binary = false, &$redirects = 0, $timeout = 0, $accept_
 		}
 	}
 
-	$a->set_curl_code($http_code);
 	$a->set_curl_content_type($curl_info['content_type']);
 
 	$body = substr($s,strlen($header));
