@@ -7,7 +7,7 @@
 // Set the cookiejar argument to a string (e.g. "/tmp/friendica-cookies.txt")
 // to preserve cookies from one request to the next.
 if(! function_exists('fetch_url')) {
-function fetch_url($url,$binary = false, &$redirects = 0, $timeout = 0, $accept_content=Null, $cookiejar = 0) {
+function fetch_url($url,$binary = false, &$redirects = 0, $timeout = 0, $accept_content=Null, $cookiejar = 0, $curlredirect = false) {
 
 	$stamp1 = microtime(true);
 
@@ -25,9 +25,10 @@ function fetch_url($url,$binary = false, &$redirects = 0, $timeout = 0, $accept_
 		curl_setopt($ch, CURLOPT_COOKIEFILE, $cookiejar);
 	}
 
-//  These settings aren't needed. We're following the location already. 
-//	@curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
-//	@curl_setopt($ch, CURLOPT_MAXREDIRS, 5);
+	if($curlredirect) {
+		@curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
+		@curl_setopt($ch, CURLOPT_MAXREDIRS, 5);
+	}
 
 	if (!is_null($accept_content)){
 		curl_setopt($ch,CURLOPT_HTTPHEADER, array (
@@ -104,8 +105,7 @@ function fetch_url($url,$binary = false, &$redirects = 0, $timeout = 0, $accept_
 			$newurl = $old_location_info["scheme"]."://".$old_location_info["host"].$newurl;
 		if (filter_var($newurl, FILTER_VALIDATE_URL)) {
 			$redirects++;
-			$a->set_curl_redirect_url($newurl);
-			return fetch_url($newurl,$binary,$redirects,$timeout,$accept_content,$cookiejar);
+			return fetch_url($newurl,$binary,$redirects,$timeout,$accept_content,$cookiejar,$curlredirect);
 		}
 	}
 
