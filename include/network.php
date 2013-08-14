@@ -76,6 +76,9 @@ function fetch_url($url,$binary = false, &$redirects = 0, $timeout = 0, $accept_
 	$curl_info = @curl_getinfo($ch);
 	$http_code = $curl_info['http_code'];
 	$a->set_curl_code($http_code);
+	if($curlredirect) {
+		$a->set_curl_redirect_url($curl_info['url']);
+	}
 //	logger('fetch_url:' . $http_code . ' data: ' . $s);
 	$header = '';
 
