@@ -44,6 +44,11 @@ function check_conversations() {
 function complete_conversation($itemid, $conversation_url, $only_add_conversation = false) {
 	global $a;
 
+	if ($a->last_ostatus_conversation_url == $conversation_url)
+		return;
+
+	$a->last_ostatus_conversation_url = $conversation_url;
+
 	//logger('complete_conversation: completing conversation url '.$conversation_url.' for id '.$itemid);
 
 	$messages = q("SELECT `uid`, `parent`, `created` FROM `item` WHERE `id` = %d LIMIT 1", intval($itemid));
@@ -146,6 +151,7 @@ function complete_conversation($itemid, $conversation_url, $only_add_conversatio
 		}
 
 		$arr = array();
+		$arr["network"] = NETWORK_OSTATUS;
 		$arr["uri"] = $single_conv->id;
 		$arr["plink"] = $single_conv->id;
 		$arr["uid"] = $message["uid"];

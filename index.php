@@ -104,12 +104,13 @@ if((x($_GET,'zrl')) && (!$install && !$maintenance)) {
  * For Mozilla auth manager - still needs sorting, and this might conflict with LRDD header.
  * Apache/PHP lumps the Link: headers into one - and other services might not be able to parse it
  * this way. There's a PHP flag to link the headers because by default this will over-write any other 
- * link header. 
+ * link header.
  *
  * What we really need to do is output the raw headers ourselves so we can keep them separate.
  *
+
  */
- 
+
 // header('Link: <' . $a->get_baseurl() . '/amcd>; rel="acct-mgmt";');
 
 if((x($_SESSION,'authenticated')) || (x($_POST,'auth-params')) || ($a->module === 'login'))
@@ -117,7 +118,6 @@ if((x($_SESSION,'authenticated')) || (x($_POST,'auth-params')) || ($a->module ==
 
 if(! x($_SESSION,'authenticated'))
 	header('X-Account-Management-Status: none');
-
 
 /* set up page['htmlhead'] and page['end'] for the modules to use */
 $a->page['htmlhead'] = '';
@@ -135,7 +135,6 @@ if(! x($_SESSION,'sysmsg_info'))
  * update the DB schema whenever we push a new one out. It also checks to see if
  * any plugins have been added or removed and reacts accordingly. 
  */
-
 
 if($install)
 	$a->module = 'install';
@@ -191,7 +190,11 @@ if(strlen($a->module)) {
 	// Compatibility with the Android Diaspora client
 	if ($a->module == "stream")
 		$a->module = "network";
-	
+
+	// Compatibility with the Firefox App
+	if (($a->module == "users") AND ($a->cmd == "users/sign_in"))
+		$a->module = "login";
+
 	$privateapps = get_config('config','private_addons');
 
 	if(is_array($a->plugins) && in_array($a->module,$a->plugins) && file_exists("addon/{$a->module}/{$a->module}.php")) {
@@ -320,9 +323,7 @@ if($a->module_loaded) {
 		$func = str_replace('-','_',current_theme()) . '_content_loaded';
 		$func($a);
 	}
-
 }
-
 
 /*
  * Create the page head after setting the language
@@ -431,18 +432,116 @@ else
 $a->page['htmlhead'] = str_replace('{{$stylesheet}}',$stylesheet,$a->page['htmlhead']);
 //$a->page['htmlhead'] = replace_macros($a->page['htmlhead'], array('$stylesheet' => $stylesheet));
 
+if (($_GET["mode"] == "raw") OR ($_GET["mode"] == "minimal")) {
+	$doc = new DOMDocument();
+
+	$target = new DOMDocument();
+	$target->loadXML("<root></root>");
+
+	$content = mb_convert_encoding($a->page["content"], 'HTML-ENTITIES', "UTF-8");
+
+	@$doc->loadHTML($content);
+
+	$xpath = new DomXPath($doc);
+
+	$list = $xpath->query("//*[contains(@id,'tread-wrapper-')]");  /* */
+
+	foreach ($list as $item) {
+
+		$item = $target->importNode($item, true);
+
+		// And then append it to the target
+		$target->documentElement->appendChild($item);
+	}
+}
+
+if ($_GET["mode"] == "raw") {
+
+	header("Content-type: text/html; charset=utf-8");
+
+	echo substr($target->saveHTML(), 6, -8);
+
+	session_write_close();
+	exit;
+
+} elseif (get_pconfig(local_user(),'system','infinite_scroll')
+          AND ($a->module == "network") AND ($_GET["mode"] != "minimal")) {
+	if (is_string($_GET["page"]))
+		$pageno = $_GET["page"];
+	else
+		$pageno = 1;
+
+	$reload_uri = "";
+
+	foreach ($_GET AS $param => $value)
+		if (($param != "page") AND ($param != "q"))
+			$reload_uri .= "&".$param."=".urlencode($value);
+
+	if (($a->page_offset != "") AND !strstr($reload_uri, "&offset="))
+		$reload_uri .= "&offset=".urlencode($a->page_offset);
+
+
+$a->page['htmlhead'] .= <<< EOT
+<script type="text/javascript">
+
+$(document).ready(function() {
+    num = $pageno;
+});
+
+function loadcontent() {
+	//$("div.loader").show();
+
+	num+=1;
+
+	console.log('Loading page ' + num);
+
+	$.get('/network?mode=raw$reload_uri&page=' + num, function(data) {
+		$(data).insertBefore('#conversation-end');
+	});
+
+	//$("div.loader").fadeOut('normal');
+}
+
+var num = $pageno;
+
+$(window).scroll(function(e){
+
+	if ($(document).height() != $(window).height()) {
+		// First method that is expected to work - but has problems with Chrome
+		if ($(window).scrollTop() == $(document).height() - $(window).height())
+			loadcontent();
+	} else {
+		// This method works with Chrome - but seems to be much slower in Firefox
+		if ($(window).scrollTop() > (($("section").height() + $("header").height() + $("footer").height()) - $(window).height()))
+			loadcontent();
+	}
+});
+</script>
+
+EOT;
+
+}
+
 $page    = $a->page;
 $profile = $a->profile;
 
 header("Content-type: text/html; charset=utf-8");
 
-$template = 'view/theme/' . current_theme() . '/' 
-	. ((x($a->page,'template')) ? $a->page['template'] : 'default' ) . '.php';
 
-if(file_exists($template))
-	require_once($template);
-else
-	require_once(str_replace('theme/' . current_theme() . '/', '', $template));
+if ($_GET["mode"] == "minimal") {
+	//$page['content'] = substr($target->saveHTML(), 6, -8)."\n\n".
+	//			'<div id="conversation-end"></div>'."\n\n";
+
+	require "view/minimal.php";
+} else {
+	$template = 'view/theme/' . current_theme() . '/' 
+		. ((x($a->page,'template')) ? $a->page['template'] : 'default' ) . '.php';
+
+	if(file_exists($template))
+		require_once($template);
+	else
+		require_once(str_replace('theme/' . current_theme() . '/', '', $template));
+}
 
 session_write_close();
 exit;

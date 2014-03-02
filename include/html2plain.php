@@ -82,12 +82,18 @@ function collecturls($message) {
 
 	$urls = array();
 	foreach ($result as $treffer) {
+
+		$ignore = false;
+
 		// A list of some links that should be ignored
 		$list = array("/user/", "/tag/", "/group/", "/profile/", "/search?search=", "/search?tag=", "mailto:", "/u/", "/node/",
-				"//facebook.com/profile.php?id=", "//plus.google.com/");
+				"//facebook.com/profile.php?id=", "//plus.google.com/", "//twitter.com/");
 		foreach ($list as $listitem)
 			if (strpos($treffer[1], $listitem) !== false)
 				$ignore = true;
+
+		if ((strpos($treffer[1], "//twitter.com/") !== false) and (strpos($treffer[1], "/status/") !== false))
+				$ignore = false;
 
 		if ((strpos($treffer[1], "//plus.google.com/") !== false) and (strpos($treffer[1], "/posts") !== false))
 				$ignore = false;
@@ -185,9 +191,9 @@ function html2plain($html, $wraplength = 75, $compact = false)
 	//node2bbcode($doc, 'img', array('title'=>'/(.+)/'), '$1', '');
 	//node2bbcode($doc, 'img', array(), '', '');
 	if (!$compact)
-		node2bbcode($doc, 'img', array('src'=>'/(.+)/'), '[img]$1', '[/img]');
+		node2bbcode($doc, 'img', array('src'=>'/(.+)/'), ' [img]$1', '[/img] ');
 	else
-		node2bbcode($doc, 'img', array('src'=>'/(.+)/'), '', '');
+		node2bbcode($doc, 'img', array('src'=>'/(.+)/'), ' ', ' ');
 
 	node2bbcode($doc, 'iframe', array('src'=>'/(.+)/'), ' $1 ', '', true);
 
@@ -212,7 +218,7 @@ function html2plain($html, $wraplength = 75, $compact = false)
 
 	$message = html_entity_decode($message, ENT_QUOTES, 'UTF-8');
 
-	if (!$compact) {
+	if (!$compact AND ($message != "")) {
 		$counter = 1;
 		foreach ($urls as $id=>$url)
 			if (strpos($message, $url) === false)

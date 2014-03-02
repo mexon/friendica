@@ -115,21 +115,21 @@ function network_init(&$a) {
 			'/network?f=&bmark=1',			//bookmarked
 			'/network?f=&spam=1',			//spam
 		);
-		
+
 		// redirect if current selected tab is 'no_active' and
-		// last selected tab is _not_ 'all_active'. 
+		// last selected tab is _not_ 'all_active'.
 		// and this isn't a date query
 
 		if ($sel_tabs[0] == 'active' && $last_sel_tabs[0]!='active' && (! $is_a_date_query)) {
 			$k = array_search('active', $last_sel_tabs);
-          
+
             // merge tab querystring with request querystring
             $dest_qa = array();
             list($dest_url,$dest_qs) = explode("?", $tab_urls[$k]);
             parse_str( $dest_qs, $dest_qa);
             $dest_qa = array_merge($query_array, $dest_qa);
             $dest_qs = build_querystring($dest_qa);
-            
+
             // groups filter is in form of "network/nnn". Add it to $dest_url, if it's possible
             if ($a->argc==2 && is_numeric($a->argv[1]) && strpos($dest_url, "/",1)===false){
                 $dest_url .= "/".$a->argv[1];
@@ -168,14 +168,12 @@ function network_init(&$a) {
 		}
 	}
 	if(x($_GET,'remove')) {
-		q("delete from `search` where `uid` = %d and `term` = '%s' limit 1",
+		q("delete from `search` where `uid` = %d and `term` = '%s'",
 			intval(local_user()),
 			dbesc($search)
 		);
 	}
 
-
-	
 	// search terms header
 	if(x($_GET,'search')) {
 		$a->page['content'] .= '<h2>' . t('Search Results For:') . ' '  . $search . '</h2>';
@@ -196,8 +194,8 @@ function saved_searches($search) {
 
 	$a = get_app();
 
-	$srchurl = '/network?f=' 
-		. ((x($_GET,'cid'))   ? '&cid='   . $_GET['cid']   : '') 
+	$srchurl = '/network?f='
+		. ((x($_GET,'cid'))   ? '&cid='   . $_GET['cid']   : '')
 		. ((x($_GET,'star'))  ? '&star='  . $_GET['star']  : '')
 		. ((x($_GET,'bmark')) ? '&bmark=' . $_GET['bmark'] : '')
 		. ((x($_GET,'conv'))  ? '&conv='  . $_GET['conv']  : '')
@@ -206,7 +204,7 @@ function saved_searches($search) {
 		. ((x($_GET,'cmax'))  ? '&cmax='  . $_GET['cmax']  : '')
 		. ((x($_GET,'file'))  ? '&file='  . $_GET['file']  : '');
 	;
-	
+
 	$o = '';
 
 	$r = q("select `id`,`term` from `search` WHERE `uid` = %d",
@@ -225,9 +223,9 @@ function saved_searches($search) {
 				'selected'		=> ($search==$rr['term']),
 			);
 		}
-	}		
+	}
 
-	
+
 	$tpl = get_markup_template("saved_searches_aside.tpl");
 	$o = replace_macros($tpl, array(
 		'$title'	 => t('Saved Searches'),
@@ -235,7 +233,7 @@ function saved_searches($search) {
 		'$searchbox' => search($search,'netsearch-box',$srchurl,true),
 		'$saved' 	 => $saved,
 	));
-	
+
 	return $o;
 
 }
@@ -266,19 +264,19 @@ function network_query_get_sel_tab($a) {
 	$spam_active = '';
 	$postord_active = '';
 
-	if(($a->argc > 1 && $a->argv[1] === 'new') 
+	if(($a->argc > 1 && $a->argv[1] === 'new')
 		|| ($a->argc > 2 && $a->argv[2] === 'new')) {
 			$new_active = 'active';
 	}
-	
+
 	if(x($_GET,'search')) {
 		$search_active = 'active';
 	}
-	
+
 	if(x($_GET,'star')) {
 		$starred_active = 'active';
 	}
-	
+
 	if(x($_GET,'bmark')) {
 		$bookmarked_active = 'active';
 	}
@@ -291,10 +289,10 @@ function network_query_get_sel_tab($a) {
 		$spam_active = 'active';
 	}
 
-	
-	
-	if (($new_active == '') 
-		&& ($starred_active == '') 
+
+
+	if (($new_active == '')
+		&& ($starred_active == '')
 		&& ($bookmarked_active == '')
 		&& ($conv_active == '')
 		&& ($search_active == '')
@@ -308,7 +306,7 @@ function network_query_get_sel_tab($a) {
 		 case 'comment' : $all_active = 'active'; $no_active=''; break;
 		}
 	}
-	
+
 	return array($no_active, $all_active, $postord_active, $conv_active, $new_active, $starred_active, $bookmarked_active, $spam_active);
 }
 
@@ -375,7 +373,6 @@ function network_content(&$a, $update = 0) {
 			}
 		}
 	}
-
 
 	$o = '';
 
@@ -498,10 +495,6 @@ function network_content(&$a, $update = 0) {
 
 	// --- end item filter tabs
 
-
-
-
-
 	$contact_id = $a->cid;
 
 	require_once('include/acl_selectors.php');
@@ -572,18 +565,21 @@ function network_content(&$a, $update = 0) {
 
 	}
 
-
 	// We don't have to deal with ACLs on this page. You're looking at everything
 	// that belongs to you, hence you can see all of it. We will filter by group if
 	// desired. 
 
-
 	$sql_options  = (($star) ? " and starred = 1 " : '');
 	$sql_options .= (($bmark) ? " and bookmark = 1 " : '');
 
-	$sql_nets = (($nets) ? sprintf(" and `contact`.`network` = '%s' ", dbesc($nets)) : '');
+	//$sql_nets = (($nets) ? sprintf(" and `contact`.`network` = '%s' ", dbesc($nets)) : '');
+	$sql_nets = (($nets) ? sprintf(" and `item`.`network` = '%s' ", dbesc($nets)) : '');
 
-	$sql_extra = " AND `item`.`parent` IN ( SELECT `parent` FROM `item` WHERE `id` = `parent` $sql_options ) ";
+	if ($star OR $bmark) {
+		$sql_table = "`item` INNER JOIN (SELECT DISTINCT(`parent`) FROM `item` WHERE 1 $sql_options and deleted = 0 ORDER BY `commented` DESC) AS `temp1` ON item.parent = `temp1`.parent ";
+		$sql_extra = "";
+	} else
+		$sql_extra = " AND `item`.`parent` IN ( SELECT `parent` FROM `item` WHERE `id` = `parent` $sql_options ) ";
 
 	if($group) {
 		$r = q("SELECT `name`, `id` FROM `group` WHERE `id` = %d AND `uid` = %d LIMIT 1",
@@ -607,7 +603,9 @@ function network_content(&$a, $update = 0) {
 				info( t('Group is empty'));
 		}
 
-		$sql_extra = " AND `item`.`parent` IN ( SELECT DISTINCT(`parent`) FROM `item` WHERE 1 $sql_options AND ( `contact-id` IN ( $contact_str ) OR `allow_gid` like '" . protect_sprintf('%<' . intval($group) . '>%') . "' ) and deleted = 0 ) ";
+		$sql_table = "`item` INNER JOIN (SELECT DISTINCT(`parent`) FROM `item` WHERE 1 $sql_options AND (`contact-id` IN ($contact_str) OR `allow_gid` like '".protect_sprintf('%<'.intval($group).'>%')."') and deleted = 0 ORDER BY `created` DESC) AS `temp1` ON item.parent = `temp1`.parent ";
+		$sql_extra = "";
+		//$sql_extra = " AND `item`.`parent` IN ( SELECT DISTINCT(`parent`) FROM `item` WHERE 1 $sql_options AND ( `contact-id` IN ( $contact_str ) OR `allow_gid` like '" . protect_sprintf('%<' . intval($group) . '>%') . "' ) and deleted = 0 ) ";
 		$o = '<h2>' . t('Group: ') . $r[0]['name'] . '</h2>' . $o;
 	}
 	elseif($cid) {
@@ -617,7 +615,9 @@ function network_content(&$a, $update = 0) {
 			intval($cid)
 		);
 		if(count($r)) {
-			$sql_extra = " AND `item`.`parent` IN ( SELECT DISTINCT(`parent`) FROM `item` WHERE 1 $sql_options AND `contact-id` = " . intval($cid) . " and deleted = 0 ) ";
+			$sql_table = "`item` INNER JOIN (SELECT DISTINCT(`parent`) FROM `item` WHERE 1 $sql_options AND `contact-id` = ".intval($cid)." and deleted = 0 ORDER BY `item`.`received` DESC) AS `temp1` ON item.parent = `temp1`.parent ";
+			$sql_extra = "";
+			//$sql_extra = " AND `item`.`parent` IN ( SELECT DISTINCT(`parent`) FROM `item` WHERE 1 $sql_options AND `contact-id` = " . intval($cid) . " and deleted = 0 ) ";
 			$o = '<h2>' . t('Contact: ') . $r[0]['name'] . '</h2>' . $o;
 			if($r[0]['network'] === NETWORK_OSTATUS && $r[0]['writable'] && (! get_pconfig(local_user(),'system','nowarn_insecure'))) {
 				notice( t('Private messages to this person are at risk of public disclosure.') . EOL);
@@ -647,7 +647,12 @@ function network_content(&$a, $update = 0) {
 
 	$sql_extra2 = (($nouveau) ? '' : " AND `item`.`parent` = `item`.`id` ");
 	$sql_extra3 = (($nouveau) ? '' : $sql_extra3);
-	$sql_table = "`item`";
+	//$sql_order = "`item`.`received`";
+	$sql_order = "";
+	$order_mode = "received";
+
+	if ($sql_table == "")
+		$sql_table = "`item`";
 
 	if(x($_GET,'search')) {
 		$search = escape_tags($_GET['search']);
@@ -660,32 +665,28 @@ function network_content(&$a, $update = 0) {
 		if (get_config('system','only_tag_search'))
 			$tag = true;
 
-		/*if (get_config('system','use_fulltext_engine')) {
-			if(strpos($search,'#') === 0)
-				$sql_extra .= sprintf(" AND (MATCH(tag) AGAINST ('".'"%s"'."' in boolean mode)) ",
-					dbesc(protect_sprintf($search))
-				);
-			else
-				$sql_extra .= sprintf(" AND (MATCH(`item`.`body`, `item`.`title`) AGAINST ('%s' in boolean mode)) ",
-					dbesc(protect_sprintf($search)),
-					dbesc(protect_sprintf($search))
-				);
-		} else {
-			$sql_extra .= sprintf(" AND ( `item`.`body` like '%s' OR `item`.`tag` like '%s' ) ",
-					dbesc(protect_sprintf('%' . $search . '%')),
-					dbesc(protect_sprintf('%]' . $search . '[%'))
-			);
-		}*/
-
 		if($tag) {
-			$sql_extra = sprintf(" AND `term`.`term` = '%s' AND `term`.`otype` = %d AND `term`.`type` = %d ",
-					dbesc(protect_sprintf($search)), intval(TERM_OBJ_POST), intval(TERM_HASHTAG));
-			$sql_table = "`term` LEFT JOIN `item` ON `item`.`id` = `term`.`oid` AND `item`.`uid` = `term`.`uid` ";
+			//$sql_extra = sprintf(" AND `term`.`term` = '%s' AND `term`.`otype` = %d AND `term`.`type` = %d ",
+			//		dbesc(protect_sprintf($search)), intval(TERM_OBJ_POST), intval(TERM_HASHTAG));
+			//$sql_table = "`term` LEFT JOIN `item` ON `item`.`id` = `term`.`oid` AND `item`.`uid` = `term`.`uid` ";
+
+			//$sql_order = "`term`.`tid`";
+
+			$sql_extra = "";
+
+			$sql_table = sprintf("`item` INNER JOIN (SELECT `oid` FROM `term` WHERE `term` = '%s' AND `otype` = %d AND `type` = %d AND `uid` = %d ORDER BY `tid` DESC) AS `term` ON `item`.`id` = `term`.`oid` ",
+					dbesc(protect_sprintf($search)), intval(TERM_OBJ_POST), intval(TERM_HASHTAG), intval(local_user()));
+
+			$sql_order = "`item`.`received`";
+			$order_mode = "received";
 		} else {
 			if (get_config('system','use_fulltext_engine'))
 				$sql_extra = sprintf(" AND MATCH (`item`.`body`, `item`.`title`) AGAINST ('%s' in boolean mode) ", dbesc(protect_sprintf($search)));
 			else
 				$sql_extra = sprintf(" AND `item`.`body` REGEXP '%s' ", dbesc(protect_sprintf(preg_quote($search))));
+
+			$sql_order = "`item`.`received`";
+			$order_mode = "received";
 		}
 	}
 	if(strlen($file)) {
@@ -697,20 +698,6 @@ function network_content(&$a, $update = 0) {
 		$myurl = substr($myurl,strpos($myurl,'://')+3);
 		$myurl = str_replace('www.','',$myurl);
 		$diasp_url = str_replace('/profile/','/u/',$myurl);
-		/*if (get_config('system','use_fulltext_engine'))
-			$sql_extra .= sprintf(" AND `item`.`parent` IN (SELECT distinct(`parent`) from item where (MATCH(`author-link`) AGAINST ('".'"%s"'."' in boolean mode) or MATCH(`tag`) AGAINST ('".'"%s"'."' in boolean mode) or MATCH(tag) AGAINST ('".'"%s"'."' in boolean mode))) ",
-			//$sql_extra .= sprintf(" AND `item`.`parent` IN (SELECT distinct(`parent`) from item where (`author-link` IN ('https://%s', 'http://%s') OR MATCH(`tag`) AGAINST ('".'"%s"'."' in boolean mode) or MATCH(tag) AGAINST ('".'"%s"'."' in boolean mode))) ",
-			//$sql_extra .= sprintf(" AND `item`.`parent` IN (SELECT distinct(`parent`) from item where `author-link` IN ('https://%s', 'http://%s') OR `mention`)",
-				dbesc(protect_sprintf($myurl)),
-				dbesc(protect_sprintf($myurl)),
-				dbesc(protect_sprintf($diasp_url))
-			);
-		else
-			$sql_extra .= sprintf(" AND `item`.`parent` IN (SELECT distinct(`parent`) from item where ( `author-link` like '%s' or `tag` like '%s' or tag like '%s' )) ",
-				dbesc(protect_sprintf('%' . $myurl)),
-				dbesc(protect_sprintf('%' . $myurl . ']%')),
-				dbesc(protect_sprintf('%' . $diasp_url . ']%'))
-			);*/
 
 		$sql_extra .= sprintf(" AND `item`.`parent` IN (SELECT distinct(`parent`) from item where `author-link` IN ('https://%s', 'http://%s') OR `mention`)",
 			dbesc(protect_sprintf($myurl)),
@@ -763,7 +750,7 @@ function network_content(&$a, $update = 0) {
 	if($nouveau) {
 		// "New Item View" - show all items unthreaded in reverse created date order
 
-		$items = q("SELECT `item`.*, `item`.`id` AS `item_id`, 
+		$items = q("SELECT `item`.*, `item`.`id` AS `item_id`, `item`.`network` AS `item_network`,
 			`contact`.`name`, `contact`.`photo`, `contact`.`url`, `contact`.`rel`, `contact`.`writable`,
 			`contact`.`network`, `contact`.`thumb`, `contact`.`dfrn-id`, `contact`.`self`,
 			`contact`.`id` AS `cid`, `contact`.`uid` AS `contact-uid`
@@ -784,15 +771,26 @@ function network_content(&$a, $update = 0) {
 		// Normal conversation view
 
 
-		if($order === 'post')
-				$ordering = "`created`";
-		else
-				$ordering = "`commented`";
+		if($order === 'post') {
+			$ordering = "`created`";
+			if ($sql_order == "")
+				$order_mode = "created";
+		} else {
+			$ordering = "`commented`";
+			if ($sql_order == "")
+				$order_mode = "commented";
+		}
+
+		if ($sql_order == "")
+			$sql_order = "`item`.$ordering";
+
+		if (($_GET["offset"] != ""))
+			$sql_extra3 .= sprintf(" AND $sql_order <= '%s'", dbesc($_GET["offset"]));
 
 		// Fetch a page full of parent items for this page
 
 		if($update) {
-			$r = q("SELECT `parent` AS `item_id`, `contact`.`uid` AS `contact_uid`
+			$r = q("SELECT `item`.`parent` AS `item_id`, `item`.`network` AS `item_network`, `contact`.`uid` AS `contact_uid`
 				FROM $sql_table LEFT JOIN `contact` ON `contact`.`id` = `item`.`contact-id`
 				WHERE `item`.`uid` = %d AND `item`.`visible` = 1 AND
 				(`item`.`deleted` = 0 OR item.verb = '" . ACTIVITY_LIKE ."' OR item.verb = '" . ACTIVITY_DISLIKE . "')
@@ -803,13 +801,13 @@ function network_content(&$a, $update = 0) {
 			);
 		}
 		else {
-			$r = q("SELECT `item`.`id` AS `item_id`, `contact`.`uid` AS `contact_uid`
+			$r = q("SELECT `item`.`id` AS `item_id`, `item`.`network` AS `item_network`, `contact`.`uid` AS `contact_uid`
 				FROM $sql_table LEFT JOIN `contact` ON `contact`.`id` = `item`.`contact-id`
 				WHERE `item`.`uid` = %d AND `item`.`visible` = 1 AND `item`.`deleted` = 0
 				AND `item`.`moderated` = 0 AND `contact`.`blocked` = 0 AND `contact`.`pending` = 0
 				AND `item`.`parent` = `item`.`id`
 				$sql_extra3 $sql_extra $sql_nets
-				ORDER BY `item`.$ordering DESC $pager_sql ",
+				ORDER BY $sql_order DESC $pager_sql ",
 				intval(local_user())
 			);
 		}
@@ -818,37 +816,58 @@ function network_content(&$a, $update = 0) {
 
 		$parents_arr = array();
 		$parents_str = '';
+		$date_offset = "";
 
 		if(count($r)) {
 			foreach($r as $rr)
 				if(! in_array($rr['item_id'],$parents_arr))
 					$parents_arr[] = $rr['item_id'];
-			$parents_str = implode(', ', $parents_arr);
 
-			$items = q("SELECT `item`.*, `item`.`id` AS `item_id`,
-				`contact`.`name`, `contact`.`photo`, `contact`.`url`, `contact`.`alias`, `contact`.`rel`, `contact`.`writable`,
-				`contact`.`network`, `contact`.`thumb`, `contact`.`dfrn-id`, `contact`.`self`,
-				`contact`.`id` AS `cid`, `contact`.`uid` AS `contact-uid`
-				FROM $sql_table LEFT JOIN `contact` ON `contact`.`id` = `item`.`contact-id`
-				WHERE `item`.`uid` = %d AND `item`.`visible` = 1 AND `item`.`deleted` = 0
-				AND `item`.`moderated` = 0
-				AND `contact`.`blocked` = 0 AND `contact`.`pending` = 0
-				AND `item`.`parent` IN ( %s )
-				$sql_extra ",
-				intval(local_user()),
-				dbesc($parents_str)
-			);
+			//$parents_str = implode(', ', $parents_arr);
 
+			// splitted into separate queries to avoid the problem with very long threads
+			// so always the last X comments are loaded
+			// This problem can occur expecially with imported facebook posts
+			$max_comments = get_config("system", "max_comments");
+			if ($max_comments == 0)
+				$max_comments = 1000;
+
+			$items = array();
+
+			foreach ($parents_arr AS $parents_str) {
+
+				$thread_items = q("SELECT `item`.*, `item`.`id` AS `item_id`, `item`.`network` AS `item_network`,
+					`contact`.`name`, `contact`.`photo`, `contact`.`url`, `contact`.`alias`, `contact`.`rel`, `contact`.`writable`,
+					`contact`.`network`, `contact`.`thumb`, `contact`.`dfrn-id`, `contact`.`self`,
+					`contact`.`id` AS `cid`, `contact`.`uid` AS `contact-uid`
+					FROM $sql_table LEFT JOIN `contact` ON `contact`.`id` = `item`.`contact-id`
+					WHERE `item`.`uid` = %d AND `item`.`visible` = 1 AND `item`.`deleted` = 0
+					AND `item`.`moderated` = 0
+					AND `contact`.`blocked` = 0 AND `contact`.`pending` = 0
+					AND `item`.`parent` IN ( %s )
+					$sql_extra ORDER BY `item`.`commented` DESC LIMIT %d",
+					intval(local_user()),
+					dbesc($parents_str),
+					intval($max_comments + 1)
+				);
+				$items = array_merge($items, $thread_items);
+			}
 			$items = conv_sort($items,$ordering);
 
 		} else {
 			$items = array();
 		}
 
+		if ($_GET["offset"] == "")
+			$date_offset = $items[0][$order_mode];
+		else
+			$date_offset = $_GET["offset"];
+
+		$a->page_offset = $date_offset;
+
 		if($parents_str)
 			$update_unseen = ' WHERE uid = ' . intval(local_user()) . ' AND unseen = 1 AND parent IN ( ' . dbesc($parents_str) . ' )';
 	}
-
 
 	// We aren't going to try and figure out at the item, group, and page
 	// level which items you've seen and which you haven't. If you're looking
@@ -864,7 +883,7 @@ function network_content(&$a, $update = 0) {
 // on they just get buried deeper. It has happened to me a couple of times also.
 
 	if((! $group) && (! $cid) && (! $star)) {
-		$r = q("UPDATE `item` SET `unseen` = 0 
+		$r = q("UPDATE `item` SET `unseen` = 0
 			WHERE `unseen` = 1 AND `uid` = %d",
 			intval(local_user())
 		);
@@ -881,7 +900,7 @@ function network_content(&$a, $update = 0) {
 
 	$o .= conversation($a,$items,$mode,$update);
 
-	if(! $update) {
+	if(!$update) {
 		if( get_config('alt_pager', 'global') || get_pconfig(local_user(),'system','alt_pager') ) {
 		        $o .= alt_pager($a,count($items));
 		}
@@ -892,3 +911,4 @@ function network_content(&$a, $update = 0) {
 
 	return $o;
 }
+

@@ -642,7 +642,7 @@ function diaspora_request($importer,$xml) {
 
 		return;
 	}
-	
+
 	$ret = find_diaspora_person_by_handle($sender_handle);
 
 
@@ -861,18 +861,22 @@ function diaspora_post($importer,$xml,$msg) {
 		foreach($matches as $mtch) {
 			if(strlen($str_tags))
 				$str_tags .= ',';
-			$str_tags .= '@[url=' . $mtch[1] . '[/url]';	
+			$str_tags .= '@[url=' . $mtch[1] . '[/url]';
 		}
 	}
+
+	$plink = 'https://'.substr($diaspora_handle,strpos($diaspora_handle,'@')+1).'/posts/'.$guid;
 
 	$datarray['uid'] = $importer['uid'];
 	$datarray['contact-id'] = $contact['id'];
 	$datarray['wall'] = 0;
+	$datarray['network']  = NETWORK_DIASPORA;
 	$datarray['guid'] = $guid;
 	$datarray['uri'] = $datarray['parent-uri'] = $message_id;
 	$datarray['created'] = $datarray['edited'] = datetime_convert('UTC','UTC',$created);
 	$datarray['private'] = $private;
 	$datarray['parent'] = 0;
+	$datarray['plink'] = $plink;
 	$datarray['owner-name'] = $contact['name'];
 	$datarray['owner-link'] = $contact['url'];
 	//$datarray['owner-avatar'] = $contact['thumb'];
@@ -890,12 +894,12 @@ function diaspora_post($importer,$xml,$msg) {
 
 	$message_id = item_store($datarray);
 
-	if($message_id) {
-		q("update item set plink = '%s' where id = %d limit 1",
-			dbesc($a->get_baseurl() . '/display/' . $importer['nickname'] . '/' . $message_id),
-			intval($message_id)
-		);
-	}
+	//if($message_id) {
+	//	q("update item set plink = '%s' where id = %d limit 1",
+	//		dbesc($a->get_baseurl() . '/display/' . $importer['nickname'] . '/' . $message_id),
+	//		intval($message_id)
+	//	);
+	//}
 
 	return;
 
@@ -1029,22 +1033,26 @@ function diaspora_reshare($importer,$xml,$msg) {
 		}
 	}
 
+	$plink = 'https://'.substr($diaspora_handle,strpos($diaspora_handle,'@')+1).'/posts/'.$guid;
+
 	$datarray['uid'] = $importer['uid'];
 	$datarray['contact-id'] = $contact['id'];
 	$datarray['wall'] = 0;
+	$datarray['network']  = NETWORK_DIASPORA;
 	$datarray['guid'] = $guid;
 	$datarray['uri'] = $datarray['parent-uri'] = $message_id;
 	$datarray['created'] = $datarray['edited'] = datetime_convert('UTC','UTC',$created);
 	$datarray['private'] = $private;
 	$datarray['parent'] = 0;
+	$datarray['plink'] = $plink;
 	$datarray['owner-name'] = $contact['name'];
 	$datarray['owner-link'] = $contact['url'];
 	$datarray['owner-avatar'] = ((x($contact,'thumb')) ? $contact['thumb'] : $contact['photo']);
-	if (intval(get_config('system','new_share'))) {
-		$prefix = "[share author='".str_replace("'", "&#039;",$person['name']).
+	if (!intval(get_config('system','wall-to-wall_share'))) {
+		$prefix = "[share author='".str_replace(array("'", "[", "]"), array("&#x27;", "&#x5B;", "&#x5D;"),$person['name']).
 				"' profile='".$person['url'].
 				"' avatar='".((x($person,'thumb')) ? $person['thumb'] : $person['photo']).
-				"' link='".$orig_url."']";
+				"' link='".str_replace(array("'", "[", "]"), array("&#x27;", "&#x5B;", "&#x5D;"),$orig_url)."']";
 		$datarray['author-name'] = $contact['name'];
 		$datarray['author-link'] = $contact['url'];
 		$datarray['author-avatar'] = $contact['thumb'];
@@ -1062,12 +1070,12 @@ function diaspora_reshare($importer,$xml,$msg) {
 
 	$message_id = item_store($datarray);
 
-	if($message_id) {
-		q("update item set plink = '%s' where id = %d limit 1",
-			dbesc($a->get_baseurl() . '/display/' . $importer['nickname'] . '/' . $message_id),
-			intval($message_id)
-		);
-	}
+	//if($message_id) {
+	//	q("update item set plink = '%s' where id = %d limit 1",
+	//		dbesc($a->get_baseurl() . '/display/' . $importer['nickname'] . '/' . $message_id),
+	//		intval($message_id)
+	//	);
+	//}
 
 	return;
 
@@ -1134,17 +1142,20 @@ function diaspora_asphoto($importer,$xml,$msg) {
 		return;
 	}
 
+	$plink = 'https://'.substr($diaspora_handle,strpos($diaspora_handle,'@')+1).'/posts/'.$guid;
+
 	$datarray = array();
 
-	
 	$datarray['uid'] = $importer['uid'];
 	$datarray['contact-id'] = $contact['id'];
 	$datarray['wall'] = 0;
+	$datarray['network']  = NETWORK_DIASPORA;
 	$datarray['guid'] = $guid;
 	$datarray['uri'] = $datarray['parent-uri'] = $message_id;
 	$datarray['created'] = $datarray['edited'] = datetime_convert('UTC','UTC',$created);
 	$datarray['private'] = $private;
 	$datarray['parent'] = 0;
+	$datarray['plink'] = $plink;
 	$datarray['owner-name'] = $contact['name'];
 	$datarray['owner-link'] = $contact['url'];
 	//$datarray['owner-avatar'] = $contact['thumb'];
@@ -1153,17 +1164,17 @@ function diaspora_asphoto($importer,$xml,$msg) {
 	$datarray['author-link'] = $contact['url'];
 	$datarray['author-avatar'] = $contact['thumb'];
 	$datarray['body'] = $body;
-	
+
 	$datarray['app']  = 'Diaspora/Cubbi.es';
 
 	$message_id = item_store($datarray);
 
-	if($message_id) {
-		q("update item set plink = '%s' where id = %d limit 1",
-			dbesc($a->get_baseurl() . '/display/' . $importer['nickname'] . '/' . $message_id),
-			intval($message_id)
-		);
-	}
+	//if($message_id) {
+	//	q("update item set plink = '%s' where id = %d limit 1",
+	//		dbesc($a->get_baseurl() . '/display/' . $importer['nickname'] . '/' . $message_id),
+	//		intval($message_id)
+	//	);
+	//}
 
 	return;
 
@@ -1312,6 +1323,7 @@ function diaspora_comment($importer,$xml,$msg) {
 	$datarray['contact-id'] = $contact['id'];
 	$datarray['type'] = 'remote-comment';
 	$datarray['wall'] = $parent_item['wall'];
+	$datarray['network']  = NETWORK_DIASPORA;
 	$datarray['gravity'] = GRAVITY_COMMENT;
 	$datarray['guid'] = $guid;
 	$datarray['uri'] = $message_id;
@@ -1332,7 +1344,7 @@ function diaspora_comment($importer,$xml,$msg) {
 	$datarray['tag'] = $str_tags;
 
 	// We can't be certain what the original app is if the message is relayed.
-	if(($parent_item['origin']) && (! $parent_author_signature)) 
+	if(($parent_item['origin']) && (! $parent_author_signature))
 		$datarray['app']  = 'Diaspora';
 
 	$message_id = item_store($datarray);
@@ -1894,6 +1906,7 @@ EOT;
 	$arr['uri'] = $uri;
 	$arr['uid'] = $importer['uid'];
 	$arr['guid'] = $guid;
+	$arr['network']  = NETWORK_DIASPORA;
 	$arr['contact-id'] = $contact['id'];
 	$arr['type'] = 'activity';
 	$arr['wall'] = $parent_item['wall'];
@@ -1909,7 +1922,7 @@ EOT;
 	$arr['author-name'] = $person['name'];
 	$arr['author-link'] = $person['url'];
 	$arr['author-avatar'] = ((x($person,'thumb')) ? $person['thumb'] : $person['photo']);
-	
+
 	$ulink = '[url=' . $contact['url'] . ']' . $contact['name'] . '[/url]';
 	$alink = '[url=' . $parent_item['author-link'] . ']' . $parent_item['author-name'] . '[/url]';
 	$plink = '[url=' . $a->get_baseurl() . '/display/' . $importer['nickname'] . '/' . $parent_item['id'] . ']' . $post_type . '[/url]';
@@ -2667,16 +2680,15 @@ function diaspora_transmit($owner,$contact,$slap,$public_batch,$queue_run=false)
 		$return_code = 0;
 	}
 	else {
-		if(! intval(get_config('system','diaspora_test'))) {
+		if (!intval(get_config('system','diaspora_test'))) {
 			post_url($dest_url . '/', $slap);
 			$return_code = $a->get_curl_code();
-		}
-		else {
+		} else {
 			logger('diaspora_transmit: test_mode');
 			return 200;
 		}
 	}
-	
+
 	logger('diaspora_transmit: ' . $logid . ' returns: ' . $return_code);
 
 	if((! $return_code) || (($return_code == 503) && (stristr($a->get_curl_headers(),'retry-after')))) {

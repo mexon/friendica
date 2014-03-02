@@ -184,6 +184,8 @@ CREATE TABLE IF NOT EXISTS `contact` (
   `profile-id` int(11) NOT NULL DEFAULT '0' COMMENT 'which profile to display - 0 is public default',
   `bdyear` char(4) NOT NULL COMMENT 'birthday notify flag',
   `bd` date NOT NULL,
+  `notify_new_posts` TINYINT(1) NOT NULL DEFAULT '0',
+  `fetch_further_information` TINYINT(1) NOT NULL DEFAULT '0',
   PRIMARY KEY (`id`),
   KEY `uid` (`uid`),
   KEY `self` (`self`),
@@ -562,6 +564,7 @@ CREATE TABLE IF NOT EXISTS `item` (
   `forum_mode` tinyint(1) NOT NULL DEFAULT '0',
   `mention` tinyint(1) NOT NULL DEFAULT '0',
   `last-child` tinyint(1) unsigned NOT NULL DEFAULT '1',
+  `network` char(32) NOT NULL,
   PRIMARY KEY (`id`),
   KEY `uri` (`uri`),
   KEY `uid` (`uid`),
@@ -593,6 +596,7 @@ CREATE TABLE IF NOT EXISTS `item` (
   KEY `mention` (`mention`),
   KEY `resource-id` (`resource-id`),
   KEY `event_id` (`event-id`),
+  KEY `network` (`network`),
   FULLTEXT KEY `title` (`title`),
   FULLTEXT KEY `body` (`body`),
   FULLTEXT KEY `allow_cid` (`allow_cid`),
@@ -1153,4 +1157,38 @@ CREATE TABLE IF NOT EXISTS `tag` (
   `link` char(255) NOT NULL,
   PRIMARY KEY (`iid`, `tag`),
   KEY `tag` (`tag`)
+) ENGINE=MyISAM DEFAULT CHARSET=utf8;
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `push_subscriber`
+--
+
+CREATE TABLE IF NOT EXISTS `push_subscriber` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `uid` int(11) NOT NULL,
+  `callback_url` char(255) NOT NULL,
+  `topic` char(255) NOT NULL,
+  `nickname` char(255) NOT NULL,
+  `push` int(11) NOT NULL,
+  `last_update` datetime NOT NULL,
+  `secret` char(255) NOT NULL,
+  PRIMARY KEY (`id`)
+) ENGINE=MyISAM DEFAULT CHARSET=utf8;
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `unique_contacts`
+--
+
+CREATE TABLE IF NOT EXISTS `unique_contacts` (
+  `id` INT NOT NULL AUTO_INCREMENT,
+  `url` CHAR(255) NOT NULL,
+  `nick` CHAR(255) NOT NULL,
+  `name` CHAR(255) NOT NULL,
+  `avatar` CHAR(255) NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `url` (`url`)
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8;

@@ -12,9 +12,9 @@ require_once('library/Mobile_Detect/Mobile_Detect.php');
 require_once('include/features.php');
 
 define ( 'FRIENDICA_PLATFORM',     'Friendica');
-define ( 'FRIENDICA_VERSION',      '3.1.1743' );
+define ( 'FRIENDICA_VERSION',      '3.2.1748' );
 define ( 'DFRN_PROTOCOL_VERSION',  '2.23'    );
-define ( 'DB_UPDATE_VERSION',      1163      );
+define ( 'DB_UPDATE_VERSION',      1169      );
 define ( 'EOL',                    "<br />\r\n"     );
 define ( 'ATOM_TIME',              'Y-m-d\TH:i:s\Z' );
 
@@ -139,6 +139,9 @@ define ( 'NETWORK_LINKEDIN',         'lnkd');    // LinkedIn
 define ( 'NETWORK_XMPP',             'xmpp');    // XMPP
 define ( 'NETWORK_MYSPACE',          'mysp');    // MySpace
 define ( 'NETWORK_GPLUS',            'goog');    // Google+
+define ( 'NETWORK_PUMPIO',           'pump');    // pump.io
+define ( 'NETWORK_TWITTER',          'twit');    // Twitter
+define ( 'NETWORK_DIASPORA2',        'dspc');    // Diaspora connector
 
 define ( 'NETWORK_PHANTOM',          'unkn');    // Place holder
 
@@ -161,6 +164,9 @@ $netgroup_ids = array(
 	NETWORK_XMPP     => (-10),
 	NETWORK_MYSPACE  => (-11),
 	NETWORK_GPLUS    => (-12),
+	NETWORK_PUMPIO   => (-13),
+	NETWORK_TWITTER  => (-14),
+	NETWORK_DIASPORA2 => (-15),
 
 	NETWORK_PHANTOM  => (-127),
 );
@@ -193,6 +199,7 @@ define ( 'NOTIFY_PROFILE',  0x0040 );
 define ( 'NOTIFY_TAGSELF',  0x0080 );
 define ( 'NOTIFY_TAGSHARE', 0x0100 );
 define ( 'NOTIFY_POKE',     0x0200 );
+define ( 'NOTIFY_SHARE',    0x0400 );
 
 define ( 'NOTIFY_SYSTEM',   0x8000 );
 
@@ -285,7 +292,7 @@ define ( 'GRAVITY_COMMENT',      6);
  */
 
 function startup() {
-	
+
 	error_reporting(E_ERROR | E_WARNING | E_PARSE);
 
 	set_time_limit(0);
@@ -385,11 +392,14 @@ if(! class_exists('App')) {
 			'stylesheet' => '',
 			'template_engine' => 'smarty3',
 		);
-		
+
 		// array of registered template engines ('name'=>'class name')
 		public $template_engines = array();
 		// array of instanced template engines ('name'=>'instance')
 		public $template_engine_instance = array();
+
+		// Used for reducing load to the ostatus completion
+		public $last_ostatus_conversation_url;
 
 		private $ldelim = array(
 			'internal' => '',
@@ -416,6 +426,9 @@ if(! class_exists('App')) {
 		function __construct() {
 
 			global $default_timezone, $argv, $argc;
+
+			if (file_exists(".htpreconfig.php"))
+				@include(".htpreconfig.php");
 
 			$this->timezone = ((x($default_timezone)) ? $default_timezone : 'UTC');
 
@@ -450,7 +463,7 @@ if(! class_exists('App')) {
 			if(x($_SERVER,'HTTPS') && $_SERVER['HTTPS'])
 				$this->scheme = 'https';
 			elseif(x($_SERVER,'SERVER_PORT') && (intval($_SERVER['SERVER_PORT']) == 443))
-			$this->scheme = 'https';
+				$this->scheme = 'https';
 
 			if(x($_SERVER,'SERVER_NAME')) {
 				$this->hostname = $_SERVER['SERVER_NAME'];
@@ -475,13 +488,17 @@ if(! class_exists('App')) {
 				if(isset($path) && strlen($path) && ($path != $this->path))
 					$this->path = $path;
 			}
+
+			if ($hostname != "")
+				$this->hostname = $hostname;
+
 			if (is_array($argv) && $argc>1 && substr(end($argv), 0, 4)=="http" ) {
 				$this->set_baseurl(array_pop($argv) );
 				$argc --;
 			}
 
 			set_include_path("include/$this->hostname" . PATH_SEPARATOR . get_include_path());
-            
+
 			if((x($_SERVER,'QUERY_STRING')) && substr($_SERVER['QUERY_STRING'],0,2) === "q=") {
 				$this->query_string = substr($_SERVER['QUERY_STRING'],2);
 				// removing trailing / - maybe a nginx problem
@@ -547,7 +564,7 @@ if(! class_exists('App')) {
 			$mobile_detect = new Mobile_Detect();
 			$this->is_mobile = $mobile_detect->isMobile();
 			$this->is_tablet = $mobile_detect->isTablet();
-			
+
 			/**
 			 * register template engines
 			 */
@@ -557,7 +574,7 @@ if(! class_exists('App')) {
 					$this->register_template_engine($k);
 				}
 			}
-			
+
 		}
 
 		function get_basepath() {
@@ -637,7 +654,7 @@ if(! class_exists('App')) {
 			$this->pager['itemspage'] = ((intval($n) > 0) ? intval($n) : 0);
 			$this->pager['start'] = ($this->pager['page'] * $this->pager['itemspage']) - $this->pager['itemspage'];
 		}
-		
+
 		function set_pager_page($n) {
 			$this->pager['page'] = $n;
 			$this->pager['start'] = ($this->pager['page'] * $this->pager['itemspage']) - $this->pager['itemspage'];
@@ -778,7 +795,7 @@ if(! class_exists('App')) {
 					$template_engine = $this->theme['template_engine'];
 				}
 			}
-			
+
 			if (isset($this->template_engines[$template_engine])){
 				if(isset($this->template_engine_instance[$template_engine])){
 					return $this->template_engine_instance[$template_engine];
@@ -789,7 +806,7 @@ if(! class_exists('App')) {
 					return $obj;
 				}
 			}
-			
+
 			echo "template engine <tt>$template_engine</tt> is not registered!\n"; killme();
 		}
 
@@ -832,6 +849,7 @@ if(! class_exists('App')) {
 			//$this->performance["markstart"] -= microtime(true) - $this->performance["marktime"];
 			$this->performance["markstart"] = microtime(true) - $this->performance["markstart"] - $this->performance["marktime"];
 		}
+
 	}
 }
 
@@ -1013,7 +1031,7 @@ if(! function_exists('update_db')) {
 								));
 								$subject=sprintf(t('Update Error at %s'), $a->get_baseurl());
 								require_once('include/email.php');
-								$subject = email_header_encode($subject,'UTF-8');	
+								$subject = email_header_encode($subject,'UTF-8');
 								mail($a->config['admin_email'], $subject, $email_msg,
 									'From: ' . 'Administrator' . '@' . $_SERVER['SERVER_NAME'] . "\n"
 									. 'Content-type: text/plain; charset=UTF-8' . "\n"
@@ -1025,7 +1043,7 @@ if(! function_exists('update_db')) {
 							else {
 								set_config('database','update_' . $x, 'success');
 								set_config('system','build', $x + 1);
-							}								
+							}
 						}
 					}
 				}
@@ -1151,7 +1169,7 @@ if(! function_exists('login')) {
 	
 			'$lname'	 	=> array('username', t('Nickname or Email address: ') , '', ''),
 			'$lpassword' 	=> array('password', t('Password: '), '', ''),
-			'$lremember'	=> array('remember', t('Remember me'), 0, ''),
+			'$lremember'	=> array('remember', t('Remember me'), 0,  ''),
 	
 			'$openid'		=> !$noid,
 			'$lopenid'      => array('openid_url', t('Or login using OpenID: '),'',''),
@@ -1293,7 +1311,7 @@ if(! function_exists('profile_load')) {
 		$user = q("select uid from user where nickname = '%s' limit 1",
 			dbesc($nickname)
 		);
-		
+
 		if(! ($user && count($user))) {
 			logger('profile error: ' . $a->query_string, LOGGER_DEBUG);
 			notice( t('Requested account is not available.') . EOL );
@@ -1315,7 +1333,7 @@ if(! function_exists('profile_load')) {
 		}
 
 		$r = null;
-                          
+
 		if($profile) {
 			$profile_int = intval($profile);
 			$r = q("SELECT `profile`.`uid` AS `profile_uid`, `profile`.* , `contact`.`avatar-date` AS picdate, `user`.* FROM `profile`
@@ -1339,7 +1357,7 @@ if(! function_exists('profile_load')) {
 			$a->error = 404;
 			return;
 		}
-	
+
 		// fetch user tags if this isn't the default profile
 
 		if(! $r[0]['is-default']) {
@@ -1621,7 +1639,7 @@ if(! function_exists('get_birthdays')) {
 						$sparkle = " sparkle";
 						$url = $a->get_baseurl() . '/redir/'  . $rr['cid'];
 					}
-	
+
 					$rr['link'] = $url;
 					$rr['title'] = $rr['name'];
 					$rr['date'] = day_translate(datetime_convert('UTC', $a->timezone, $rr['start'], $rr['adjust'] ? $bd_format : $bd_short)) . (($today) ?  ' ' . t('[today]') : '');
@@ -1903,7 +1921,11 @@ if(! function_exists('feed_birthday')) {
 if(! function_exists('is_site_admin')) {
 	function is_site_admin() {
 		$a = get_app();
-		if(local_user() && x($a->user,'email') && x($a->config,'admin_email') && ($a->user['email'] === $a->config['admin_email']))
+
+		$adminlist = explode(",", str_replace(" ", "", $a->config['admin_email']));
+
+		//if(local_user() && x($a->user,'email') && x($a->config,'admin_email') && ($a->user['email'] === $a->config['admin_email']))
+		if(local_user() && x($a->user,'email') && x($a->config,'admin_email') && in_array($a->user['email'], $adminlist))
 			return true;
 		return false;
 	}
@@ -2153,6 +2175,7 @@ function clear_cache($basepath = "", $path = "") {
 	if ($cachetime == 0)
 		$cachetime = 86400;
 
+	if (is_writable($path)){
 	if ($dh = opendir($path)) {
 		while (($file = readdir($dh)) !== false) {
 			$fullpath = $path."/".$file;
@@ -2163,6 +2186,7 @@ function clear_cache($basepath = "", $path = "") {
 		}
 		closedir($dh);
 	}
+	}
 }
 
 function set_template_engine(&$a, $engine = 'internal') {
@@ -2172,3 +2196,9 @@ function set_template_engine(&$a, $engine = 'internal') {
 	$a->set_template_engine($engine);
 }
 
+if(!function_exists('exif_imagetype')) {
+        function exif_imagetype($file) {
+                $size = getimagesize($file);
+                return($size[2]);
+        }
+}

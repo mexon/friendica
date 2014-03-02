@@ -228,7 +228,7 @@
 .type-unkn  { background-position: -80px 0px; }
 
 .icon.drop, .icon.drophide {
- float: left;
+ float: right;
 }
 
 .icon {
@@ -858,6 +858,7 @@ nav #nav-directory-link,
 nav #nav-apps-link,
 nav #nav-site-linkmenu, 
 nav #nav-home-link,
+nav #nav-login-link,
 nav #nav-user-linkmenu
 {
   float: right;
@@ -865,18 +866,23 @@ nav #nav-user-linkmenu
 nav #nav-user-linkmenu{
 	margin-right: 0px;
 	}
-nav #nav-home-link, #nav-directory-link, #nav-apps-link{
+nav #nav-home-link, #nav-directory-link, #nav-login-link, #nav-apps-link{
 	margin-left: 0px;
 	margin-right: 0px;
 	font-weight: bold;
 	margin: 3px 5px;
-	font-size: 14px;
 	}
 nav #nav-directory-link{
-  margin-right: 0px;	
+  margin-right: 10px;	
 	}
+
+li#nav-site-linkmenu.nav-menu-icon{
+	display: none;
+}
+
 nav #nav-home-link{
-  margin-left: 0px;	
+   margin-left: 0px;	
+   display: none;
 	}
 nav #nav-help-link .menu-popup,
 nav #nav-search-link .menu-popup,
@@ -886,6 +892,7 @@ nav #nav-site-linkmenu .menu-popup {
   right: 0px;
   left: auto;
 }
+
 
 nav #nav-messages-linkmenu.on .icon.messages, nav #nav-messages-linkmenu.selected .icon.messages{
 	background-image: url("../../../view/theme/diabook/diabook-pink/icons/messages.png");
@@ -1245,6 +1252,9 @@ aside #login-extra-links{
   height: 22px;
   width: 22px;
 }
+#group-all-contacts{
+  overflow: auto;
+}
 .icon.text_add		{ 
 		background-image: url("../../../images/icons/16/add.png");
 		float: right;
@@ -1381,6 +1391,9 @@ body .pageheader{
   width: 173px;	
 	}
 #contact-edit-end {
+	}
+.contact-edit-submit{
+	display: block;
 	}
 .pager {
    padding: 10px;
@@ -1528,6 +1541,59 @@ body .pageheader{
   display: table;
   width: 780px;
 }
+.wall-item-container .wall-item-content .type-link img,
+.type-link img {
+  max-width: 160px;
+  max-height: 160px;
+  float: left;
+  margin-right: 10px;
+}
+.type-link blockquote {
+  margin-left: 160px;
+  max-height: 160px;
+  overflow: hidden;
+}
+.type-link .oembed {
+}
+
+.shared_header {
+  height: 32px;
+  color: #999;
+  border-top: 1px solid #D2D2D2;
+  padding-top: 5px;
+  margin-top: 5px;
+}
+
+.shared_header a {
+  color: black;
+  -webkit-transition: all 0.2s ease-in-out;
+  -moz-transition: all 0.2s ease-in-out;
+  -o-transition: all 0.2s ease-in-out;
+  -ms-transition: all 0.2s ease-in-out;
+  transition: all 0.2s ease-in-out;
+}
+
+.shared_header a:hover {
+  color: #36c;
+}
+
+.shared_header img {
+  -webkit-border-radius: 4px;
+  -moz-border-radius: 4px;
+  border-radius: 4px;
+  float: left;
+}
+
+.shared_header span {
+  margin-left: 9px;
+}
+
+blockquote.shared_content {
+  margin-left: 32px;
+  color: #000;
+  border: none;
+}
+
 .my-comment-photo {
   width: 48px;
   margin-left: 40px;
@@ -1743,6 +1809,17 @@ body .pageheader{
 	
 #jot-preview-content .tread-wrapper {
   background-color: #fff797;
+}
+
+span#jot-preview-link.tab.button{
+	float: right;
+	margin-left: 10px;
+	margin-right: 14px;
+	margin-top: 2px;
+	font-size: 11px;
+	font-weight: bolder;
+	cursor: pointer;
+	border: 0px;
 }
 
 .wall-item-tags {

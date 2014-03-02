@@ -50,8 +50,11 @@ function completeurl($url, $scheme) {
         return($complete);
 }
 
-function parseurl_getsiteinfo($url) {
+function parseurl_getsiteinfo($url, $no_guessing = false) {
 	$siteinfo = array();
+
+	$siteinfo["type"] = "link";
+
 	$ch = curl_init();
 	curl_setopt($ch, CURLOPT_URL, $url);
 	curl_setopt($ch, CURLOPT_HEADER, 1);
@@ -59,7 +62,7 @@ function parseurl_getsiteinfo($url) {
 	curl_setopt($ch, CURLOPT_TIMEOUT, 3);
 	curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
 	//curl_setopt($ch, CURLOPT_FOLLOWLOCATION, 1);
-	curl_setopt($ch,CURLOPT_USERAGENT,'Opera/9.64(Windows NT 5.1; U; de) Presto/2.1.1');
+	curl_setopt($ch,CURLOPT_USERAGENT,' Mozilla/5.0 (Macintosh; Intel Mac OS X 10.8; rv:24.0) Gecko/20100101 Firefox/24.0');
 
 	$header = curl_exec($ch);
 	$curl_info = @curl_getinfo($ch);
@@ -73,6 +76,19 @@ function parseurl_getsiteinfo($url) {
 		else
 			$siteinfo = parseurl_getsiteinfo($curl_info['location']);
 		return($siteinfo);
+	}
+
+	require_once("include/oembed.php");
+
+	$oembed_data = oembed_fetch_url($url);
+
+	if ($oembed_data->type == "link") {
+		if (isset($oembed_data->title))
+			$siteinfo["title"] = $oembed_data->title;
+		if (isset($oembed_data->description))
+			$siteinfo["text"] = trim($oembed_data->description);
+		if (isset($oembed_data->thumbnail_url))
+			$siteinfo["image"] = $oembed_data->thumbnail_url;
 	}
 
 	// Fetch the first mentioned charset. Can be in body or header
@@ -143,7 +159,7 @@ function parseurl_getsiteinfo($url) {
                         foreach ($node->attributes as $attribute)
                                 $attr[$attribute->name] = $attribute->value;
 
-		$attr["content"] = html_entity_decode($attr["content"], ENT_QUOTES, "UTF-8");
+		$attr["content"] = trim(html_entity_decode($attr["content"], ENT_QUOTES, "UTF-8"));
 
 		switch (strtolower($attr["name"])) {
 			case "fulltitle":
@@ -151,6 +167,18 @@ function parseurl_getsiteinfo($url) {
 				break;
 			case "description":
 				$siteinfo["text"] = $attr["content"];
+				break;
+			case "twitter:image":
+				$siteinfo["image"] = $attr["content"];
+				break;
+			case "twitter:card":
+				$siteinfo["type"] = $attr["content"];
+				break;
+			case "twitter:description":
+				$siteinfo["text"] = $attr["content"];
+				break;
+			case "twitter:title":
+				$siteinfo["title"] = $attr["content"];
 				break;
 			case "dc.title":
 				$siteinfo["title"] = $attr["content"];
@@ -169,7 +197,7 @@ function parseurl_getsiteinfo($url) {
                         foreach ($node->attributes as $attribute)
                                 $attr[$attribute->name] = $attribute->value;
 
-		$attr["content"] = html_entity_decode($attr["content"], ENT_QUOTES, "UTF-8");
+		$attr["content"] = trim(html_entity_decode($attr["content"], ENT_QUOTES, "UTF-8"));
 
 		switch (strtolower($attr["property"])) {
 			case "og:image":
@@ -184,7 +212,7 @@ function parseurl_getsiteinfo($url) {
 		}
 	}
 
-	if (@$siteinfo["image"] == "") {
+	if ((@$siteinfo["image"] == "") AND !$no_guessing) {
             $list = $xpath->query("//img[@src]");
             foreach ($list as $node) {
                 $attr = array();
@@ -223,7 +251,7 @@ function parseurl_getsiteinfo($url) {
 							"height"=>$photodata[1]);
 	}
 
-	if (@$siteinfo["text"] == "") {
+	if ((@$siteinfo["text"] == "") AND (@$siteinfo["title"] != "") AND !$no_guessing) {
 		$text = "";
 
 		$list = $xpath->query("//div[@class='article']");
@@ -252,7 +280,7 @@ function parseurl_getsiteinfo($url) {
 			while (strpos($text, "  "))
 				$text = trim(str_replace("  ", " ", $text));
 
-			$siteinfo["text"] = html_entity_decode(substr($text,0,350), ENT_QUOTES, "UTF-8").'...';
+			$siteinfo["text"] = trim(html_entity_decode(substr($text,0,350), ENT_QUOTES, "UTF-8").'...');
 		}
 	}
 
@@ -298,9 +326,9 @@ function parse_url_content(&$a) {
 	logger('parse_url: ' . $url);
 
 	if($textmode)
-		$template = $br . '[bookmark=%s]%s[/bookmark]%s' . $br;
+		$template = '[bookmark=%s]%s[/bookmark]%s';
 	else
-		$template = "<br /><a class=\"bookmark\" href=\"%s\" >%s</a>%s<br />";
+		$template = "<a class=\"bookmark\" href=\"%s\" >%s</a>%s";
 
 	$arr = array('url' => $url, 'text' => '');
 
@@ -314,12 +342,14 @@ function parse_url_content(&$a) {
 
 	if($url && $title && $text) {
 
-		if($textmode)
-			$text = $br . '[quote]' . trim($text) . '[/quote]' . $br;
-		else
-			$text = '<br /><blockquote>' . trim($text) . '</blockquote><br />';
-
 		$title = str_replace(array("\r","\n"),array('',''),$title);
+
+		if($textmode)
+			$text = '[quote]' . trim($text) . '[/quote]' . $br;
+		else {
+			$text = '<blockquote>' . htmlspecialchars(trim($text)) . '</blockquote><br />';
+			$title = htmlspecialchars($title);
+		}
 
 		$result = sprintf($template,$url,($title) ? $title : $url,$text) . $str_tags;
 
@@ -331,8 +361,10 @@ function parse_url_content(&$a) {
 
 	$siteinfo = parseurl_getsiteinfo($url);
 
+	$sitedata = "";
+
 	if($siteinfo["title"] == "") {
-		echo sprintf($template,$url,$url,'') . $str_tags;
+		$sitedata .= sprintf($template,$url,$url,'') . $str_tags;
 		killme();
 	} else {
 		$text = $siteinfo["text"];
@@ -364,20 +396,28 @@ function parse_url_content(&$a) {
 
 	if(strlen($text)) {
 		if($textmode)
-			$text = $br.'[quote]'.trim($text).'[/quote]'.$br ;
+			$text = '[quote]'.trim($text).'[/quote]';
 		else
-			$text = '<br /><blockquote>'.trim($text).'</blockquote><br />';
+			$text = '<blockquote>'.htmlspecialchars(trim($text)).'</blockquote>';
 	}
 
-	if($image) {
+	if($image)
 		$text = $br.$br.$image.$text;
-	}
+	else
+		$text = $br.$text;
+
 	$title = str_replace(array("\r","\n"),array('',''),$title);
 
 	$result = sprintf($template,$url,($title) ? $title : $url,$text) . $str_tags;
 
 	logger('parse_url: returns: ' . $result);
 
-	echo trim($result);
+	$sitedata .=  trim($result);
+
+	if (($siteinfo["type"] != "photo"))
+		echo "[class=type-link]".$sitedata."[/class]";
+	else
+		echo "[class=type-photo]".$title.$br.$image."[/class]";
+
 	killme();
 }

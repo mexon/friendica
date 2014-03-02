@@ -4,10 +4,10 @@
 function get_theme_config_file($theme){
 	$a = get_app();
 	$base_theme = $a->theme_info['extends'];
-	
+
 	if (file_exists("view/theme/$theme/config.php")){
 		return "view/theme/$theme/config.php";
-	} 
+	}
 	if (file_exists("view/theme/$base_theme/config.php")){
 		return "view/theme/$base_theme/config.php";
 	}
@@ -15,6 +15,11 @@ function get_theme_config_file($theme){
 }
 
 function settings_init(&$a) {
+
+	if (function_exists("apc_delete")) {
+		$toDelete = new APCIterator('user', APC_ITER_VALUE);
+		apc_delete($toDelete);
+	}
 
 	// These lines provide the javascript needed by the acl selector
 
@@ -152,17 +157,17 @@ function settings_post(&$a) {
 
 	if(($a->argc > 1) && ($a->argv[1] == 'addon')) {
 		check_form_security_token_redirectOnErr('/settings/addon', 'settings_addon');
-		
+
 		call_hooks('plugin_settings_post', $_POST);
 		return;
 	}
 
 	if(($a->argc > 1) && ($a->argv[1] == 'connectors')) {
-		
+
 		check_form_security_token_redirectOnErr('/settings/connectors', 'settings_connectors');
-		
+
 		if(x($_POST, 'imap-submit')) {
-			
+
 			$mail_server       = ((x($_POST,'mail_server')) ? $_POST['mail_server'] : '');
 			$mail_port         = ((x($_POST,'mail_port')) ? $_POST['mail_port'] : '');
 			$mail_ssl          = ((x($_POST,'mail_ssl')) ? strtolower(trim($_POST['mail_ssl'])) : '');
@@ -254,7 +259,8 @@ function settings_post(&$a) {
 
 		$theme = ((x($_POST,'theme')) ? notags(trim($_POST['theme']))  : $a->user['theme']);
 		$mobile_theme = ((x($_POST,'mobile_theme')) ? notags(trim($_POST['mobile_theme']))  : '');
-		$nosmile = ((x($_POST,'nosmile')) ? intval($_POST['nosmile'])  : 0);  
+		$nosmile = ((x($_POST,'nosmile')) ? intval($_POST['nosmile'])  : 0);
+		$infinite_scroll = ((x($_POST,'infinite_scroll')) ? intval($_POST['infinite_scroll'])  : 0);
 		$browser_update   = ((x($_POST,'browser_update')) ? intval($_POST['browser_update']) : 0);
 		$browser_update   = $browser_update * 1000;
 		if($browser_update < 10000)
@@ -276,6 +282,7 @@ function settings_post(&$a) {
 		set_pconfig(local_user(),'system','itemspage_network', $itemspage_network);
 		set_pconfig(local_user(),'system','itemspage_mobile_network', $itemspage_mobile_network);
 		set_pconfig(local_user(),'system','no_smilies',$nosmile);
+		set_pconfig(local_user(),'system','infinite_scroll',$infinite_scroll);
 
 
 		if ($theme == $a->user['theme']){
@@ -291,21 +298,27 @@ function settings_post(&$a) {
 				dbesc($theme),
 				intval(local_user())
 		);
-	
+
 		call_hooks('display_settings_post', $_POST);
 		goaway($a->get_baseurl(true) . '/settings/display' );
 		return; // NOTREACHED
 	}
 
 	check_form_security_token_redirectOnErr('/settings', 'settings');
-	
+
+	if (x($_POST,'resend_relocate')) {
+		proc_run('php', 'include/notifier.php', 'relocate', local_user());
+		info(t("Relocate message has been send to your contacts"));
+		goaway($a->get_baseurl(true) . '/settings');
+	}
+
 	call_hooks('settings_post', $_POST);
 
-	if((x($_POST,'npassword')) || (x($_POST,'confirm'))) {
+	if((x($_POST,'password')) || (x($_POST,'confirm'))) {
 
-		$newpass = $_POST['npassword'];
-        $confirm = $_POST['confirm'];
-        $oldpass = hash('whirlpool', $_POST['opassword']);
+		$newpass = $_POST['password'];
+		$confirm = $_POST['confirm'];
+		$oldpass = hash('whirlpool', $_POST['opassword']);
 
 		$err = false;
 		if($newpass != $confirm ) {
@@ -318,7 +331,7 @@ function settings_post(&$a) {
 			$err = true;
         }
 
-        //  check if the old password was supplied correctly before 
+        //  check if the old password was supplied correctly before
         //  changing it to the new value
         $r = q("SELECT `password` FROM `user`WHERE `uid` = %d LIMIT 1", intval(local_user()));
         if( $oldpass != $r[0]['password'] ) {
@@ -339,7 +352,7 @@ function settings_post(&$a) {
 		}
 	}
 
-	
+
 	$username         = ((x($_POST,'username'))   ? notags(trim($_POST['username']))     : '');
 	$email            = ((x($_POST,'email'))      ? notags(trim($_POST['email']))        : '');
 	$timezone         = ((x($_POST,'timezone'))   ? notags(trim($_POST['timezone']))     : '');
@@ -365,7 +378,7 @@ function settings_post(&$a) {
 	$blocktags        = (((x($_POST,'blocktags')) && (intval($_POST['blocktags']) == 1)) ? 0: 1); // this setting is inverted!
 	$unkmail          = (((x($_POST,'unkmail')) && (intval($_POST['unkmail']) == 1)) ? 1: 0);
 	$cntunkmail       = ((x($_POST,'cntunkmail')) ? intval($_POST['cntunkmail']) : 0);
-	$suggestme        = ((x($_POST,'suggestme')) ? intval($_POST['suggestme'])  : 0);  
+	$suggestme        = ((x($_POST,'suggestme')) ? intval($_POST['suggestme'])  : 0);
 	$hide_friends     = (($_POST['hide-friends'] == 1) ? 1: 0);
 	$hidewall         = (($_POST['hidewall'] == 1) ? 1: 0);
 	$post_newfriend   = (($_POST['post_newfriend'] == 1) ? 1: 0);
@@ -407,20 +420,24 @@ function settings_post(&$a) {
 
 	if($email != $a->user['email']) {
 		$email_changed = true;
-        //  check for the correct password
-        $r = q("SELECT `password` FROM `user`WHERE `uid` = %d LIMIT 1", intval(local_user()));
-        $password = hash('whirlpool', $_POST['password']);
-        if ($password != $r[0]['password']) {
-            $err .= t('Wrong Password') . EOL;
-            $email = $a->user['email'];
-        }
-        //  check the email is valid
-        if(! valid_email($email))
-            $err .= t(' Not valid email.');
-        //  ensure new email is not the admin mail
-		if((x($a->config,'admin_email')) && (strcasecmp($email,$a->config['admin_email']) == 0)) {
-			$err .= t(' Cannot change to that email.');
+		//  check for the correct password
+		$r = q("SELECT `password` FROM `user`WHERE `uid` = %d LIMIT 1", intval(local_user()));
+		$password = hash('whirlpool', $_POST['mpassword']);
+		if ($password != $r[0]['password']) {
+			$err .= t('Wrong Password') . EOL;
 			$email = $a->user['email'];
+		}
+		//  check the email is valid
+		if(! valid_email($email))
+			$err .= t(' Not valid email.');
+		//  ensure new email is not the admin mail
+		//if((x($a->config,'admin_email')) && (strcasecmp($email,$a->config['admin_email']) == 0)) {
+		if(x($a->config,'admin_email')) {
+			$adminlist = explode(",", str_replace(" ", "", strtolower($a->config['admin_email'])));
+			if (in_array(strtolower($email), $adminlist)) {
+				$err .= t(' Cannot change to that email.');
+				$email = $a->user['email'];
+			}
 		}
 	}
 
@@ -529,7 +546,7 @@ function settings_post(&$a) {
 			dbesc(datetime_convert()),
 			intval(local_user())
 		);
-	}		
+	}
 
 	if(($old_visibility != $net_publish) || ($page_flags != $old_page_flags)) {
 		// Update global directory in background
@@ -554,7 +571,7 @@ function settings_post(&$a) {
 	goaway($a->get_baseurl(true) . '/settings' );
 	return; // NOTREACHED
 }
-		
+
 
 if(! function_exists('settings_content')) {
 function settings_content(&$a) {
@@ -581,7 +598,7 @@ function settings_content(&$a) {
 			$o .= replace_macros($tpl, array(
 				'$form_security_token' => get_form_security_token("settings_oauth"),
 				'$title'	=> t('Add application'),
-				'$submit'	=> t('Submit'),
+				'$submit'	=> t('Save Settings'),
 				'$cancel'	=> t('Cancel'),
 				'$name'		=> array('name', t('Name'), '', ''),
 				'$key'		=> array('key', t('Consumer Key'), '', ''),
@@ -691,7 +708,7 @@ function settings_content(&$a) {
 			'$form_security_token' => get_form_security_token("settings_features"),
 			'$title'	=> t('Additional Features'),
 			'$features' => $arr,
-			'$submit'   => t('Submit'),
+			'$submit'   => t('Save Settings'),
 		));
 		return $o;
 	}
@@ -760,7 +777,7 @@ function settings_content(&$a) {
 			'$mail_pubmail'	=> array('mail_pubmail', t('Send public posts to all email contacts:'), $mail_pubmail, ''),
 			'$mail_action'	=> array('mail_action',	 t('Action after import:'), $mail_action, '', array(0=>t('None'), /*1=>t('Delete'),*/ 2=>t('Mark as seen'), 3=>t('Move to folder'))),
 			'$mail_movetofolder'	=> array('mail_movetofolder',	 t('Move to folder:'), $mail_movetofolder, ''),
-			'$submit' => t('Submit'),
+			'$submit' => t('Save Settings'),
 
 			'$settings_connectors' => $settings_connectors
 		));
@@ -811,7 +828,7 @@ function settings_content(&$a) {
 		}
 		$theme_selected = (!x($_SESSION,'theme')? $default_theme : $_SESSION['theme']);
 		$mobile_theme_selected = (!x($_SESSION,'mobile-theme')? $default_mobile_theme : $_SESSION['mobile-theme']);
-		
+
 		$browser_update = intval(get_pconfig(local_user(), 'system','update_interval'));
 		$browser_update = (($browser_update == 0) ? 40 : $browser_update / 1000); // default if not set: 40 seconds
 
@@ -819,35 +836,38 @@ function settings_content(&$a) {
 		$itemspage_network = (($itemspage_network > 0 && $itemspage_network < 101) ? $itemspage_network : 40); // default if not set: 40 items
 		$itemspage_mobile_network = intval(get_pconfig(local_user(), 'system','itemspage_mobile_network'));
 		$itemspage_mobile_network = (($itemspage_mobile_network > 0 && $itemspage_mobile_network < 101) ? $itemspage_mobile_network : 20); // default if not set: 20 items
-		
+
 		$nosmile = get_pconfig(local_user(),'system','no_smilies');
 		$nosmile = (($nosmile===false)? '0': $nosmile); // default if not set: 0
 
+		$infinite_scroll = get_pconfig(local_user(),'system','infinite_scroll');
+		$infinite_scroll = (($infinite_scroll===false)? '0': $infinite_scroll); // default if not set: 0
 
 		$theme_config = "";
 		if( ($themeconfigfile = get_theme_config_file($theme_selected)) != null){
 			require_once($themeconfigfile);
 			$theme_config = theme_content($a);
 		}
-		
+
 		$tpl = get_markup_template("settings_display.tpl");
 		$o = replace_macros($tpl, array(
 			'$ptitle' 	=> t('Display Settings'),
 			'$form_security_token' => get_form_security_token("settings_display"),
-			'$submit' 	=> t('Submit'),
+			'$submit' 	=> t('Save Settings'),
 			'$baseurl' => $a->get_baseurl(true),
 			'$uid' => local_user(),
-		
+
 			'$theme'	=> array('theme', t('Display Theme:'), $theme_selected, '', $themes, true),
 			'$mobile_theme'	=> array('mobile_theme', t('Mobile Theme:'), $mobile_theme_selected, '', $mobile_themes, false),
 			'$ajaxint'   => array('browser_update',  t("Update browser every xx seconds"), $browser_update, t('Minimum of 10 seconds, no maximum')),
 			'$itemspage_network'   => array('itemspage_network',  t("Number of items to display per page:"), $itemspage_network, t('Maximum of 100 items')),
 			'$itemspage_mobile_network'   => array('itemspage_mobile_network',  t("Number of items to display per page when viewed from mobile device:"), $itemspage_mobile_network, t('Maximum of 100 items')),
 			'$nosmile'	=> array('nosmile', t("Don't show emoticons"), $nosmile, ''),
-			
+			'$infinite_scroll'	=> array('infinite_scroll', t("Infinite scroll"), $infinite_scroll, ''),
+
 			'$theme_config' => $theme_config,
 		));
-		
+
 		$tpl = get_markup_template("settings_display_end.tpl");
 		$a->page['end'] .= replace_macros($tpl, array(
 			'$theme'	=> array('theme', t('Display Theme:'), $theme_selected, '', $themes)
@@ -855,8 +875,8 @@ function settings_content(&$a) {
 
 		return $o;
 	}
-	
-	
+
+
 	/*
 	 * ACCOUNT SETTINGS
 	 */
@@ -1061,27 +1081,27 @@ function settings_content(&$a) {
 	$o .= replace_macros($stpl, array(
 		'$ptitle' 	=> t('Account Settings'),
 
-		'$submit' 	=> t('Submit'),
+		'$submit' 	=> t('Save Settings'),
 		'$baseurl' => $a->get_baseurl(true),
 		'$uid' => local_user(),
 		'$form_security_token' => get_form_security_token("settings"),
 		'$nickname_block' => $prof_addr,
-		
+
 		'$h_pass' 	=> t('Password Settings'),
-		'$password1'=> array('npassword', t('New Password:'), '', ''),
+		'$password1'=> array('password', t('New Password:'), '', ''),
 		'$password2'=> array('confirm', t('Confirm:'), '', t('Leave password fields blank unless changing')),
 		'$password3'=> array('opassword', t('Current Password:'), '', t('Your current password to confirm the changes')),
-		'$password4'=> array('password', t('Password:'), '', t('Your current password to confirm the changes')),
+		'$password4'=> array('mpassword', t('Password:'), '', t('Your current password to confirm the changes')),
 		'$oid_enable' => (! get_config('system','no_openid')),
 		'$openid'	=> $openid_field,
-		
+
 		'$h_basic' 	=> t('Basic Settings'),
 		'$username' => array('username',  t('Full Name:'), $username,''),
 		'$email' 	=> array('email', t('Email Address:'), $email, ''),
 		'$timezone' => array('timezone_select' , t('Your Timezone:'), select_timezone($timezone), ''),
 		'$defloc'	=> array('defloc', t('Default Post Location:'), $defloc, ''),
 		'$allowloc' => array('allow_location', t('Use Browser Location:'), ($a->user['allow_location'] == 1), ''),
-		
+
 
 		'$h_prv' 	=> t('Security and Privacy Settings'),
 
@@ -1137,6 +1157,10 @@ function settings_content(&$a) {
 		'$h_advn' => t('Advanced Account/Page Type Settings'),
 		'$h_descadvn' => t('Change the behaviour of this account for special situations'),
 		'$pagetype' => $pagetype,
+		
+		'$relocate' => t('Relocate'),
+		'$relocate_text' => t("If you have moved this profile from another server, and some of your contacts don't receive your updates, try pushing this button."),
+		'$relocate_button' => t("Resend relocate message to contacts"),
 		
 	));
 

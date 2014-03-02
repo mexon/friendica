@@ -21,7 +21,7 @@ if(! function_exists('replace_macros')) {
  * @return string substituted string
  */
 function replace_macros($s,$r) {
-	
+
 	$stamp1 = microtime(true);
 
 	$a = get_app();
@@ -55,7 +55,7 @@ function random_string($size = 64,$type = RANDOM_STRING_HEX) {
 
 if(! function_exists('notags')) {
 /**
- * This is our primary input filter. 
+ * This is our primary input filter.
  *
  * The high bit hack only involved some old IE browser, forget which (IE5/Mac?)
  * that had an XSS attack vector due to stripping the high-bit on an 8-bit character
@@ -218,14 +218,16 @@ function xmlify($str) {
 				break;
 		}	
 	}*/
-
+	/*
 	$buffer = mb_ereg_replace("&", "&amp;", $str);
 	$buffer = mb_ereg_replace("'", "&apos;", $buffer);
-	$buffer = mb_ereg_replace("\"", "&quot;", $buffer);
+	$buffer = mb_ereg_replace('"', "&quot;", $buffer);
 	$buffer = mb_ereg_replace("<", "&lt;", $buffer);
 	$buffer = mb_ereg_replace(">", "&gt;", $buffer);
-
+	*/
+	$buffer = htmlspecialchars($str, ENT_QUOTES);
 	$buffer = trim($buffer);
+	
 	return($buffer);
 }}
 
@@ -238,11 +240,13 @@ if(! function_exists('unxmlify')) {
 function unxmlify($s) {
 //	$ret = str_replace('&amp;','&', $s);
 //	$ret = str_replace(array('&lt;','&gt;','&quot;','&apos;'),array('<','>','"',"'"),$ret);
-	$ret = mb_ereg_replace('&amp;', '&', $s);
+	/*$ret = mb_ereg_replace('&amp;', '&', $s);
 	$ret = mb_ereg_replace('&apos;', "'", $ret);
 	$ret = mb_ereg_replace('&quot;', '"', $ret);
 	$ret = mb_ereg_replace('&lt;', "<", $ret);
 	$ret = mb_ereg_replace('&gt;', ">", $ret);
+	*/
+	$ret = htmlspecialchars_decode($s, ENT_QUOTES);
 	return $ret;	
 }}
 
@@ -278,12 +282,19 @@ function paginate_data(&$a, $count=null) {
 	$stripped = str_replace('q=','',$stripped);
 	$stripped = trim($stripped,'/');
 	$pagenum = $a->pager['page'];
+
+	if (($a->page_offset != "") AND !strstr($stripped, "&offset="))
+		$stripped .= "&offset=".urlencode($a->page_offset);
+	if (!strpos($stripped, "?")) {
+		if ($pos = strpos($stripped, "&"))
+			$stripped = substr($stripped, 0, $pos)."?".substr($stripped, $pos + 1);
+	}
+
 	$url = $a->get_baseurl() . '/' . $stripped;
 
-
 	$data = array();
-	function _l(&$d, $name, $url, $text, $class="") { 
-		
+	function _l(&$d, $name, $url, $text, $class="") {
+
 		$d[$name] = array('url'=>$url, 'text'=>$text, 'class'=>$class); 
 	}
 
@@ -301,7 +312,7 @@ function paginate_data(&$a, $count=null) {
 
 			_l($data, "first", $url."&page=1",  t('first'));
 
-			
+
 			$numpages = $a->pager['total'] / $a->pager['itemspage'];
 
 			$numstart = 1;
@@ -332,11 +343,11 @@ function paginate_data(&$a, $count=null) {
 
 			$lastpage = (($numpages > intval($numpages)) ? intval($numpages)+1 : $numpages);
 			_l($data, "last", $url."&page=$lastpage", t('last'));
-			
+
 			if(($a->pager['total'] - ($a->pager['itemspage'] * $a->pager['page'])) > 0)
 				_l($data, "next", $url."&page=".($a->pager['page'] + 1), t('next'));
 
-		}	
+		}
 	}
 	return $data;
 
@@ -359,7 +370,7 @@ if(! function_exists('paginate')) {
  * @return string html for pagination #FIXME remove html
  */
 function paginate(&$a) {
-	
+
 	$data = paginate_data($a);
 	$tpl = get_markup_template("paginate.tpl");
 	return replace_macros($tpl, array("pager" => $data));
@@ -378,14 +389,14 @@ function alt_pager(&$a, $i) {
 	$data = paginate_data($a, $i);
 	$tpl = get_markup_template("paginate.tpl");
 	return replace_macros($tpl, array('pager' => $data));
-	
+
 }}
 
 
 if(! function_exists('expand_acl')) {
 /**
  * Turn user/group ACLs stored as angle bracketed text into arrays
- * 
+ *
  * @param string $s
  * @return array
  */
@@ -957,7 +968,7 @@ if(! function_exists('linkify')) {
  * @param string $s
  */
 function linkify($s) {
-	$s = preg_replace("/(https?\:\/\/[a-zA-Z0-9\:\/\-\?\&\;\.\=\_\~\#\'\%\$\!\+]*)/", ' <a href="$1" target="external-link">$1</a>', $s);
+	$s = preg_replace("/(https?\:\/\/[a-zA-Z0-9\:\/\-\?\&\;\.\=\_\~\#\'\%\$\!\+]*)/", ' <a href="$1" target="_blank">$1</a>', $s);
 	$s = preg_replace("/\<(.*?)(src|href)=(.*?)\&amp\;(.*?)\>/ism",'<$1$2=$3&$4>',$s);
 	return($s);
 }}
@@ -1122,7 +1133,7 @@ function smilies($s, $sample = false) {
 		'<img class="smiley" src="' . $a->get_baseurl() . '/images/like.gif" alt=":like" />',
 		'<img class="smiley" src="' . $a->get_baseurl() . '/images/dislike.gif" alt=":dislike" />',
 		'<a href="http://friendica.com">~friendica <img class="smiley" src="' . $a->get_baseurl() . '/images/friendica-16.png" alt="~friendica" /></a>',
-		'<a href="http://friendica.com">red <img class="smiley" src="' . $a->get_baseurl() . '/images/rhash-16.png" alt="red" /></a>'
+		'<a href="http://redmatrix.me/">red <img class="smiley" src="' . $a->get_baseurl() . '/images/rhash-16.png" alt="red" /></a>'
 	);
 
 	$params = array('texts' => $texts, 'icons' => $icons, 'string' => $s);
@@ -1290,13 +1301,13 @@ function prepare_body(&$item,$attach = false) {
 				$tag["url"] = $searchpath.strtolower($tag["term"]);
 
 			if ($tag["type"] == TERM_HASHTAG) {
-				$hashtags[] = "#<a href=\"".$tag["url"]."\" target=\"external-link\">".$tag["term"]."</a>";
+				$hashtags[] = "#<a href=\"".$tag["url"]."\" target=\"_blank\">".$tag["term"]."</a>";
 				$prefix = "#";
 			} elseif ($tag["type"] == TERM_MENTION) {
-				$mentions[] = "@<a href=\"".$tag["url"]."\" target=\"external-link\">".$tag["term"]."</a>";
+				$mentions[] = "@<a href=\"".$tag["url"]."\" target=\"_blank\">".$tag["term"]."</a>";
 				$prefix = "@";
 			}
-			$tags[] = $prefix."<a href=\"".$tag["url"]."\" target=\"external-link\">".$tag["term"]."</a>";
+			$tags[] = $prefix."<a href=\"".$tag["url"]."\" target=\"_blank\">".$tag["term"]."</a>";
 		}
 	}
 
@@ -1407,7 +1418,7 @@ function prepare_body(&$item,$attach = false) {
 					$title = ((strlen(trim($mtch[4]))) ? escape_tags(trim($mtch[4])) : escape_tags($mtch[1]));
 					$title .= ' ' . $mtch[2] . ' ' . t('bytes');
 
-					$as .= '<a href="' . strip_tags($the_url) . '" title="' . $title . '" class="attachlink" target="external-link" >' . $icon . '</a>';
+					$as .= '<a href="' . strip_tags($the_url) . '" title="' . $title . '" class="attachlink" target="_blank" >' . $icon . '</a>';
 				}
 			}
 		}
@@ -1554,7 +1565,7 @@ if(! function_exists('feed_hublinks')) {
  * @return string hub link xml elements
  */
 function feed_hublinks() {
-
+	$a = get_app();
 	$hub = get_config('system','huburl');
 
 	$hubxml = '';
@@ -1565,6 +1576,8 @@ function feed_hublinks() {
 				$h = trim($h);
 				if(! strlen($h))
 					continue;
+				if ($h === '[internal]')
+					$h = $a->get_baseurl() . '/pubsubhubbub';
 				$hubxml .= '<link rel="hub" href="' . xmlify($h) . '" />' . "\n" ;
 			}
 		}
@@ -1599,16 +1612,19 @@ if(! function_exists('get_plink')) {
  * @return boolean|array False if item has not plink, otherwise array('href'=>plink url, 'title'=>translated title)
  */
 function get_plink($item) {
-	$a = get_app();	
-	if (x($item,'plink') && ($item['private'] != 1)) {
-		return array(
-			'href' => $item['plink'],
+	$a = get_app();
+	$ret = array(
+			'href' => $a->get_baseurl()."/display/".$a->user['nickname']."/".$item['id'],
 			'title' => t('link to source'),
 		);
-	} 
-	else {
-		return false;
-	}
+
+	$ret["orig"] = $ret["href"];
+
+	//if (x($item,'plink') && ($item['private'] != 1))
+	if (x($item,'plink'))
+		$ret["href"] = $item['plink'];
+
+	return($ret);
 }}
 
 if(! function_exists('unamp')) {

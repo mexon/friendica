@@ -197,6 +197,7 @@ function contact_photo_menu($contact) {
 	$status_link="";
 	$photos_link="";
 	$posts_link="";
+	$contact_drop_link = "";
 	$poke_link="";
 
 	$sparkle = false;
@@ -220,6 +221,8 @@ function contact_photo_menu($contact) {
 	$poke_link = $a->get_baseurl() . '/poke/?f=&c=' . $contact['id'];
 	$contact_url = $a->get_baseurl() . '/contacts/' . $contact['id'];
 	$posts_link = $a->get_baseurl() . '/network/0?nets=all&cid=' . $contact['id'];
+	$contact_drop_link = $a->get_baseurl() . "/contacts/" . $contact['id'] . '/drop?confirm=1';
+	
 
 	$menu = Array(
 		'poke' => array(t("Poke"), $poke_link),
@@ -228,6 +231,7 @@ function contact_photo_menu($contact) {
 		'photos' => array(t("View Photos"), $photos_link),		
 		'network' => array(t("Network Posts"), $posts_link), 
 		'edit' => array(t("Edit Contact"), $contact_url),
+		'drop' => array(t("Drop Contact"), $contact_drop_link),
 		'pm' => array(t("Send PM"), $pm_url),
 	);
 	

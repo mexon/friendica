@@ -1,6 +1,7 @@
 <?php
 
 require_once('include/email.php');
+require_once('include/bbcode.php');
 
 if(! function_exists('register_post')) {
 function register_post(&$a) {
@@ -23,7 +24,7 @@ function register_post(&$a) {
 
 	switch($a->config['register_policy']) {
 
-	
+
 	case REGISTER_OPEN:
 		$blocked = 0;
 		$verified = 1;
@@ -118,8 +119,11 @@ function register_post(&$a) {
 			dbesc($lang)
 		);
 
+		$adminlist = explode(",", str_replace(" ", "", $a->config['admin_email']));
+
 		$r = q("SELECT `language` FROM `user` WHERE `email` = '%s' LIMIT 1",
-			dbesc($a->config['admin_email'])
+			//dbesc($a->config['admin_email'])
+			dbesc($adminlist[0])
 		);
 		if(count($r))
 			push_lang($r[0]['language']);
@@ -260,7 +264,7 @@ function register_content(&$a) {
 		'$realpeople' => $realpeople,
 		'$regtitle'  => t('Registration'),
 		'$registertext' =>((x($a->config,'register_text'))
-			? '<div class="error-message">' . $a->config['register_text'] . '</div>'
+			? bbcode($a->config['register_text'])
 			: "" ),
 		'$fillwith'  => $fillwith,
 		'$fillext'   => $fillext,
@@ -278,7 +282,9 @@ function register_content(&$a) {
 		'$nickname'  => $nickname,
 		'$license'   => $license,
 		'$sitename'  => $a->get_hostname(),
-      
+		'$importh'   => t('Import'),
+		'$importt'   => t('Import your profile to this friendica instance'),
+
 	));
 	return $o;
 

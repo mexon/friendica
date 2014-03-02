@@ -554,7 +554,7 @@ function fetch_lrdd_template($host) {
 	}
 	if(count($links)) {
 		foreach($links as $link)
-			if($link['@attributes']['rel'] && $link['@attributes']['rel'] === 'lrdd')
+			if($link['@attributes']['rel'] && $link['@attributes']['rel'] === 'lrdd' && (!$link['@attributes']['type'] || $link['@attributes']['type'] === 'application/xrd+xml'))
 				$tpl = $link['@attributes']['template'];
 	}
 	if(! strpos($tpl,'{uri}'))
@@ -571,7 +571,7 @@ function fetch_xrd_links($url) {
 
 	$xrd_timeout = intval(get_config('system','xrd_timeout'));
 	$redirects = 0;
-	$xml = fetch_url($url,false,$redirects,(($xrd_timeout) ? $xrd_timeout : 20));
+	$xml = fetch_url($url,false,$redirects,(($xrd_timeout) ? $xrd_timeout : 20), "application/xrd+xml");
 
 	logger('fetch_xrd_links: ' . $xml, LOGGER_DATA);
 
@@ -622,7 +622,6 @@ function fetch_xrd_links($url) {
 
 if(! function_exists('validate_url')) {
 function validate_url(&$url) {
-
 	// no naked subdomains (allow localhost for tests)
 	if(strpos($url,'.') === false && strpos($url,'/localhost/') === false)
 		return false;
@@ -788,7 +787,7 @@ function add_fcontact($arr,$update = false) {
 			`alias` = '%s',
 			`pubkey` = '%s',
 			`updated` = '%s'
-			WHERE `url` = '%s' AND `network` = '%s' LIMIT 1", 
+			WHERE `url` = '%s' AND `network` = '%s'",
 			dbesc($arr['name']),
 			dbesc($arr['photo']),
 			dbesc($arr['request']),
@@ -831,6 +830,10 @@ function add_fcontact($arr,$update = false) {
 
 
 function scale_external_images($srctext, $include_link = true, $scale_replace = false) {
+
+	// Suppress "view full size"
+	if (intval(get_config('system','no_view_full_size')))
+		$include_link = false;
 
 	$a = get_app();
 

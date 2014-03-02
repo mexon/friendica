@@ -487,7 +487,6 @@ function conversation(&$a, $items, $mode, $update, $preview = false) {
 	$alike = array();
 	$dlike = array();
 
-
 	// array with html for each thread (parent+comments)
 	$threads = array();
 	$threadsid = -1;
@@ -505,6 +504,7 @@ function conversation(&$a, $items, $mode, $update, $preview = false) {
 			$tpl = 'search_item.tpl';
 
 			foreach($items as $item) {
+
 				if($arr_blocked) {
 					$blocked = false;
 					foreach($arr_blocked as $b) {
@@ -516,7 +516,7 @@ function conversation(&$a, $items, $mode, $update, $preview = false) {
 					if($blocked)
 						continue;
 				}
-							
+
 
 				$threadsid++;
 
@@ -558,13 +558,13 @@ function conversation(&$a, $items, $mode, $update, $preview = false) {
 						$tag["url"] = $searchpath.strtolower($tag["term"]);
 
 					if ($tag["type"] == TERM_HASHTAG) {
-						$hashtags[] = "#<a href=\"".$tag["url"]."\" target=\"external-link\">".$tag["term"]."</a>";
+						$hashtags[] = "#<a href=\"".$tag["url"]."\" target=\"_blank\">".$tag["term"]."</a>";
 						$prefix = "#";
 					} elseif ($tag["type"] == TERM_MENTION) {
-						$mentions[] = "@<a href=\"".$tag["url"]."\" target=\"external-link\">".$tag["term"]."</a>";
+						$mentions[] = "@<a href=\"".$tag["url"]."\" target=\"_blank\">".$tag["term"]."</a>";
 						$prefix = "@";
 					}
-					$tags[] = $prefix."<a href=\"".$tag["url"]."\" target=\"external-link\">".$tag["term"]."</a>";
+					$tags[] = $prefix."<a href=\"".$tag["url"]."\" target=\"_blank\">".$tag["term"]."</a>";
 				}
 
 				/*foreach(explode(',',$item['tag']) as $tag){
@@ -649,6 +649,7 @@ function conversation(&$a, $items, $mode, $update, $preview = false) {
 				$tmp_item = array(
 					'template' => $tpl,
 					'id' => (($preview) ? 'P0' : $item['item_id']),
+					'network' => $item['item_network'],
 					'linktitle' => sprintf( t('View %s\'s profile @ %s'), $profile_name, ((strlen($item['author-link'])) ? $item['author-link'] : $item['url'])),
 					'profile_url' => $profile_link,
 					'item_photo_menu' => item_photo_menu($item),
@@ -694,10 +695,10 @@ function conversation(&$a, $items, $mode, $update, $preview = false) {
 				call_hooks('display_item', $arr);
 
 				$threads[$threadsid]['id'] = $item['item_id'];
+				$threads[$threadsid]['network'] = $item['item_network'];
 				$threads[$threadsid]['items'] = array($arr['output']);
 
 			}
-
 		}
 		else
 		{
@@ -719,7 +720,7 @@ function conversation(&$a, $items, $mode, $update, $preview = false) {
 				if($arr_blocked) {
 					$blocked = false;
 					foreach($arr_blocked as $b) {
-						
+
 						if($b && link_compare($item['author-link'],$b)) {
 							$blocked = true;
 							break;
@@ -728,7 +729,7 @@ function conversation(&$a, $items, $mode, $update, $preview = false) {
 					if($blocked)
 						continue;
 				}
-							
+
 
 
 				// Can we put this after the visibility check?
@@ -754,6 +755,7 @@ function conversation(&$a, $items, $mode, $update, $preview = false) {
 			}
 
 			$threads = $conv->get_template_data($alike, $dlike);
+
 			if(!$threads) {
 				logger('[ERROR] conversation : Failed to get template data.', LOGGER_DEBUG);
 				$threads = array();

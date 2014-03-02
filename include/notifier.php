@@ -38,6 +38,7 @@ require_once('include/html2plain.php');
  *		tgroup					(in items.php)
  *		wall-new				(in photos.php, item.php)
  *		removeme				(in Contact.php)
+ * 		relocate				(in uimport.php)
  *
  * and ITEM_ID is the id of the item in the database that needs to be sent to others.
  */
@@ -663,7 +664,7 @@ function notifier_run(&$argv, &$argc){
 
 							// if contact's ssl policy changed, which we just determined
 							// is on our own server, update our contact links
-							
+
 							$ssl_policy = get_config('system','ssl_policy');
 							fix_contact_ssl_policy($x[0],$ssl_policy);
 
@@ -675,17 +676,15 @@ function notifier_run(&$argv, &$argc){
 							require_once('library/simplepie/simplepie.inc');
 							logger('mod-delivery: local delivery');
 							local_delivery($x[0],$atom);
-							break;					
+							break;
 						}
 					}
-
-
 
 					logger('notifier: dfrndelivery: ' . $contact['name']);
 					$deliver_status = dfrn_deliver($owner,$contact,$atom);
 
 					logger('notifier: dfrn_delivery returns ' . $deliver_status);
-	
+
 					if($deliver_status == (-1)) {
 						logger('notifier: delivery failed: queuing message');
 						// queue message for redelivery
@@ -881,12 +880,15 @@ function notifier_run(&$argv, &$argc){
 				case NETWORK_FACEBOOK:
 					if(get_config('system','dfrn_only'))
 						break;
+				case NETWORK_PUMPIO:
+					if(get_config('system','dfrn_only'))
+						break;
 				default:
 					break;
 			}
 		}
 	}
-		
+
 	// send additional slaps to mentioned remote tags (@foo@example.com)
 
 	if($slap && count($url_recipients) && ($followup || $top_level) && $public_message && (! $expire)) {
@@ -964,9 +966,18 @@ function notifier_run(&$argv, &$argc){
 					$h = trim($h);
 					if(! strlen($h))
 						continue;
-					$params = 'hub.mode=publish&hub.url=' . urlencode($a->get_baseurl() . '/dfrn_poll/' . $owner['nickname'] );
-					post_url($h,$params);
-					logger('pubsub: publish: ' . $h . ' ' . $params . ' returned ' . $a->get_curl_code());
+
+					if ($h === '[internal]') {
+						// Set push flag for PuSH subscribers to this topic,
+						// they will be notified in queue.php
+						q("UPDATE `push_subscriber` SET `push` = 1 " . 
+						  "WHERE `nickname` = '%s'", dbesc($owner['nickname']));
+					} else {
+
+						$params = 'hub.mode=publish&hub.url=' . urlencode( $a->get_baseurl() . '/dfrn_poll/' . $owner['nickname'] );
+						post_url($h,$params);
+						logger('pubsub: publish: ' . $h . ' ' . $params . ' returned ' . $a->get_curl_code());
+					}
 					if(count($hubs) > 1)
 						sleep(7);				// try and avoid multiple hubs responding at precisely the same time
 				}

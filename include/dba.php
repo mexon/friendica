@@ -93,11 +93,13 @@ class dba {
 		$stamp2 = microtime(true);
 		$duration = (float)($stamp2-$stamp1);
 
+		$a->save_timestamp($stamp1, "database");
+
 		if(x($a->config,'system') && x($a->config['system'],'db_log')) {
 			if (($duration > $a->config["system"]["db_loglimit"])) {
 				$duration = round($duration, 3);
 				$backtrace = debug_backtrace(DEBUG_BACKTRACE_IGNORE_ARGS);
-				@file_put_contents($a->config["system"]["db_log"], $duration."\t".
+				@file_put_contents($a->config["system"]["db_log"], datetime_convert()."\t".$duration."\t".
 						basename($backtrace[1]["file"])."\t".
 						$backtrace[1]["line"]."\t".$backtrace[2]["function"]."\t".
 						substr($sql, 0, 2000)."\n", FILE_APPEND);
@@ -168,7 +170,7 @@ class dba {
 			}
 		}
 
-		$a->save_timestamp($stamp1, "database");
+		//$a->save_timestamp($stamp1, "database");
 
 		if($this->debug)
 			logger('dba: ' . printable(print_r($r, true)));

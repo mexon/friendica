@@ -31,7 +31,7 @@ function create_user($arr) {
 
 	$publish    = ((x($arr,'profile_publish_reg') && intval($arr['profile_publish_reg'])) ? 1 : 0);
 	$netpublish = ((strlen(get_config('system','directory_submit_url'))) ? $publish : 0);
-		
+
 	$tmp_str = $openid_url;
 
 	if($using_invites) {
@@ -60,7 +60,13 @@ function create_user($arr) {
 			$openid->returnUrl = $a->get_baseurl() . '/openid'; 
 			$openid->required = array('namePerson/friendly', 'contact/email', 'namePerson');
 			$openid->optional = array('namePerson/first','media/image/aspect11','media/image/default');
-			goaway($openid->authUrl());
+			try {			
+				$authurl = $openid->authUrl();
+			} catch (Exception $e){
+				$result['message'] .= t("We encountered a problem while logging in with the OpenID you provided. Please check the correct spelling of the ID."). EOL . EOL . t("The error message was:") . $e->getMessage() . EOL; 
+				return $result;
+			}
+			goaway($authurl);
 			// NOTREACHED	
 		}
 
@@ -90,7 +96,7 @@ function create_user($arr) {
 	//	$pat = (($no_utf) ? '/^[a-zA-Z]* [a-zA-Z]*$/' : '/^\p{L}* \p{L}*$/u' ); 
 
 	// So now we are just looking for a space in the full name. 
-	
+
 	$loose_reg = get_config('system','no_regfullname');
 	if(! $loose_reg) {
 		$username = mb_convert_case($username,MB_CASE_TITLE,'UTF-8');
@@ -104,11 +110,14 @@ function create_user($arr) {
 
 	if((! valid_email($email)) || (! validate_email($email)))
 		$result['message'] .= t('Not a valid email address.') . EOL;
-		
+
 	// Disallow somebody creating an account using openid that uses the admin email address,
 	// since openid bypasses email verification. We'll allow it if there is not yet an admin account.
 
-	if((x($a->config,'admin_email')) && (strcasecmp($email,$a->config['admin_email']) == 0) && strlen($openid_url)) {
+	$adminlist = explode(",", str_replace(" ", "", strtolower($a->config['admin_email'])));
+
+	//if((x($a->config,'admin_email')) && (strcasecmp($email,$a->config['admin_email']) == 0) && strlen($openid_url)) {
+	if((x($a->config,'admin_email')) && in_array(strtolower($email), $adminlist) && strlen($openid_url)) {
 		$r = q("SELECT * FROM `user` WHERE `email` = '%s' LIMIT 1",
 			dbesc($email)
 		);

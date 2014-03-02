@@ -99,7 +99,7 @@ function display_content(&$a, $update = 0) {
 		notice( t('Access to this profile has been restricted.') . EOL);
 		return;
 	}
-	
+
 	if ($is_owner) {
 		$celeb = ((($a->user['page-flags'] == PAGE_SOAPBOX) || ($a->user['page-flags'] == PAGE_COMMUNITY)) ? true : false);
 
@@ -123,7 +123,7 @@ function display_content(&$a, $update = 0) {
 	if($update) {
 
 		$r = q("SELECT id FROM item WHERE item.uid = %d
-		        AND `item`.`parent` = ( SELECT `parent` FROM `item` WHERE ( `id` = '%s' OR `uri` = '%s' ))
+		        AND `item`.`parent` = ( SELECT `parent` FROM `item` FORCE INDEX (PRIMARY, `uri`) WHERE ( `id` = '%s' OR `uri` = '%s' ))
 		        $sql_extra AND unseen = 1",
 		        intval($a->profile['uid']),
 		        dbesc($item_id),
@@ -134,7 +134,7 @@ function display_content(&$a, $update = 0) {
 			return '';
 	}
 
-	$r = q("SELECT `item`.*, `item`.`id` AS `item_id`, 
+	$r = q("SELECT `item`.*, `item`.`id` AS `item_id`,  `item`.`network` AS `item_network`,
 		`contact`.`name`, `contact`.`photo`, `contact`.`url`, `contact`.`rel`,
 		`contact`.`network`, `contact`.`thumb`, `contact`.`self`, `contact`.`writable`, 
 		`contact`.`id` AS `cid`, `contact`.`uid` AS `contact-uid`
@@ -142,7 +142,7 @@ function display_content(&$a, $update = 0) {
 		WHERE `item`.`uid` = %d AND `item`.`visible` = 1 AND `item`.`deleted` = 0
 		and `item`.`moderated` = 0
 		AND `contact`.`blocked` = 0 AND `contact`.`pending` = 0
-		AND `item`.`parent` = ( SELECT `parent` FROM `item` WHERE ( `id` = '%s' OR `uri` = '%s' )
+		AND `item`.`parent` = ( SELECT `parent` FROM `item` FORCE INDEX (PRIMARY, `uri`) WHERE ( `id` = '%s' OR `uri` = '%s' )
 		AND uid = %d )
 		$sql_extra
 		ORDER BY `parent` DESC, `gravity` ASC, `id` ASC ",
@@ -163,7 +163,7 @@ function display_content(&$a, $update = 0) {
 		if($r) {
 			$item_uri = $r[0]['uri'];
 
-			$r = q("SELECT `item`.*, `item`.`id` AS `item_id`, 
+			$r = q("SELECT `item`.*, `item`.`id` AS `item_id`,  `item`.`network` AS `item_network`,
 				`contact`.`name`, `contact`.`photo`, `contact`.`url`, `contact`.`rel`,
 				`contact`.`network`, `contact`.`thumb`, `contact`.`self`, `contact`.`writable`, 
 				`contact`.`id` AS `cid`, `contact`.`uid` AS `contact-uid`
@@ -171,7 +171,7 @@ function display_content(&$a, $update = 0) {
 				WHERE `item`.`uid` = %d AND `item`.`visible` = 1 AND `item`.`deleted` = 0
 				and `item`.`moderated` = 0
 				AND `contact`.`blocked` = 0 AND `contact`.`pending` = 0
-				AND `item`.`parent` = ( SELECT `parent` FROM `item` WHERE `uri` = '%s' AND uid = %d )
+				AND `item`.`parent` = ( SELECT `parent` FROM `item` FORCE INDEX (PRIMARY, `uri`) WHERE `uri` = '%s' AND uid = %d )
 				ORDER BY `parent` DESC, `gravity` ASC, `id` ASC ",
 				intval(local_user()),
 				dbesc($item_uri),
@@ -203,6 +203,10 @@ function display_content(&$a, $update = 0) {
 		$title = trim(html2plain(bbcode($r[0]["title"], false, false), 0, true));
 		$author_name = $r[0]["author-name"];
 
+		$image = "";
+		if ($image == "")
+			$image = $r[0]["thumb"];
+
 		if ($title == "")
 			$title = $author_name;
 
@@ -216,12 +220,27 @@ function display_content(&$a, $update = 0) {
 		$a->page['htmlhead'] .= '<meta name="fulltitle" content="'.$title.'" />'."\n";
 		$a->page['htmlhead'] .= '<meta name="description" content="'.$description.'" />'."\n";
 
+		// Schema.org microdata
+		$a->page['htmlhead'] .= '<meta itemprop="name" content="'.$title.'" />'."\n";
+		$a->page['htmlhead'] .= '<meta itemprop="description" content="'.$description.'" />'."\n";
+		$a->page['htmlhead'] .= '<meta itemprop="image" content="'.$image.'" />'."\n";
+		$a->page['htmlhead'] .= '<meta itemprop="author" content="'.$author_name.'" />'."\n";
+
+		// Twitter cards
+		$a->page['htmlhead'] .= '<meta name="twitter:card" content="summary" />'."\n";
+		$a->page['htmlhead'] .= '<meta name="twitter:title" content="'.$title.'" />'."\n";
+		$a->page['htmlhead'] .= '<meta name="twitter:description" content="'.$description.'" />'."\n";
+		$a->page['htmlhead'] .= '<meta name="twitter:image" content="'.$image.'" />'."\n";
+		$a->page['htmlhead'] .= '<meta name="twitter:url" content="'.$r[0]["plink"].'" />'."\n";
+
+		// Dublin Core
 		$a->page['htmlhead'] .= '<meta name="DC.title" content="'.$title.'" />'."\n";
 		$a->page['htmlhead'] .= '<meta name="DC.description" content="'.$description.'" />'."\n";
 
+		// Open Graph
 		$a->page['htmlhead'] .= '<meta property="og:type" content="website" />'."\n";
 		$a->page['htmlhead'] .= '<meta property="og:title" content="'.$title.'" />'."\n";
-		//<meta property="og:image" content="" />
+		$a->page['htmlhead'] .= '<meta property="og:image" content="'.$image.'" />'."\n";
 		$a->page['htmlhead'] .= '<meta property="og:url" content="'.$r[0]["plink"].'" />'."\n";
 		$a->page['htmlhead'] .= '<meta property="og:description" content="'.$description.'" />'."\n";
 		$a->page['htmlhead'] .= '<meta name="og:article:author" content="'.$author_name.'" />'."\n";

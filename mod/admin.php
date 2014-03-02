@@ -71,7 +71,7 @@ function admin_post(&$a){
 	}
 
 	goaway($a->get_baseurl(true) . '/admin' );
-	return; // NOTREACHED	
+	return; // NOTREACHED
 }
 
 /**
@@ -86,6 +86,11 @@ function admin_content(&$a) {
 
 	if(x($_SESSION,'submanage') && intval($_SESSION['submanage']))
 		return "";
+
+	if (function_exists("apc_delete")) {
+		$toDelete = new APCIterator('user', APC_ITER_VALUE);
+		apc_delete($toDelete);
+	}
 
 	/**
 	 * Side bar links
@@ -103,7 +108,7 @@ function admin_content(&$a) {
 
 	/* get plugins admin page */
 
-	$r = q("SELECT * FROM `addon` WHERE `plugin_admin`=1");
+	$r = q("SELECT name FROM `addon` WHERE `plugin_admin`=1");
 	$aside['plugins_admin']=Array();
 	foreach ($r as $h){
 		$plugin =$h['name'];
@@ -194,7 +199,7 @@ function admin_page_summary(&$a) {
 
 	$r = q("SELECT COUNT(id) as `count` FROM `register`");
 	$pending = $r[0]['count'];
-		
+
 	$r = q("select count(*) as total from deliverq where 1");
 	$deliverq = (($r) ? $r[0]['total'] : 0);
 
@@ -232,8 +237,73 @@ function admin_page_site_post(&$a){
 
 	check_form_security_token_redirectOnErr('/admin/site', 'admin_site');
 
+	// relocate
+	if (x($_POST,'relocate') && x($_POST,'relocate_url') && $_POST['relocate_url']!=""){
+		$new_url = $_POST['relocate_url'];
+		$new_url = rtrim($new_url,"/");
+		
+		$parsed = @parse_url($new_url);
+		if (!$parsed || (!x($parsed,'host') || !x($parsed,'scheme'))) {
+			notice(t("Can not parse base url. Must have at least <scheme>://<domain>"));
+			goaway($a->get_baseurl(true) . '/admin/site' );
+		}
+		
+		/* steps:
+		 * replace all "baseurl" to "new_url" in config, profile, term, items and contacts
+		 * send relocate for every local user
+		 * */
+		
+		$old_url = $a->get_baseurl(true);
+		
+		function update_table($table_name, $fields, $old_url, $new_url) {
+			global $db, $a;
+			
+			$dbold = dbesc($old_url);
+			$dbnew = dbesc($new_url);
+			
+			$upd = array();
+			foreach ($fields as $f) {
+				$upd[] = "`$f` = REPLACE(`$f`, '$dbold', '$dbnew')";
+			}
+			
+			$upds = implode(", ", $upd);
+			
+			
+			
+			$q = sprintf("UPDATE %s SET %s;", $table_name, $upds);
+			$r = q($q);
+			if (!$r) {
+				notice( "Falied updating '$table_name': " . $db->error );
+				goaway($a->get_baseurl(true) . '/admin/site' );
+			}
+		}
+		
+		// update tables
+		update_table("profile", array('photo', 'thumb'), $old_url, $new_url);
+		update_table("term", array('url'), $old_url, $new_url);
+		update_table("contact", array('photo','thumb','micro','url','nurl','request','notify','poll','confirm','poco'), $old_url, $new_url);
+		update_table("item", array('owner-link','owner-avatar','author-name','author-link','author-avatar','body','plink','tag'), $old_url, $new_url);
+
+		// update config
+		$a->set_baseurl($new_url);
+	 	set_config('system','url',$new_url);
+		
+		// send relocate
+		$users = q("SELECT uid FROM user WHERE account_removed = 0 AND account_expired = 0");
+		
+		foreach ($users as $user) {
+			proc_run('php', 'include/notifier.php', 'relocate', $user['uid']);
+		}
+
+		info("Relocation started. Could take a while to complete.");
+		
+		goaway($a->get_baseurl(true) . '/admin/site' );
+	}
+	// end relocate
+	
 	$sitename 		=	((x($_POST,'sitename'))			? notags(trim($_POST['sitename']))		: '');
 	$banner			=	((x($_POST,'banner'))      		? trim($_POST['banner'])			: false);
+	$info			=	((x($_POST,'info'))      		? trim($_POST['info'])			: false);
 	$language		=	((x($_POST,'language'))			? notags(trim($_POST['language']))		: '');
 	$theme			=	((x($_POST,'theme'))			? notags(trim($_POST['theme']))			: '');
 	$theme_mobile		=	((x($_POST,'theme_mobile'))		? notags(trim($_POST['theme_mobile']))		: '');
@@ -258,6 +328,7 @@ function admin_page_site_post(&$a){
 	$enotify_no_content		=	((x($_POST,'enotify_no_content'))	? True						: False);
 	$private_addons			=	((x($_POST,'private_addons'))		? True						: False);
 	$disable_embedded		=	((x($_POST,'disable_embedded'))		? True						: False);
+	$allow_users_remote_self	=	((x($_POST,'allow_users_remote_self'))		? True						: False);
 	
 	$no_multi_reg		=	((x($_POST,'no_multi_reg'))		? True						: False);
 	$no_openid		=	!((x($_POST,'no_openid'))		? True						: False);
@@ -277,8 +348,9 @@ function admin_page_site_post(&$a){
 	$ostatus_poll_interval	=	((x($_POST,'ostatus_poll_interval'))	? intval(trim($_POST['ostatus_poll_interval']))		:  0);
 	$diaspora_enabled	=	((x($_POST,'diaspora_enabled'))		? True   					: False);
 	$ssl_policy		=	((x($_POST,'ssl_policy'))		? intval($_POST['ssl_policy']) 			: 0);
-	$new_share		=	((x($_POST,'new_share'))		? True   					: False);
+	$old_share		=	((x($_POST,'old_share'))		? True   					: False);
 	$hide_help		=	((x($_POST,'hide_help'))		? True   					: False);
+	$suppress_language	=	((x($_POST,'suppress_language'))	? True   					: False);
 	$use_fulltext_engine	=	((x($_POST,'use_fulltext_engine'))	? True   					: False);
 	$itemcache		=	((x($_POST,'itemcache'))		? notags(trim($_POST['itemcache']))		: '');
 	$itemcache_duration	=	((x($_POST,'itemcache_duration'))	? intval($_POST['itemcache_duration'])		: 0);
@@ -340,6 +412,11 @@ function admin_page_site_post(&$a){
 	} else {
 		set_config('system','banner', $banner);
 	}
+	if ($info=="") {
+	    del_config('config','info');
+	} else {
+	    set_config('config','info',$info);
+	}
 	set_config('system','language', $language);
 	set_config('system','theme', $theme);
 	if ( $theme_mobile === '---' ) {
@@ -355,7 +432,7 @@ function admin_page_site_post(&$a){
 	set_config('system','maximagesize', $maximagesize);
 	set_config('system','max_image_length', $maximagelength);
 	set_config('system','jpeg_quality', $jpegimagequality);
-	
+
 	set_config('config','register_policy', $register_policy);
 	set_config('system','max_daily_registrations', $daily_registrations);
 	set_config('system','account_abandon_days', $abandon_days);
@@ -377,6 +454,7 @@ function admin_page_site_post(&$a){
 	set_config('system','newuser_private', $newuser_private);
 	set_config('system','enotify_no_content', $enotify_no_content);
 	set_config('system','disable_embedded', $disable_embedded);
+	set_config('system','allow_users_remote_self', $allow_users_remote_self);
 
 	set_config('system','block_extended_register', $no_multi_reg);
 	set_config('system','no_openid', $no_openid);
@@ -392,8 +470,8 @@ function admin_page_site_post(&$a){
         set_config('system','ostatus_poll_interval', $ostatus_poll_interval);
 	set_config('system','diaspora_enabled', $diaspora_enabled);
 	set_config('config','private_addons', $private_addons);
-	
-	set_config('system','new_share', $new_share);
+
+	set_config('system','old_share', $old_share);
 	set_config('system','hide_help', $hide_help);
 	set_config('system','use_fulltext_engine', $use_fulltext_engine);
 	set_config('system','itemcache', $itemcache);
@@ -401,7 +479,7 @@ function admin_page_site_post(&$a){
 	set_config('system','lockpath', $lockpath);
 	set_config('system','temppath', $temppath);
 	set_config('system','basepath', $basepath);
-	
+
 	info( t('Site settings updated.') . EOL);
 	goaway($a->get_baseurl(true) . '/admin/site' );
 	return; // NOTREACHED
@@ -413,11 +491,11 @@ function admin_page_site_post(&$a){
  * @return string
  */
 function admin_page_site(&$a) {
-	
+
 	/* Installed langs */
 	$lang_choices = array();
 	$langs = glob('view/*/strings.php');
-	
+
 	if(is_array($langs) && count($langs)) {
 		if(! in_array('view/en/strings.php',$langs))
 			$langs[] = 'view/en/';
@@ -427,7 +505,7 @@ function admin_page_site(&$a) {
 			$lang_choices[$t[1]] = $t[1];
 		}
 	}
-	
+
 	/* Installed themes */
 	$theme_choices = array();
 	$theme_choices_mobile = array();
@@ -468,6 +546,8 @@ function admin_page_site(&$a) {
 	if($banner == false) 
 		$banner = '<a href="http://friendica.com"><img id="logo-img" src="images/friendica-32.png" alt="logo" /></a><span id="logo-text"><a href="http://friendica.com">Friendica</a></span>';
 	$banner = htmlspecialchars($banner);
+	$info = get_config('config','info');
+	$info = htmlspecialchars($info);
 
 	//echo "<pre>"; var_dump($lang_choices); die("</pre>");
 
@@ -488,22 +568,23 @@ function admin_page_site(&$a) {
 	return replace_macros($t, array(
 		'$title' => t('Administration'),
 		'$page' => t('Site'),
-		'$submit' => t('Submit'),
+		'$submit' => t('Save Settings'),
 		'$registration' => t('Registration'),
 		'$upload' => t('File upload'),
 		'$corporate' => t('Policies'),
 		'$advanced' => t('Advanced'),
 		'$performance' => t('Performance'),
-		
+		'$relocate'=> t('Relocate - WARNING: advanced function. Could make this server unreachable.'),
 		'$baseurl' => $a->get_baseurl(true),
 		// name, label, value, help string, extra data...
 		'$sitename' 		=> array('sitename', t("Site name"), htmlentities($a->config['sitename'], ENT_QUOTES), 'UTF-8'),
 		'$banner'		=> array('banner', t("Banner/Logo"), $banner, ""),
+		'$info'	=> array('info',t('Additional Info'), $info, t('For public servers: you can add additional information here that will be listed at dir.friendica.com/siteinfo.')),
 		'$language' 		=> array('language', t("System language"), get_config('system','language'), "", $lang_choices),
 		'$theme' 		=> array('theme', t("System theme"), get_config('system','theme'), t("Default system theme - may be over-ridden by user profiles - <a href='#' id='cnftheme'>change theme settings</a>"), $theme_choices),
 		'$theme_mobile' 	=> array('theme_mobile', t("Mobile system theme"), get_config('system','mobile-theme'), t("Theme for mobile devices"), $theme_choices_mobile),
 		'$ssl_policy'		=> array('ssl_policy', t("SSL link policy"), (string) intval(get_config('system','ssl_policy')), t("Determines whether generated links should be forced to use SSL"), $ssl_choices),
-		'$new_share'		=> array('new_share', t("'Share' element"), get_config('system','new_share'), t("Activates the bbcode element 'share' for repeating items.")),
+		'$old_share'		=> array('old_share', t("Old style 'Share'"), get_config('system','old_share'), t("Deactivates the bbcode element 'share' for repeating items.")),
 		'$hide_help'		=> array('hide_help', t("Hide help entry from navigation menu"), get_config('system','hide_help'), t("Hides the menu entry for the Help pages from the navigation menu. You can still access it calling /help directly.")),
 		'$singleuser' 		=> array('singleuser', t("Single user instance"), get_config('system','singleuser'), t("Make this instance multi-user or single-user for the named user"), $user_names),
 		'$maximagesize'		=> array('maximagesize', t("Maximum image size"), get_config('system','maximagesize'), t("Maximum size in bytes of uploaded images. Default is 0, which means no limits.")),
@@ -524,7 +605,7 @@ function admin_page_site(&$a) {
 		'$enotify_no_content'	=> array('enotify_no_content', t("Don't include post content in email notifications"), get_config('system','enotify_no_content'), t("Don't include the content of a post/comment/private message/etc. in the email notifications that are sent out from this site, as a privacy measure.")),
 		'$private_addons'	=> array('private_addons', t("Disallow public access to addons listed in the apps menu."), get_config('config','private_addons'), t("Checking this box will restrict addons listed in the apps menu to members only.")),
 		'$disable_embedded'	=> array('disable_embedded', t("Don't embed private images in posts"), get_config('system','disable_embedded'), t("Don't replace locally-hosted private photos in posts with an embedded copy of the image. This means that contacts who receive posts containing private photos will have to authenticate and load each image, which may take a while.")),
-		
+		'$allow_users_remote_self'	=> array('allow_users_remote_self', t('Allow Users to set remote_self'), get_config('system','allow_users_remote_self'), t('With checking this, every user is allowed to mark every contact as a remote_self in the repair contact dialog. Setting this flag on a contact causes mirroring every posting of that contact in the users stream.')),
 		'$no_multi_reg'		=> array('no_multi_reg', t("Block multiple registrations"),  get_config('system','block_extended_register'), t("Disallow users to register additional accounts for use as pages.")),
 		'$no_openid'		=> array('no_openid', t("OpenID support"), !get_config('system','no_openid'), t("OpenID support for registration and logins.")),
 		'$no_regfullname'	=> array('no_regfullname', t("Fullname check"), !get_config('system','no_regfullname'), t("Force users to register with a space between firstname and lastname in Full name, as an antispam measure")),
@@ -543,11 +624,15 @@ function admin_page_site(&$a) {
 		'$maxloadavg'		=> array('maxloadavg', t("Maximum Load Average"), ((intval(get_config('system','maxloadavg')) > 0)?get_config('system','maxloadavg'):50), t("Maximum system load before delivery and poll processes are deferred - default 50.")),
 
 		'$use_fulltext_engine'	=> array('use_fulltext_engine', t("Use MySQL full text engine"), get_config('system','use_fulltext_engine'), t("Activates the full text engine. Speeds up search - but can only search for four and more characters.")),
+		'$suppress_language'	=> array('suppress_language', t("Suppress Language"), get_config('system','suppress_language'), t("Suppress language information in meta information about a posting.")),
 		'$itemcache'		=> array('itemcache', t("Path to item cache"), get_config('system','itemcache'), "The item caches buffers generated bbcode and external images."),
 		'$itemcache_duration' 	=> array('itemcache_duration', t("Cache duration in seconds"), get_config('system','itemcache_duration'), t("How long should the cache files be hold? Default value is 86400 seconds (One day).")),
 		'$lockpath'		=> array('lockpath', t("Path for lock file"), get_config('system','lockpath'), "The lock file is used to avoid multiple pollers at one time. Only define a folder here."),
 		'$temppath'		=> array('temppath', t("Temp path"), get_config('system','temppath'), "If you have a restricted system where the webserver can't access the system temp path, enter another path here."),
 		'$basepath'		=> array('basepath', t("Base path to installation"), get_config('system','basepath'), "If the system cannot detect the correct path to your installation, enter the correct path here. This setting should only be set if you are using a restricted system and symbolic links to your webroot."),
+		
+		'$relocate_url'     => array('relocate_url', t("New base url"), $a->get_baseurl(), "Change base url for this server. Sends relocate message to all DFRN contacts of all users."),
+		
         '$form_security_token' => get_form_security_token("admin_site"),
 
 	));
@@ -589,7 +674,7 @@ function admin_page_dbsync(&$a) {
 	}
 
 	$failed = array();
-	$r = q("select * from config where `cat` = 'database' ");
+	$r = q("select k, v from config where `cat` = 'database' ");
 	if(count($r)) {
 		foreach($r as $rr) {
 			$upd = intval(substr($rr['k'],7));
@@ -608,7 +693,7 @@ function admin_page_dbsync(&$a) {
 		'$mark' => t('Mark success (if update was manually applied)'),
 		'$apply' => t('Attempt to execute this update step automatically'),
 		'$failed' => $failed
-	));	
+	));
 
 	return $o;
 
@@ -627,7 +712,7 @@ function admin_page_users_post(&$a){
   $nu_email = ( x($_POST, 'new_user_email') ? $_POST['new_user_email'] : '');
 
   check_form_security_token_redirectOnErr('/admin/users', 'admin_users');
-    
+
   if (!($nu_name==="") && !($nu_email==="") && !($nu_nickname==="")) { 
       require_once('include/user.php'); 
       require_once('include/email.php'); 
@@ -655,7 +740,7 @@ function admin_page_users_post(&$a){
 		    info( t('Registration successful. Email send to user').EOL ); 
       } 
   }
-	
+
 	if (x($_POST,'page_users_block')){
 		foreach($users as $uid){
 			q("UPDATE `user` SET `blocked`=1-`blocked` WHERE `uid`=%s",
@@ -671,7 +756,7 @@ function admin_page_users_post(&$a){
 		}
 		notice( sprintf( tt("%s user deleted", "%s users deleted", count($users)), count($users)) );
 	}
-	
+
 	if (x($_POST,'page_users_approve')){
 		require_once("mod/regmod.php");
 		foreach($pending as $hash){
@@ -685,7 +770,7 @@ function admin_page_users_post(&$a){
 		}
 	}
 	goaway($a->get_baseurl(true) . '/admin/users' );
-	return; // NOTREACHED	
+	return; // NOTREACHED
 }
 
 /**
@@ -695,19 +780,19 @@ function admin_page_users_post(&$a){
 function admin_page_users(&$a){
 	if ($a->argc>2) {
 		$uid = $a->argv[3];
-		$user = q("SELECT * FROM `user` WHERE `uid`=%d", intval($uid));
+		$user = q("SELECT username, blocked FROM `user` WHERE `uid`=%d", intval($uid));
 		if (count($user)==0){
 			notice( 'User not found' . EOL);
 			goaway($a->get_baseurl(true) . '/admin/users' );
 			return ''; // NOTREACHED
-		}		
+		}
 		switch($a->argv[2]){
 			case "delete":{
                 check_form_security_token_redirectOnErr('/admin/users', 'admin_users', 't');
 				// delete user
 				require_once("include/Contact.php");
 				user_remove($uid);
-				
+
 				notice( sprintf(t("User '%s' deleted"), $user[0]['username']) . EOL);
 			}; break;
 			case "block":{
@@ -721,16 +806,16 @@ function admin_page_users(&$a){
 		}
 		goaway($a->get_baseurl(true) . '/admin/users' );
 		return ''; // NOTREACHED
-		
+
 	}
-	
+
 	/* get pending */
 	$pending = q("SELECT `register`.*, `contact`.`name`, `user`.`email`
 				 FROM `register`
 				 LEFT JOIN `contact` ON `register`.`uid` = `contact`.`uid`
 				 LEFT JOIN `user` ON `register`.`uid` = `user`.`uid`;");
-	
-	
+
+
 	/* get users */
 
 	$total = q("SELECT count(*) as total FROM `user` where 1");
@@ -738,8 +823,8 @@ function admin_page_users(&$a){
 		$a->set_pager_total($total[0]['total']);
 		$a->set_pager_itemspage(100);
 	}
-	
-	
+
+
 	$users = q("SELECT `user` . * , `contact`.`name` , `contact`.`url` , `contact`.`micro`, `lastitem`.`lastitem_date`, `user`.`account_expired`
 				FROM
 					(SELECT MAX(`item`.`changed`) as `lastitem_date`, `item`.`uid`
@@ -757,11 +842,14 @@ function admin_page_users(&$a){
 				intval($a->pager['start']),
 				intval($a->pager['itemspage'])
 				);
-					
+
 	function _setup_users($e){
-        $a = get_app();
+		$a = get_app();
+
+		$adminlist = explode(",", str_replace(" ", "", $a->config['admin_email']));
+
 		$accounts = Array(
-			t('Normal Account'), 
+			t('Normal Account'),
 			t('Soapbox Account'),
 			t('Community/Celebrity Account'),
                         t('Automatic Friend Account')
@@ -770,19 +858,20 @@ function admin_page_users(&$a){
 		$e['register_date'] = relative_date($e['register_date']);
 		$e['login_date'] = relative_date($e['login_date']);
 		$e['lastitem_date'] = relative_date($e['lastitem_date']);
-        $e['is_admin'] = ($e['email'] === $a->config['admin_email']);
-        $e['deleted'] = ($e['account_removed']?relative_date($e['account_expires_on']):False);
+		//$e['is_admin'] = ($e['email'] === $a->config['admin_email']);
+		$e['is_admin'] = in_array($e['email'], $adminlist);
+		$e['deleted'] = ($e['account_removed']?relative_date($e['account_expires_on']):False);
 		return $e;
 	}
 	$users = array_map("_setup_users", $users);
-	
-	
+
+
 	// Get rid of dashes in key names, Smarty3 can't handle them
 	// and extracting deleted users
-	
+
 	$tmp_users = Array();
 	$deleted = Array();
-	
+
 	while(count($users)) {
 		$new_user = Array();
 		foreach( array_pop($users) as $k => $v) {
@@ -807,7 +896,7 @@ function admin_page_users(&$a){
 		// strings //
 		'$title' => t('Administration'),
 		'$page' => t('Users'),
-		'$submit' => t('Submit'),
+		'$submit' => t('Add User'),
 		'$select_all' => t('select all'),
 		'$h_pending' => t('User registrations waiting for confirm'),
 		'$h_deleted' => t('User waiting for permanent deletion'),
@@ -953,7 +1042,7 @@ function admin_page_plugins(&$a){
 	return replace_macros($t, array(
 		'$title' => t('Administration'),
 		'$page' => t('Plugins'),
-		'$submit' => t('Submit'),
+		'$submit' => t('Save Settings'),
 		'$baseurl' => $a->get_baseurl(true),
 		'$function' => 'plugins',	
 		'$plugins' => $plugins,
@@ -1153,7 +1242,7 @@ function admin_page_themes(&$a){
 	return replace_macros($t, array(
 		'$title' => t('Administration'),
 		'$page' => t('Themes'),
-		'$submit' => t('Submit'),
+		'$submit' => t('Save Settings'),
 		'$baseurl' => $a->get_baseurl(true),
 		'$function' => 'themes',
 		'$plugins' => $xthemes,
@@ -1240,7 +1329,7 @@ readable.");
 	return replace_macros($t, array(
 		'$title' => t('Administration'),
 		'$page' => t('Logs'),
-		'$submit' => t('Submit'),
+		'$submit' => t('Save Settings'),
 		'$clear' => t('Clear'),
 		'$data' => $data,
 		'$baseurl' => $a->get_baseurl(true),

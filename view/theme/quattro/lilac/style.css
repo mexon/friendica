@@ -19,6 +19,12 @@
 .icon.notify {
   background-image: url("../../../images/icons/22/notify_off.png");
 }
+.icon.intro {
+  background-image: url("icons/contacts_off.png");
+}
+.icon.mail {
+  background-image: url("icons/messages_off.png");
+}
 .icon.gear {
   background-image: url("../../../images/icons/22/gear.png");
 }
@@ -82,6 +88,12 @@
 }
 .icon.s10.notify {
   background-image: url("../../../images/icons/10/notify_off.png");
+}
+.icon.s10.intro {
+  background-image: url("icons/contacts_off.png");
+}
+.icon.s10.mail {
+  background-image: url("icons/messages_off.png");
 }
 .icon.s10.gear {
   background-image: url("../../../images/icons/10/gear.png");
@@ -147,6 +159,12 @@
 .icon.s16.notify {
   background-image: url("../../../images/icons/16/notify_off.png");
 }
+.icon.s16.intro {
+  background-image: url("icons/contacts_off.png");
+}
+.icon.s16.mail {
+  background-image: url("icons/messages_off.png");
+}
 .icon.s16.gear {
   background-image: url("../../../images/icons/16/gear.png");
 }
@@ -211,6 +229,12 @@
 .icon.s22.notify {
   background-image: url("../../../images/icons/22/notify_off.png");
 }
+.icon.s22.intro {
+  background-image: url("icons/contacts_off.png");
+}
+.icon.s22.mail {
+  background-image: url("icons/messages_off.png");
+}
 .icon.s22.gear {
   background-image: url("../../../images/icons/22/gear.png");
 }
@@ -274,6 +298,12 @@
 }
 .icon.s48.notify {
   background-image: url("../../../images/icons/48/notify_off.png");
+}
+.icon.s48.intro {
+  background-image: url("icons/contacts_off.png");
+}
+.icon.s48.mail {
+  background-image: url("icons/messages_off.png");
 }
 .icon.s48.gear {
   background-image: url("../../../images/icons/48/gear.png");
@@ -456,7 +486,6 @@ header {
   margin: 0px;
   padding: 0px;
   /*width: 100%; height: 12px; */
-
   z-index: 110;
   color: #ffffff;
 }
@@ -588,6 +617,14 @@ nav #nav-site-linkmenu .menu-popup {
 nav #nav-notifications-linkmenu.on .icon.s22.notify,
 nav #nav-notifications-linkmenu.selected .icon.s22.notify {
   background-image: url("../../../images/icons/22/notify_on.png");
+}
+nav #nav-introductions-link.on .icon.s22.intro,
+nav #nav-introductions-link.selected .icon.s22.intro {
+  background-image: url("icons/contacts_on.png");
+}
+nav #nav-messages-link.on .icon.s22.mail,
+nav #nav-messages-link.selected .icon.s22.mail {
+  background-image: url("icons/messages_on.png");
 }
 nav #nav-apps-link.selected {
   background-color: #cbd38d;
@@ -778,7 +815,6 @@ aside #profiles-menu {
   overflow: auto;
   height: auto;
   /*.contact-block-div { width:60px; height: 60px; }*/
-
 }
 #contact-block .contact-block-h4 {
   float: left;
@@ -860,7 +896,6 @@ aside #profiles-menu {
   margin-bottom: 2em;
   /*.action .s10 { width: 10px; overflow: hidden; padding: 0px;}
 	.action .s16 { width: 16px; overflow: hidden; padding: 0px;}*/
-
 }
 .widget h3 {
   padding: 0px;
@@ -1139,7 +1174,6 @@ section {
   height: 32px;
   margin-left: 16px;
   /*background: url(../../../images/icons/22/user.png) no-repeat center center;*/
-
 }
 .comment-edit-preview .contact-photo-menu-button {
   top: 15px !important;
@@ -1231,6 +1265,40 @@ section {
   width: 25px;
   height: 25px;
 }
+/* reshare */
+.wall-item-container .wall-item-content .type-link img,
+.type-link img {
+  max-width: 160px;
+  max-height: 160px;
+  float: left;
+  margin-right: 10px;
+}
+.type-link blockquote {
+  margin-left: 160px;
+  max-height: 160px;
+  overflow: hidden;
+}
+.shared_header {
+  height: 32px;
+  color: #999;
+  border-top: 1px solid #cccccc;
+  padding-top: 5px;
+  margin-top: 5px;
+}
+.shared_header img {
+  -webkit-border-radius: 4px;
+  -moz-border-radius: 4px;
+  border-radius: 4px;
+  float: left;
+}
+.shared_header span {
+  margin-left: 9px;
+}
+blockquote.shared_content {
+  margin-left: 32px;
+  color: #000;
+  border: none;
+}
 /* threaded comments */
 .children {
   margin-top: 1em;
@@ -1310,6 +1378,19 @@ span[id^="showmore-wrap"] {
 }
 .contact-photo-wrapper {
   position: relative;
+}
+.contact-select {
+  position: absolute;
+  top: 64px;
+  left: 64px;
+  display: none;
+}
+.contact-select:checked,
+.contact-photo:hover .contact-select {
+  display: block;
+}
+#contats-actions {
+  clear: both;
 }
 .contact-photo {
   width: 48px;
