@@ -6,15 +6,20 @@
 <meta http-equiv="Content-Type" content="text/html;charset=utf-8" />
 <base href="{{$baseurl}}/" />
 <meta name="generator" content="{{$generator}}" />
+<link rel="stylesheet" href="{{$baseurl}}/view/global.css" type="text/css" media="all" />
 {{*<!--<link rel="stylesheet" href="{{$baseurl}}/library/fancybox/jquery.fancybox.css" type="text/css" media="screen" />-->*}}
 <link rel="stylesheet" href="{{$baseurl}}/library/colorbox/colorbox.css" type="text/css" media="screen" />
 <link rel="stylesheet" href="{{$baseurl}}/library/jgrowl/jquery.jgrowl.css" type="text/css" media="screen" />
 
 <link rel="stylesheet" type="text/css" href="{{$stylesheet}}" media="all" />
 
+<!--
 <link rel="shortcut icon" href="{{$baseurl}}/images/friendica-32.png" />
-
 <link rel="apple-touch-icon" href="{{$baseurl}}/images/friendica-128.png"/>
+-->
+<link rel="shortcut icon" href="{{$shortcut_icon}}" />
+<link rel="apple-touch-icon" href="{{$touch_icon}}"/>
+
 <meta name="apple-mobile-web-app-capable" content="yes" /> 
 
 
@@ -42,6 +47,15 @@
 	var localUser = {{if $local_user}}{{$local_user}}{{else}}false{{/if}};
 
 	function confirmDelete() { return confirm("{{$delitem}}"); }
+	function commentExpand(id) {
+		$("#comment-edit-text-" + id).value = '';
+		$("#comment-edit-text-" + id).addClass("comment-edit-text-full");
+		$("#comment-edit-text-" + id).removeClass("comment-edit-text-empty");
+		$("#comment-edit-text-" + id).focus();
+		$("#mod-cmnt-wrap-" + id).show();
+		openMenu("comment-edit-submit-wrapper-" + id);
+		return true;
+	}
 	function commentOpen(obj,id) {
 		if(obj.value == '{{$comment}}') {
 			obj.value = '';

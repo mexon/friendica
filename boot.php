@@ -12,9 +12,9 @@ require_once('library/Mobile_Detect/Mobile_Detect.php');
 require_once('include/features.php');
 
 define ( 'FRIENDICA_PLATFORM',     'Friendica');
-define ( 'FRIENDICA_VERSION',      '3.2.1748' );
+define ( 'FRIENDICA_VERSION',      '3.2.1751' );
 define ( 'DFRN_PROTOCOL_VERSION',  '2.23'    );
-define ( 'DB_UPDATE_VERSION',      1169      );
+define ( 'DB_UPDATE_VERSION',      1170      );
 define ( 'EOL',                    "<br />\r\n"     );
 define ( 'ATOM_TIME',              'Y-m-d\TH:i:s\Z' );
 
@@ -142,6 +142,8 @@ define ( 'NETWORK_GPLUS',            'goog');    // Google+
 define ( 'NETWORK_PUMPIO',           'pump');    // pump.io
 define ( 'NETWORK_TWITTER',          'twit');    // Twitter
 define ( 'NETWORK_DIASPORA2',        'dspc');    // Diaspora connector
+define ( 'NETWORK_STATUSNET',        'stac');    // Statusnet connector
+define ( 'NETWORK_APPNET',           'apdn');    // app.net
 
 define ( 'NETWORK_PHANTOM',          'unkn');    // Place holder
 
@@ -167,6 +169,8 @@ $netgroup_ids = array(
 	NETWORK_PUMPIO   => (-13),
 	NETWORK_TWITTER  => (-14),
 	NETWORK_DIASPORA2 => (-15),
+	NETWORK_STATUSNET => (-16),
+	NETWORK_APPNET => (-17),
 
 	NETWORK_PHANTOM  => (-127),
 );
@@ -427,6 +431,8 @@ if(! class_exists('App')) {
 
 			global $default_timezone, $argv, $argc;
 
+			$hostname = "";
+
 			if (file_exists(".htpreconfig.php"))
 				@include(".htpreconfig.php");
 
@@ -621,11 +627,16 @@ if(! class_exists('App')) {
 			if($parsed) {
 				$this->scheme = $parsed['scheme'];
 
-				$this->hostname = $parsed['host'];
+				$hostname = $parsed['host'];
 				if(x($parsed,'port'))
-					$this->hostname .= ':' . $parsed['port'];
+					$hostname .= ':' . $parsed['port'];
 				if(x($parsed,'path'))
 					$this->path = trim($parsed['path'],'\\/');
+
+				if (file_exists(".htpreconfig.php"))
+					@include(".htpreconfig.php");
+
+				$this->hostname = $hostname;
 			}
 
 		}
@@ -683,6 +694,14 @@ if(! class_exists('App')) {
 			else
 				$stylesheet = '$stylesheet';
 
+			$shortcut_icon = get_config("system", "shortcut_icon");
+			if ($shortcut_icon == "")
+				$shortcut_icon = $this->get_baseurl()."/images/friendica-32.png";
+
+			$touch_icon = get_config("system", "touch_icon");
+			if ($touch_icon == "")
+				$touch_icon = $this->get_baseurl()."/images/friendica-128.png";
+
 			$tpl = get_markup_template('head.tpl');
 			$this->page['htmlhead'] = replace_macros($tpl,array(
 				'$baseurl' => $this->get_baseurl(), // FIXME for z_path!!!!
@@ -693,6 +712,8 @@ if(! class_exists('App')) {
 				'$showmore' => t('show more'),
 				'$showfewer' => t('show fewer'),
 				'$update_interval' => $interval,
+				'$shortcut_icon' => $shortcut_icon,
+				'$touch_icon' => $touch_icon,
 				'$stylesheet' => $stylesheet
 			)) . $this->page['htmlhead'];
 		}
@@ -748,7 +769,7 @@ if(! class_exists('App')) {
 			if($this->cached_profile_picdate[$common_filename]){
 				$this->cached_profile_image[$avatar_image] = $avatar_image . $this->cached_profile_picdate[$common_filename];
 			} else {
-				$r = q("SELECT `contact`.`avatar-date` AS picdate FROM `contact` WHERE `contact`.`thumb` like \"%%/%s\"",
+				$r = q("SELECT `contact`.`avatar-date` AS picdate FROM `contact` WHERE `contact`.`thumb` like '%%/%s'",
 					$common_filename);
 				if(! count($r)){
 					$this->cached_profile_image[$avatar_image] = $avatar_image;
@@ -999,6 +1020,10 @@ if(! function_exists('update_db')) {
 				// file may not be here yet. This can happen on a very busy site.
 
 				if(DB_UPDATE_VERSION == UPDATE_VERSION) {
+
+					// Compare the current structure with the defined structure
+					require_once("include/dbstructure.php");
+					update_structure(false, true);
 
 					for($x = $stored; $x < $current; $x ++) {
 						if(function_exists('update_' . $x)) {
@@ -1262,6 +1287,10 @@ if(! function_exists('info')) {
 	 */
 	function info($s) {
 		$a = get_app();
+
+		if (local_user() AND get_pconfig(local_user(),'system','ignore_info'))
+			return;
+
 		if(! x($_SESSION,'sysmsg_info')) $_SESSION['sysmsg_info'] = array();
 		if($a->interactive)
 			$_SESSION['sysmsg_info'][] = $s;
@@ -1337,7 +1366,7 @@ if(! function_exists('profile_load')) {
 		if($profile) {
 			$profile_int = intval($profile);
 			$r = q("SELECT `profile`.`uid` AS `profile_uid`, `profile`.* , `contact`.`avatar-date` AS picdate, `user`.* FROM `profile`
-					left join `contact` on `contact`.`uid` = `profile`.`uid` LEFT JOIN `user` ON `profile`.`uid` = `user`.`uid`
+					INNER JOIN `contact` on `contact`.`uid` = `profile`.`uid` INNER JOIN `user` ON `profile`.`uid` = `user`.`uid`
 					WHERE `user`.`nickname` = '%s' AND `profile`.`id` = %d and `contact`.`self` = 1 LIMIT 1",
 					dbesc($nickname),
 					intval($profile_int)
@@ -1345,7 +1374,7 @@ if(! function_exists('profile_load')) {
 		}
 		if((! $r) && (!  count($r))) {
 			$r = q("SELECT `profile`.`uid` AS `profile_uid`, `profile`.* , `contact`.`avatar-date` AS picdate, `user`.* FROM `profile`
-					left join `contact` on `contact`.`uid` = `profile`.`uid` LEFT JOIN `user` ON `profile`.`uid` = `user`.`uid`
+					INNER JOIN `contact` on `contact`.`uid` = `profile`.`uid` INNER JOIN `user` ON `profile`.`uid` = `user`.`uid`
 					WHERE `user`.`nickname` = '%s' AND `profile`.`is-default` = 1 and `contact`.`self` = 1 LIMIT 1",
 					dbesc($nickname)
 			);
@@ -1600,7 +1629,7 @@ if(! function_exists('get_birthdays')) {
 		$bd_short = t('F d');
 
 		$r = q("SELECT `event`.*, `event`.`id` AS `eid`, `contact`.* FROM `event`
-				LEFT JOIN `contact` ON `contact`.`id` = `event`.`cid`
+				INNER JOIN `contact` ON `contact`.`id` = `event`.`cid`
 				WHERE `event`.`uid` = %d AND `type` = 'birthday' AND `start` < '%s' AND `finish` > '%s'
 				ORDER BY `start` ASC ",
 				intval(local_user()),
@@ -2140,7 +2169,7 @@ function random_digits($digits) {
 }
 
 function get_cachefile($file, $writemode = true) {
-	$cache = get_config("system","itemcache");
+	$cache = get_itemcachepath();
 
 	if ((! $cache) || (! is_dir($cache)))
 		return("");
@@ -2161,7 +2190,7 @@ function get_cachefile($file, $writemode = true) {
 
 function clear_cache($basepath = "", $path = "") {
 	if ($path == "") {
-		$basepath = get_config('system','itemcache');
+		$basepath = get_itemcachepath();
 		$path = $basepath;
 	}
 
@@ -2187,6 +2216,63 @@ function clear_cache($basepath = "", $path = "") {
 		closedir($dh);
 	}
 	}
+}
+
+function get_itemcachepath() {
+	// Checking, if the cache is deactivated
+	$cachetime = (int)get_config('system','itemcache_duration');
+	if ($cachetime < 0)
+		return "";
+
+	$itemcache = get_config('system','itemcache');
+	if (($itemcache != "") AND is_dir($itemcache) AND is_writable($itemcache))
+		return($itemcache);
+
+	$temppath = get_temppath();
+
+	if ($temppath != "") {
+		$itemcache = $temppath."/itemcache";
+		mkdir($itemcache);
+
+		if (is_dir($itemcache) AND is_writable($itemcache)) {
+			set_config("system", "itemcache", $itemcache);
+			return($itemcache);
+		}
+	}
+	return "";
+}
+
+function get_lockpath() {
+	$lockpath = get_config('system','lockpath');
+	if (($lockpath != "") AND is_dir($lockpath) AND is_writable($lockpath))
+		return($lockpath);
+
+	$temppath = get_temppath();
+
+	if ($temppath != "") {
+		$lockpath = $temppath."/lock";
+		mkdir($lockpath);
+
+		if (is_dir($lockpath) AND is_writable($lockpath)) {
+			set_config("system", "lockpath", $lockpath);
+			return($lockpath);
+		}
+	}
+	return "";
+}
+
+function get_temppath() {
+	$temppath = get_config("system","temppath");
+	if (($temppath != "") AND is_dir($temppath) AND is_writable($temppath))
+		return($temppath);
+
+	$temppath = sys_get_temp_dir();
+	if (($temppath != "") AND is_dir($temppath) AND is_writable($temppath)) {
+		set_config("system", "temppath", $temppath);
+		return($temppath);
+	}
+
+	return("");
 }
 
 function set_template_engine(&$a, $engine = 'internal') {

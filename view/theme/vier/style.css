@@ -19,6 +19,10 @@ img {
 /*        width: 80%;*/
 }
 
+#adminpage .screenshot img {
+  width: 640px;
+}
+
 #pending-update {
         float:right;
         color: #ffffff;
@@ -130,6 +134,7 @@ img {
   overflow: hidden;
   padding: 1px;
   color: #999;
+  vertical-align: text-top;
 } 
 
 .icon:hover {
@@ -144,8 +149,9 @@ img {
   text-indent: 0px;
 }
 .icon.s10 {
-  min-width: 10px;
-  height: 10px;
+/*  min-width: 10px;
+  height: 10px; */
+ /* font-size: 10px; */
 }
 .icon.s10.text {
   padding: 2px 0px 0px 15px;
@@ -191,26 +197,35 @@ img {
   margin-bottom: 5px;
 }
 
+div.pager a {
+  margin-left: 5px;
+  margin-right: 5px;
+}
+ 
+span.pager_first a, span.pager_n a, 
+span.pager_last a, span.pager_prev a, span.pager_next a {
+  color: darkgray;
+}
+
 div.pager {
-/* .birthday-notice { */
+  clear: left;
   text-align: center;
+/*
   height: 1.2em;
   padding-bottom: 12px;
   color: black;
-  /*-webkit-border-radius: 6px;
-  -moz-border-radius: 6px;
-  border-radius: 6px;*/
   background-color: #f2f2f2;
-  clear: left;
   margin-top: 5px;
   padding: 1%;
   height: 1em;
   margin-bottom: 5px;
-}*/
+*/
+}
 
-.birthday-notice {
+.birthday-notice, .event-notice {
   margin-top: 5px;
   margin-bottom: 5px;
+  background-color: #F5F5F5;
 }
 
 #live-network {
@@ -229,44 +244,6 @@ div.pager {
 
 .pager a.pager_newer {
   float: left;
-}
-
-.shared_header {
-  height: 32px;
-  color: #999;
-  border-top: 1px solid #D2D2D2;
-  padding-top: 5px;
-  margin-top: 5px;
-}
-
-.shared_header a {
-  color: black;
-  -webkit-transition: all 0.2s ease-in-out;
-  -moz-transition: all 0.2s ease-in-out;
-  -o-transition: all 0.2s ease-in-out;
-  -ms-transition: all 0.2s ease-in-out;
-  transition: all 0.2s ease-in-out;
-}
-
-.shared_header a:hover {
-  color: #36c;
-}
-
-.shared_header img {
-  -webkit-border-radius: 4px;
-  -moz-border-radius: 4px;
-  border-radius: 4px;
-  float: left;
-}
-
-.shared_header span {
-  margin-left: 9px;
-}
-
-blockquote.shared_content {
-  margin-left: 32px;
-  color: #000;
-  border: none;
 }
 
 #contact-edit-drop-link-end {
@@ -293,9 +270,10 @@ body {
   /* font-family: 'Lato', "Helvetica Neue", Helvetica, Arial, sans-serif; */
   font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
   font-size: 14px;
-  /* font-size: 13px; */
-  /* line-height: 19.5px; */
+  /* font-size: 13px;
+  line-height: 19.5px; */
   font-weight: 400;
+  font-style: normal;
   /* background-color: #ffffff; */
   /* background-color: #FAFAFA; */
   background-color: rgb(229, 229, 229);
@@ -378,8 +356,6 @@ code {
   list-style: none;
   border: 3px solid #364e59;
   z-index: 100000;
-  -webkit-box-shadow: 0px 5px 10px rgba(0, 0, 0, 0.7);
-  -moz-box-shadow: 0px 5px 10px rgba(0, 0, 0, 0.7);
   box-shadow: 0px 5px 10px rgba(0, 0, 0, 0.7);
 }
 /* tool */
@@ -420,7 +396,8 @@ code {
 #sidebar-ungrouped:hover, .side-link:hover, .nets-ul li:hover, #forum-list div:hover,
 .nets-all:hover, .saved-search-li:hover, li.tool:hover, .admin.link:hover, aside h4 a:hover, #message-new:hover {
   /* background-color: #ddd; */
-  background-color: #e5e5e5;
+/*  background-color: #e5e5e5; */
+  background-color: #F5F5F5;
 }
 
 #message-new a {
@@ -446,11 +423,11 @@ code {
 
 a.nets-link, .side-link a, #sidebar-new-group a, a.savedsearchterm, a.fileas-link, aside h4 a {
   display: block;
-  color: black;
+  color: #737373;
 }
 
 a.sidebar-group-element {
-  color: black;
+  color: #737373;
 }
 
 #follow-sidebar form, #peoplefind-sidebar form, #netsearch-box form, #posted-date-selector {
@@ -468,7 +445,7 @@ a.sidebar-group-element {
 }
 
 #forum-list a, .tool a, .admin.link a {
-  color: black;
+  color: #737373;
 }
 
 #forum-list {
@@ -553,9 +530,6 @@ nav {
     background: linear-gradient(top, #516499 0%,#364a84 100%); */
   color: #ffffff;
   z-index: 100;
-  /*-webkit-box-shadow: 0px 0px 10px rgba(0, 0, 0, 0.7);
-  -moz-box-shadow: 0px 0px 10px rgba(0, 0, 0, 0.7);
-  border-bottom: 5px solid #F80; */
   box-shadow: 0px 0px 10px rgba(0, 0, 0, 0.7);
 }
 
@@ -729,6 +703,7 @@ nav #nav-messages-linkmenu.selected,
 nav #nav-user-linklabel.selected,
 nav #nav-apps-link.selected {
   background-color: #364e59;
+  border-bottom-style: none;
 }
 
 /* nav #nav-community-link { */
@@ -772,8 +747,6 @@ ul.menu-popup {
   list-style: none;
   border: 3px solid #364e59;
   z-index: 100000;
-  -webkit-box-shadow: 0px 5px 10px rgba(0, 0, 0, 0.7);
-  -moz-box-shadow: 0px 5px 10px rgba(0, 0, 0, 0.7);
   box-shadow: 0px 5px 10px rgba(0, 0, 0, 0.7);
 }
 ul.menu-popup a {
@@ -814,8 +787,6 @@ ul.menu-popup .empty {
   border: 1px solid #MenuBorder;
   overflow: auto;
   z-index: 100000;
-  -webkit-box-shadow: 0px 5px 10px rgba(0, 0, 0, 0.7);
-  -moz-box-shadow: 0px 5px 10px rgba(0, 0, 0, 0.7);
   box-shadow: 0px 5px 10px rgba(0, 0, 0, 0.7);
 }
 .acpopupitem {
@@ -878,7 +849,8 @@ aside {
   padding: 10px 10px 0px 20px;
   /* border-right: 1px solid #D2D2D2; */
   /* background-color: #ECECF2; */
-  background-color: #F2F2F2;
+  /* background-color: #F2F2F2; */
+  background-color: #FFFFFF;
   font-size: 13px;
   /* background: #F1F1F1; */
   /* top: 0px; */
@@ -891,7 +863,8 @@ aside {
   height: 100%;
   height: calc(100% - 42px);
   /* overflow: scroll; */
-  box-shadow: 1px 1px 6px -3px #666;
+  box-shadow: 1px 2px 0px 0px #D8D8D8;
+  color: #737373;
 }
 aside .vcard .fn {
   font-size: 18px;
@@ -956,7 +929,7 @@ aside #profiles-menu {
 }
 
 aside #search-text, aside #side-follow-url, aside #side-peoplefind-url {
-  width: 150px;
+  width: 140px;
   height: 17px;
   padding-left: 10px;
   /*border-top-left-radius: 15px;
@@ -1090,6 +1063,11 @@ aside h4 {
 }
 /* section */
 section {
+  /*font-size: 13px;
+  line-height: 19.5px;*/
+  font-size: 14.95px;
+  line-height: 21px;
+  /* font-family: Quodana,Verdana,DejaVu Sans,Bitstream Vera Sans,Helvetica,sans-serif; */
   display: table-cell;
   vertical-align: top;
   top: 32px;
@@ -1121,7 +1099,7 @@ section.minimal {
   position: relative;
   padding: 5px;
   margin-bottom: 10px;
-  box-shadow: 1px 1px 6px -3px rgba(0, 0, 0, 0.7);
+  box-shadow: 1px 2px 0px 0px #D8D8D8;
   background-color: #FFFFFF;
  /* width: 755px; */
 }
@@ -1158,7 +1136,7 @@ section.minimal {
 .wall-item-bottom {
   /* font-size: 14px; */
 }
-/* .wall-item-container .wall-item-bottom { */
+.wall-item-container .wall-item-tags,
 .wall-item-container .wall-item-links,
 .wall-item-container .wall-item-actions {
   opacity: 0.2;
@@ -1168,7 +1146,7 @@ section.minimal {
   -ms-transition: all 0.2s ease-in-out;
   transition: all 0.2s ease-in-out;
 }
-/* .wall-item-container:hover .wall-item-bottom { */
+.wall-item-container:hover .wall-item-tags,
 .wall-item-container:hover .wall-item-links,
 .wall-item-container:hover .wall-item-actions {
   opacity: 1;
@@ -1207,25 +1185,10 @@ section.minimal {
   width: 350px;
   float: left;
   font-size: 12px;
-}
+}}
 
-.wall-item-container .wall-item-content .type-link img,
-.type-link img {
-  max-width: 160px;
-  max-height: 160px;
-  float: left;
-  margin-right: 10px;
-}
-.type-link blockquote {
-  margin-left: 160px;
-  max-height: 160px;
-  overflow: hidden;
-}
-.type-link .oembed {
-}
-
-.type-link img + br{
-  display: none;
+h2 {
+  line-height: normal;
 }
 
 .wall-item-container .wall-item-content {
@@ -1308,7 +1271,7 @@ section.minimal {
   transition: all 0.2s ease-in-out;
 }
 
-/* .wall-item-container .wall-item-content a, */
+.wall-item-container .wall-item-content a,
 .toplevel_item .fakelink,
 .wall-item-container .fakelink {
   color: black;
@@ -1331,6 +1294,11 @@ section.minimal {
   -o-transition: all 0.2s ease-in-out;
   -ms-transition: all 0.2s ease-in-out;
   transition: all 0.2s ease-in-out;
+}
+
+.toplevel_item:hover .togglecomment,
+.wall-item-container:hover .togglecomment {
+  color: #999;
 }
 
 .wall-item-container .wall-item-actions-author {
@@ -1365,6 +1333,7 @@ section.minimal {
   width: calc(100% - 90px);
   border-bottom: 1px solid hsl(198, 21%, 79%);
 }
+
 .wall-item-container.comment .wall-item-content {
   max-width: 585px;
 }
@@ -1389,6 +1358,17 @@ section.minimal {
 .wall-item-comment-wrapper {
   margin: 1px 15px 1px 80px;
 }
+.wall-item-comment-wrapper.photo {
+  margin: 1px 15px 1px 0px;
+}
+.wall-item-comment-wrapper.photo .wall-item-container.comment {
+  margin-left: 0px;
+  width: 665px;
+  width: 100%;
+  border-bottom: 1px solid hsl(198, 21%, 79%);
+}
+
+
 .wall-item-comment-wrapper .comment-edit-photo {
   display: none;
 }
@@ -1438,8 +1418,9 @@ section.minimal {
   /* width: 700px; */
   width: 100%;
   padding: 0;
-  margin: 10px 0;
+  margin: 10px 0px 0px 0px;
   border-bottom: 0px;
+  box-shadow: none;
 }
 
 .wall-item-bottom .comment-edit-preview {
@@ -1454,7 +1435,7 @@ section.minimal {
 }
 
 #profile-jot-form {
-  box-shadow: 1px 1px 6px -3px #666;
+  box-shadow: 1px 2px 0px 0px #D8D8D8;
   background-color: #fafafa;
   padding: 10px;
 }
@@ -1536,8 +1517,6 @@ section.minimal {
   position: absolute !important;
   top: 40px;
   left: 30px;
-  -webkit-box-shadow: 0px 0px 10px rgba(0, 0, 0, 0.7);
-  -moz-box-shadow: 0px 0px 10px rgba(0, 0, 0, 0.7);
   box-shadow: 0px 0px 10px rgba(0, 0, 0, 0.7);
 }
 .wwto .contact-photo {
@@ -1763,6 +1742,13 @@ section.minimal {
   margin-left: 15px;
   cursor: pointer;
 }
+#profile-smiley-wrapper {
+  float: left;
+  margin-left: 15px;
+  cursor: pointer;
+  margin-top: 3px;
+  height: 10px;
+}
 #jot-perms-icon {
   float: right;
   margin-left: 15px;
@@ -1777,7 +1763,7 @@ section.minimal {
   width: 780px;
 }
 #profile-jot-wrapper {
-  margin-bottom: 20px;
+  margin-bottom: 10px;
 }
 
 /** buttons **/
@@ -1894,16 +1880,21 @@ section.minimal {
 }
 /** /acl **/
 /** tab buttons **/
-ul.tabs {
+div.pager, ul.tabs {
   list-style-type: none;
   padding-bottom: 10px;
-  padding-left: 0px;
+  padding-left: 10px;
+  padding-top: 0px;
   margin-bottom: 5px;
-  line-height: 27px;
-  height: 27px;
-  font-size: 11px;
+  line-height: 28px;
+  height: 20px;
+/*  font-size: 11px; */
+  font-size: 13px;
   font-weight: bold;
   /* margin-bottom: 30px; */
+  background-color: #FAFAFA;
+  box-shadow: 1px 2px 0px 0px #D8D8D8;
+  border-bottom: 1px solid #D2D2D2;
 }
 ul.tabs li {
   float: left;
@@ -1913,59 +1904,81 @@ ul.tabs li {
   border-bottom: 1px solid #005c94;
 }*/
 
-ul.tabs a {
+ul.tabs a, div.pager a {
     /* min-width: 34px; */
-    display: block;
-    float: left;
-    padding-bottom: 0px;
-    padding: 0px 12px 0px 12px;
-    color: #444;
+/*    display: block;
+    float: left; */
+    padding: 0px;
+    padding-bottom: 6px;
+/*    padding: 0px 12px 0px 12px; */
+/*    color: #444; */
+    color: darkgray;
 }
 
 ul.tabs a {
-    box-shadow: 1px 1px 6px -3px #666;
-    margin-right: 5px;
+/*    box-shadow: 1px 2px 0px 0px #D8D8D8; */
+    margin-right: 15px;
+    margin-left: 5px;
 }
 
 #birthday-notice, #event-notice {
-    box-shadow: 1px 1px 6px -3px #666;
+    box-shadow: 1px 2px 0px 0px #D8D8D8;
     margin-bottom: 5px;
 }
 
 #birthday-wrapper, #event-wrapper {
     background-color: #FAFAFA;
-    box-shadow: 1px 1px 6px -3px #666;
+    box-shadow: 1px 2px 0px 0px #D8D8D8;
     padding-left: 10px;
     padding-right: 10px;
     padding-top: 5px;
     padding-bottom: 5px;
-    margin-bottom: 10px;
+    margin-bottom: 0px;
 }
 
-div.pager, .birthday-notice, #jot-preview-link, .comment-edit-submit-wrapper .fakelink {
+.birthday-notice, .event-notice  {
+    padding: 2px 7px 2px 7px;
+    color: darkgrey;
+   font-weight: bold;
+}
+.comment-edit-submit-wrapper .fakelink {
     padding: 2px 7px 2px 7px;
     color: black;
 }
 
-div.pager, .birthday-notice, ul.tabs a, #jot-preview-link, .comment-edit-submit-wrapper .fakelink {
-    border: 1px solid lightgray;
+.comment-edit-submit-wrapper .fakelink {
+/*    border: 1px solid lightgray; */
     background: #F2F2F2;
     margin-top: 2px;
     margin-bottom: 2px;
 }
 
-ul.tabs a:hover {
-    color: #333;
-}
-
-#event-notice:hover, #birthday-notice:hover, ul.tabs li .active, #jot-preview-link:hover, .comment-edit-submit-wrapper .fakelink:hover {
+#event-notice:hover, #birthday-notice:hover, ul.tabs li .active, 
+.comment-edit-submit-wrapper .fakelink:hover {
     color: black;
 }
 
-ul.tabs a:hover, #event-notice:hover, #birthday-notice:hover, ul.tabs li .active, #jot-preview-link:hover, .comment-edit-submit-wrapper .fakelink:hover {
-    background-color: #e5e5e5;
+span.pager_current, span.pager_n a:hover, 
+span.pager_first a:hover, span.pager_last a:hover, 
+span.pager_prev a:hover, span.pager_next a:hover,
+ul.tabs a:hover {
+  border-bottom: 2px solid #244C5E;
+  text-decoration: none;
+  color: grey;
+  padding-bottom: 6px;
+}
+
+ul.tabs li .active, span.pager_current a {
+  border-bottom: 2px solid #244C5E;
+  text-decoration: none;
+  color: black;
+}
+
+#event-notice:hover, #birthday-notice:hover, .comment-edit-submit-wrapper .fakelink:hover {
+/*    background-color: #e5e5e5; */
+  color: grey;
     text-decoration: none;
-    border: 1px solid darkgray;
+/*    border: 1px solid darkgray; */
 }
 
 .comment-edit-bb {
@@ -1995,7 +2008,7 @@ ul.tabs a:hover, #event-notice:hover, #birthday-notice:hover, ul.tabs li .active
   width: 200px;
 }
 .field input, .field textarea {
-  width: 400px;
+  max-width: 400px;
 }
 .field textarea {
   height: 100px;
@@ -2039,6 +2052,12 @@ ul.tabs a:hover, #event-notice:hover, #birthday-notice:hover, ul.tabs li .active
 }
 .field.radio .field_help {
   margin-left: 0px;
+}
+aside form {
+  overflow-x: hidden;
+}
+aside form .field label {
+  float: inherit;
 }
 
 #profile-edit-links-end {
@@ -2099,8 +2118,10 @@ ul.tabs a:hover, #event-notice:hover, #birthday-notice:hover, ul.tabs li .active
 /* contacts */
 .contact-entry-wrapper {
   width: 120px;
-  height: 120px;
+  height: 130px;
   float: left;
+/*  overflow: hidden; */
+  margin-left: 5px;
 }
 /* photo */
 .lframe {
@@ -2181,6 +2202,7 @@ blockquote {
     /* font-size: large; */
     font-size: larger;
     font-weight: bold;
+    display: block;
 }
 
 /* ================== */
@@ -2326,7 +2348,13 @@ a.mail-list-link {
 
 .vevent {
         border: 1px solid #CCCCCC;
+        max-width: 600px;
+        position: relative;
+        margin-top: 4px;
+        margin-right: 4px;
+        margin-bottom: 15px;
 }
+
 .vevent .event-description, .vevent .event-location {
         margin-left: 10px;
         margin-right: 10px;
@@ -2386,9 +2414,9 @@ a.mail-list-link {
 }
 
 .settings-block {
-        border: 1px solid #AAA;
-        margin: 10px;
-        padding: 10px;
+        /* border: 1px solid #AAA; */
+        padding-left: 5px;
+        padding-right: 5px;
 }
 
 .app-title {

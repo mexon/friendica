@@ -1,5 +1,11 @@
 <?php
 
+# if PDO is avaible for mysql, use the new database abstraction
+if(class_exists('\PDO') && in_array('mysql', PDO::getAvailableDrivers())) {
+  require_once("library/dddbl2/dddbl.php");
+  require_once("include/dba_pdo.php");
+}
+
 require_once('include/datetime.php');
 
 /**
@@ -18,6 +24,7 @@ class dba {
 
 	private $debug = 0;
 	private $db;
+	private $result;
 	public  $mysqli = true;
 	public  $connected = false;
 	public  $error = false;
@@ -75,7 +82,7 @@ class dba {
 		return $this->db;
 	}
 
-	public function q($sql) {
+	public function q($sql, $onlyquery = false) {
 		global $a;
 
 		if((! $this->db) || (! $this->connected))
@@ -154,6 +161,11 @@ class dba {
 		if(($result === true) || ($result === false))
 			return $result;
 
+		if ($onlyquery) {
+			$this->result = $result;
+			return true;
+		}
+
 		$r = array();
 		if($this->mysqli) {
 			if($result->num_rows) {
@@ -175,6 +187,30 @@ class dba {
 		if($this->debug)
 			logger('dba: ' . printable(print_r($r, true)));
 		return($r);
+	}
+
+	public function qfetch() {
+		$x = false;
+
+		if ($this->result)
+			if($this->mysqli) {
+				if($this->result->num_rows)
+					$x = $this->result->fetch_array(MYSQLI_ASSOC);
+			} else {
+				if(mysql_num_rows($this->result))
+					$x = mysql_fetch_array($this->result, MYSQL_ASSOC);
+			}
+
+		return($x);
+	}
+
+	public function qclose() {
+		if ($this->result)
+			if($this->mysqli) {
+				$this->result->free_result();
+			} else {
+				mysql_free_result($this->result);
+			}
 	}
 
 	public function dbg($dbg) {

@@ -61,9 +61,9 @@ function onepoll_run(&$argv, &$argc){
 	
 
 	// Test
-	$lockpath = get_config('system','lockpath');
+	$lockpath = get_lockpath();
 	if ($lockpath != '') {
-		$pidfile = new pidfile($lockpath, 'onepoll'.$contact_id.'.lck');
+		$pidfile = new pidfile($lockpath, 'onepoll'.$contact_id);
 		if($pidfile->is_already_running()) {
 			logger("onepoll: Already running for contact ".$contact_id);
 			exit;
@@ -116,7 +116,7 @@ function onepoll_run(&$argv, &$argc){
 
 	$importer_uid = $contact['uid'];
 
-	$r = q("SELECT `contact`.*, `user`.`page-flags` FROM `contact` LEFT JOIN `user` on `contact`.`uid` = `user`.`uid` WHERE `user`.`uid` = %d AND `contact`.`self` = 1 LIMIT 1",
+	$r = q("SELECT `contact`.*, `user`.`page-flags` FROM `contact` INNER JOIN `user` on `contact`.`uid` = `user`.`uid` WHERE `user`.`uid` = %d AND `contact`.`self` = 1 LIMIT 1",
 		intval($importer_uid)
 	);
 	if(! count($r)) {

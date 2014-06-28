@@ -41,11 +41,17 @@ function poller_run(&$argv, &$argc){
 		}
 	}
 
-	$lockpath = get_config('system','lockpath');
+	$lockpath = get_lockpath();
 	if ($lockpath != '') {
-		$pidfile = new pidfile($lockpath, 'poller.lck');
+		$pidfile = new pidfile($lockpath, 'poller');
 		if($pidfile->is_already_running()) {
 			logger("poller: Already running");
+			if ($pidfile->running_time() > 9*60) {
+                                $pidfile->kill();
+                                logger("poller: killed stale process");
+                                // Calling a new instance
+                                proc_run('php','include/poller.php');
+                        }
 			exit;
 		}
 	}
@@ -174,7 +180,7 @@ function poller_run(&$argv, &$argc){
 		: '' 
 	);
 
-	$contacts = q("SELECT `contact`.`id` FROM `contact` LEFT JOIN `user` ON `user`.`uid` = `contact`.`uid` 
+	$contacts = q("SELECT `contact`.`id` FROM `contact` INNER JOIN `user` ON `user`.`uid` = `contact`.`uid` 
 		WHERE ( `rel` = %d OR `rel` = %d ) AND `poll` != ''
 		AND NOT `network` IN ( '%s', '%s', '%s' )
 		$sql_extra 

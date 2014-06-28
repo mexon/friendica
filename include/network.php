@@ -127,13 +127,14 @@ function fetch_url($url,$binary = false, &$redirects = 0, $timeout = 0, $accept_
 
 if(! function_exists('post_url')) {
 function post_url($url,$params, $headers = null, &$redirects = 0, $timeout = 0) {
-
 	$stamp1 = microtime(true);
 
 	$a = get_app();
 	$ch = curl_init($url);
 	if(($redirects > 8) || (! $ch))
 		return false;
+
+	logger("post_url: start ".$url, LOGGER_DATA);
 
 	curl_setopt($ch, CURLOPT_HEADER, true);
 	curl_setopt($ch, CURLOPT_RETURNTRANSFER,true);
@@ -183,6 +184,8 @@ function post_url($url,$params, $headers = null, &$redirects = 0, $timeout = 0) 
 	$curl_info = curl_getinfo($ch);
 	$http_code = $curl_info['http_code'];
 
+	logger("post_url: result ".$http_code." - ".$url, LOGGER_DATA);
+
 	$header = '';
 
 	// Pull out multiple headers, e.g. proxy and continuation headers
@@ -194,17 +197,19 @@ function post_url($url,$params, $headers = null, &$redirects = 0, $timeout = 0) 
 		$base = substr($base,strlen($chunk));
 	}
 
-	if($http_code == 301 || $http_code == 302 || $http_code == 303) {
-        $matches = array();
-        preg_match('/(Location:|URI:)(.*?)\n/', $header, $matches);
-        $newurl = trim(array_pop($matches));
+	if($http_code == 301 || $http_code == 302 || $http_code == 303 || $http_code == 307) {
+		$matches = array();
+		preg_match('/(Location:|URI:)(.*?)\n/', $header, $matches);
+		$newurl = trim(array_pop($matches));
 		if(strpos($newurl,'/') === 0)
 			$newurl = $old_location_info["scheme"] . "://" . $old_location_info["host"] . $newurl;
-        if (filter_var($newurl, FILTER_VALIDATE_URL)) {
-            $redirects++;
-            return fetch_url($newurl,false,$redirects,$timeout);
-        }
-    }
+		if (filter_var($newurl, FILTER_VALIDATE_URL)) {
+			$redirects++;
+			logger("post_url: redirect ".$url." to ".$newurl);
+			return post_url($newurl,$params, $headers, $redirects, $timeout);
+			//return fetch_url($newurl,false,$redirects,$timeout);
+		}
+	}
 	$a->set_curl_code($http_code);
 	$body = substr($s,strlen($header));
 
@@ -213,6 +218,8 @@ function post_url($url,$params, $headers = null, &$redirects = 0, $timeout = 0) 
 	curl_close($ch);
 
 	$a->save_timestamp($stamp1, "network");
+
+	logger("post_url: end ".$url, LOGGER_DATA);
 
 	return($body);
 }}
@@ -1110,3 +1117,128 @@ function xml2array($contents, $namespaces = true, $get_attributes=1, $priority =
 
     return($xml_array);
 }
+
+function original_url($url, $depth=1, $fetchbody = false) {
+
+	// Remove Analytics Data from Google and other tracking platforms
+	$urldata = parse_url($url);
+	if (is_string($urldata["query"])) {
+		$query = $urldata["query"];
+		parse_str($query, $querydata);
+
+		if (is_array($querydata))
+			foreach ($querydata AS $param=>$value)
+				if (in_array($param, array("utm_source", "utm_medium", "utm_term", "utm_content", "utm_campaign",
+							"wt_mc", "pk_campaign", "pk_kwd", "mc_cid", "mc_eid",
+							"fb_action_ids", "fb_action_types", "fb_ref",
+							"awesm",
+							"woo_campaign", "woo_source", "woo_medium", "woo_content", "woo_term"))) {
+
+					$pair = $param."=".urlencode($value);
+					$url = str_replace($pair, "", $url);
+
+					// Second try: if the url isn't encoded completely
+					$pair = $param."=".str_replace(" ", "+", $value);
+					$url = str_replace($pair, "", $url);
+
+					// Third try: Maybey the url isn't encoded at all
+					$pair = $param."=".$value;
+					$url = str_replace($pair, "", $url);
+
+					$url = str_replace(array("?&", "&&"), array("?", ""), $url);
+				}
+
+		if (substr($url, -1, 1) == "?")
+			$url = substr($url, 0, -1);
+	}
+
+        if ($depth > 10)
+        	return($url);
+
+        $url = trim($url, "'");
+
+        $siteinfo = array();
+        $ch = curl_init();
+        curl_setopt($ch, CURLOPT_URL, $url);
+        curl_setopt($ch, CURLOPT_HEADER, 1);
+
+        if ($fetchbody)
+                curl_setopt($ch, CURLOPT_NOBODY, 0);
+        else
+                curl_setopt($ch, CURLOPT_NOBODY, 1);
+
+        curl_setopt($ch, CURLOPT_TIMEOUT, 10);
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch,CURLOPT_USERAGENT,'Mozilla/5.0 (Macintosh; Intel Mac OS X 10.8; rv:24.0) Gecko/20100101 Firefox/24.0');
+
+        $header = curl_exec($ch);
+        $curl_info = @curl_getinfo($ch);
+        $http_code = $curl_info['http_code'];
+        curl_close($ch);
+
+        if ((($curl_info['http_code'] == "301") OR ($curl_info['http_code'] == "302"))
+                AND (($curl_info['redirect_url'] != "") OR ($curl_info['location'] != ""))) {
+                if ($curl_info['redirect_url'] != "")
+                        return(original_url($curl_info['redirect_url'], ++$depth, $fetchbody));
+                else
+                        return(original_url($curl_info['location'], ++$depth, $fetchbody));
+        }
+
+        $pos = strpos($header, "\r\n\r\n");
+
+        if ($pos)
+                $body = trim(substr($header, $pos));
+        else
+                $body = $header;
+
+        if (trim($body) == "")
+                return(original_url($url, ++$depth, true));
+
+        $doc = new DOMDocument();
+        @$doc->loadHTML($body);
+
+        $xpath = new DomXPath($doc);
+
+        $list = $xpath->query("//meta[@content]");
+        foreach ($list as $node) {
+                $attr = array();
+                if ($node->attributes->length)
+                        foreach ($node->attributes as $attribute)
+                                $attr[$attribute->name] = $attribute->value;
+
+                if (@$attr["http-equiv"] == 'refresh') {
+                        $path = $attr["content"];
+                        $pathinfo = explode(";", $path);
+                        $content = "";
+                        foreach ($pathinfo AS $value)
+                                if (substr(strtolower($value), 0, 4) == "url=")
+                                        return(original_url(substr($value, 4), ++$depth));
+                }
+        }
+
+        return($url);
+}
+
+if (!function_exists('short_link')) {
+function short_link($url) {
+	require_once('library/slinky.php');
+	$slinky = new Slinky($url);
+	$yourls_url = get_config('yourls','url1');
+	if ($yourls_url) {
+		$yourls_username = get_config('yourls','username1');
+		$yourls_password = get_config('yourls', 'password1');
+		$yourls_ssl = get_config('yourls', 'ssl1');
+		$yourls = new Slinky_YourLS();
+		$yourls->set('username', $yourls_username);
+		$yourls->set('password', $yourls_password);
+		$yourls->set('ssl', $yourls_ssl);
+		$yourls->set('yourls-url', $yourls_url);
+		$slinky->set_cascade( array($yourls, new Slinky_UR1ca(), new Slinky_Trim(), new Slinky_IsGd(), new Slinky_TinyURL()));
+	} else {
+		// setup a cascade of shortening services
+		// try to get a short link from these services
+		// in the order ur1.ca, trim, id.gd, tinyurl
+		$slinky->set_cascade(array(new Slinky_UR1ca(), new Slinky_Trim(), new Slinky_IsGd(), new Slinky_TinyURL()));
+	}
+	return $slinky->short();
+}};

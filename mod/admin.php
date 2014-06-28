@@ -87,10 +87,11 @@ function admin_content(&$a) {
 	if(x($_SESSION,'submanage') && intval($_SESSION['submanage']))
 		return "";
 
-	if (function_exists("apc_delete")) {
-		$toDelete = new APCIterator('user', APC_ITER_VALUE);
-		apc_delete($toDelete);
-	}
+	// APC deactivated, since there are problems with PHP 5.5
+	//if (function_exists("apc_delete")) {
+	//	$toDelete = new APCIterator('user', APC_ITER_VALUE);
+	//	apc_delete($toDelete);
+	//}
 
 	/**
 	 * Side bar links
@@ -329,7 +330,7 @@ function admin_page_site_post(&$a){
 	$private_addons			=	((x($_POST,'private_addons'))		? True						: False);
 	$disable_embedded		=	((x($_POST,'disable_embedded'))		? True						: False);
 	$allow_users_remote_self	=	((x($_POST,'allow_users_remote_self'))		? True						: False);
-	
+
 	$no_multi_reg		=	((x($_POST,'no_multi_reg'))		? True						: False);
 	$no_openid		=	!((x($_POST,'no_openid'))		? True						: False);
 	$no_regfullname		=	!((x($_POST,'no_regfullname'))		? True						: False);
@@ -354,13 +355,14 @@ function admin_page_site_post(&$a){
 	$use_fulltext_engine	=	((x($_POST,'use_fulltext_engine'))	? True   					: False);
 	$itemcache		=	((x($_POST,'itemcache'))		? notags(trim($_POST['itemcache']))		: '');
 	$itemcache_duration	=	((x($_POST,'itemcache_duration'))	? intval($_POST['itemcache_duration'])		: 0);
+	$max_comments		=	((x($_POST,'max_comments'))		? intval($_POST['max_comments'])		: 0);
 	$lockpath		=	((x($_POST,'lockpath'))			? notags(trim($_POST['lockpath']))		: '');
 	$temppath		=	((x($_POST,'temppath'))			? notags(trim($_POST['temppath']))		: '');
 	$basepath		=	((x($_POST,'basepath'))			? notags(trim($_POST['basepath']))		: '');
 	$singleuser		=	((x($_POST,'singleuser'))		? notags(trim($_POST['singleuser']))		: '');
 	if($ssl_policy != intval(get_config('system','ssl_policy'))) {
 		if($ssl_policy == SSL_POLICY_FULL) {
-			q("update `contact` set 
+			q("update `contact` set
 				`url`     = replace(`url`    , 'http:' , 'https:'),
 				`photo`   = replace(`photo`  , 'http:' , 'https:'),
 				`thumb`   = replace(`thumb`  , 'http:' , 'https:'),
@@ -403,6 +405,7 @@ function admin_page_site_post(&$a){
 	set_config('system','poll_interval',$poll_interval);
 	set_config('system','maxloadavg',$maxloadavg);
 	set_config('config','sitename',$sitename);
+	set_config('system','suppress_language',$suppress_language);
 	if ($banner==""){
 		// don't know why, but del_config doesn't work...
 		q("DELETE FROM `config` WHERE `cat` = '%s' AND `k` = '%s' LIMIT 1",
@@ -476,6 +479,7 @@ function admin_page_site_post(&$a){
 	set_config('system','use_fulltext_engine', $use_fulltext_engine);
 	set_config('system','itemcache', $itemcache);
 	set_config('system','itemcache_duration', $itemcache_duration);
+	set_config('system','max_comments', $max_comments);
 	set_config('system','lockpath', $lockpath);
 	set_config('system','temppath', $temppath);
 	set_config('system','basepath', $basepath);
@@ -526,11 +530,12 @@ function admin_page_site(&$a) {
 
         /* OStatus conversation poll choices */
         $ostatus_poll_choices = array(
-                "-1" => t("Never"),
-                "0" => t("Frequently"),
-                "60" => t("Hourly"),
-                "720" => t("Twice daily"),
-                "1440" => t("Daily")
+		"-2" => t("Never"),
+		"-1" => t("At post arrival"),
+		"0" => t("Frequently"),
+		"60" => t("Hourly"),
+		"720" => t("Twice daily"),
+		"1440" => t("Daily")
             );
 
         /* get user names to make the install a personal install of X */
@@ -543,11 +548,16 @@ function admin_page_site(&$a) {
 
 	/* Banner */
 	$banner = get_config('system','banner');
-	if($banner == false) 
+	if($banner == false)
 		$banner = '<a href="http://friendica.com"><img id="logo-img" src="images/friendica-32.png" alt="logo" /></a><span id="logo-text"><a href="http://friendica.com">Friendica</a></span>';
 	$banner = htmlspecialchars($banner);
 	$info = get_config('config','info');
 	$info = htmlspecialchars($info);
+
+	// Automatically create temporary paths
+	get_temppath();
+	get_lockpath();
+	get_itemcachepath();
 
 	//echo "<pre>"; var_dump($lang_choices); die("</pre>");
 
@@ -611,7 +621,7 @@ function admin_page_site(&$a) {
 		'$no_regfullname'	=> array('no_regfullname', t("Fullname check"), !get_config('system','no_regfullname'), t("Force users to register with a space between firstname and lastname in Full name, as an antispam measure")),
 		'$no_utf'		=> array('no_utf', t("UTF-8 Regular expressions"), !get_config('system','no_utf'), t("Use PHP UTF8 regular expressions")),
 		'$no_community_page' 	=> array('no_community_page', t("Show Community Page"), !get_config('system','no_community_page'), t("Display a Community page showing all recent public postings on this site.")),
-		'$ostatus_disabled' 	=> array('ostatus_disabled', t("Enable OStatus support"), !get_config('system','ostatus_disabled'), t("Provide built-in OStatus \x28identi.ca, status.net, etc.\x29 compatibility. All communications in OStatus are public, so privacy warnings will be occasionally displayed.")),	
+		'$ostatus_disabled' 	=> array('ostatus_disabled', t("Enable OStatus support"), !get_config('system','ostatus_disabled'), t("Provide built-in OStatus \x28StatusNet, GNU Social etc.\x29 compatibility. All communications in OStatus are public, so privacy warnings will be occasionally displayed.")),	
 		'$ostatus_poll_interval'	=> array('ostatus_poll_interval', t("OStatus conversation completion interval"), (string) intval(get_config('system','ostatus_poll_interval')), t("How often shall the poller check for new entries in OStatus conversations? This can be a very ressource task."), $ostatus_poll_choices),
 		'$diaspora_enabled' 	=> array('diaspora_enabled', t("Enable Diaspora support"), get_config('system','diaspora_enabled'), t("Provide built-in Diaspora network compatibility.")),	
 		'$dfrn_only'        	=> array('dfrn_only', t('Only allow Friendica contacts'), get_config('system','dfrn_only'), t("All contacts must use Friendica protocols. All other built-in communication protocols disabled.")),
@@ -626,13 +636,14 @@ function admin_page_site(&$a) {
 		'$use_fulltext_engine'	=> array('use_fulltext_engine', t("Use MySQL full text engine"), get_config('system','use_fulltext_engine'), t("Activates the full text engine. Speeds up search - but can only search for four and more characters.")),
 		'$suppress_language'	=> array('suppress_language', t("Suppress Language"), get_config('system','suppress_language'), t("Suppress language information in meta information about a posting.")),
 		'$itemcache'		=> array('itemcache', t("Path to item cache"), get_config('system','itemcache'), "The item caches buffers generated bbcode and external images."),
-		'$itemcache_duration' 	=> array('itemcache_duration', t("Cache duration in seconds"), get_config('system','itemcache_duration'), t("How long should the cache files be hold? Default value is 86400 seconds (One day).")),
+		'$itemcache_duration' 	=> array('itemcache_duration', t("Cache duration in seconds"), get_config('system','itemcache_duration'), t("How long should the cache files be hold? Default value is 86400 seconds (One day). To disable the item cache, set the value to -1.")),
+		'$max_comments' 	=> array('max_comments', t("Maximum numbers of comments per post"), get_config('system','max_comments'), t("How much comments should be shown for each post? Default value is 100.")),
 		'$lockpath'		=> array('lockpath', t("Path for lock file"), get_config('system','lockpath'), "The lock file is used to avoid multiple pollers at one time. Only define a folder here."),
 		'$temppath'		=> array('temppath', t("Temp path"), get_config('system','temppath'), "If you have a restricted system where the webserver can't access the system temp path, enter another path here."),
 		'$basepath'		=> array('basepath', t("Base path to installation"), get_config('system','basepath'), "If the system cannot detect the correct path to your installation, enter the correct path here. This setting should only be set if you are using a restricted system and symbolic links to your webroot."),
-		
+
 		'$relocate_url'     => array('relocate_url', t("New base url"), $a->get_baseurl(), "Change base url for this server. Sends relocate message to all DFRN contacts of all users."),
-		
+
         '$form_security_token' => get_form_security_token("admin_site"),
 
 	));
@@ -1027,13 +1038,24 @@ function admin_page_plugins(&$a){
 	 */
 
 	$plugins = array();
-	$files = glob("addon/*/");
+	$files = glob("addon/*/"); /* */
 	if($files) {
-		foreach($files as $file) {	
+		foreach($files as $file) {
 			if (is_dir($file)){
 				list($tmp, $id)=array_map("trim", explode("/",$file));
 				$info = get_plugin_info($id);
-				$plugins[] = array( $id, (in_array($id,  $a->plugins)?"on":"off") , $info);
+				$show_plugin = true;
+
+				// If the addon is unsupported, then only show it, when it is enabled
+				if ((strtolower($info["status"]) == "unsupported") AND !in_array($id,  $a->plugins))
+					$show_plugin = false;
+
+				// Override the above szenario, when the admin really wants to see outdated stuff
+				if (get_config("system", "show_unsupported_addons"))
+					$show_plugin = true;
+
+				if ($show_plugin)
+					$plugins[] = array($id, (in_array($id,  $a->plugins)?"on":"off") , $info);
 			}
 		}
 	}
@@ -1044,7 +1066,7 @@ function admin_page_plugins(&$a){
 		'$page' => t('Plugins'),
 		'$submit' => t('Save Settings'),
 		'$baseurl' => $a->get_baseurl(true),
-		'$function' => 'plugins',	
+		'$function' => 'plugins',
 		'$plugins' => $plugins,
         '$form_security_token' => get_form_security_token("admin_themes"),
 	));
@@ -1126,16 +1148,16 @@ function admin_page_themes(&$a){
 				$allowed_themes[] = trim($x);
 
 	$themes = array();
-    $files = glob('view/theme/*');
-    if($files) {
-        foreach($files as $file) {
-            $f = basename($file);
-            $is_experimental = intval(file_exists($file . '/experimental'));
+	$files = glob('view/theme/*'); /* */
+	if($files) {
+		foreach($files as $file) {
+			$f = basename($file);
+			$is_experimental = intval(file_exists($file . '/experimental'));
 			$is_supported = 1-(intval(file_exists($file . '/unsupported'))); // Is not used yet
 			$is_allowed = intval(in_array($f,$allowed_themes));
 			$themes[] = array('name' => $f, 'experimental' => $is_experimental, 'supported' => $is_supported, 'allowed' => $is_allowed);
-        }
-    }
+		}
+	}
 
 	if(! count($themes)) {
 		notice( t('No themes found.'));
@@ -1271,12 +1293,12 @@ function admin_page_logs_post(&$a) {
 		set_config('system','debugging',  $debugging);
 		set_config('system','loglevel', $loglevel);
 
-		
+
 	}
 
 	info( t("Log settings updated.") );
 	goaway($a->get_baseurl(true) . '/admin/logs' );
-	return; // NOTREACHED	
+	return; // NOTREACHED
 }
 
 /**
@@ -1284,7 +1306,7 @@ function admin_page_logs_post(&$a) {
  * @return string
  */
 function admin_page_logs(&$a){
-	
+
 	$log_choices = Array(
 		LOGGER_NORMAL => 'Normal',
 		LOGGER_TRACE => 'Trace',
@@ -1292,7 +1314,7 @@ function admin_page_logs(&$a){
 		LOGGER_DATA => 'Data',
 		LOGGER_ALL => 'All'
 	);
-	
+
 	$t = get_markup_template("admin_logs.tpl");
 
 	$f = get_config('system','logfile');
@@ -1324,7 +1346,7 @@ readable.");
 			}
 			fclose($fp);
 		}
-	}			
+	}
 
 	return replace_macros($t, array(
 		'$title' => t('Administration'),
@@ -1334,7 +1356,7 @@ readable.");
 		'$data' => $data,
 		'$baseurl' => $a->get_baseurl(true),
 		'$logname' =>  get_config('system','logfile'),
-		
+
 									// name, label, value, help string, extra data...
 		'$debugging' 		=> array('debugging', t("Enable Debugging"),get_config('system','debugging'), ""),
 		'$logfile'			=> array('logfile', t("Log file"), get_config('system','logfile'), t("Must be writable by web server. Relative to your Friendica top-level directory.")),
@@ -1353,7 +1375,7 @@ function admin_page_remoteupdate_post(&$a) {
 		return;
 	}
 
-	
+
 	if (x($_POST,'remotefile') && $_POST['remotefile']!=""){
 		$remotefile = $_POST['remotefile'];
 		$ftpdata = (x($_POST['ftphost'])?$_POST:false);
@@ -1376,14 +1398,14 @@ function admin_page_remoteupdate(&$a) {
 
 	$canwrite = canWeWrite();
 	$canftp = function_exists('ftp_connect');
-	
+
 	$needupdate = true;
 	$u = checkUpdate();
 	if (!is_array($u)){
 		$needupdate = false;
 		$u = array('','','');
 	}
-	
+
 	$tpl = get_markup_template("admin_remoteupdate.tpl");
 	return replace_macros($tpl, array(
 		'$baseurl' => $a->get_baseurl(true),
@@ -1400,5 +1422,5 @@ function admin_page_remoteupdate(&$a) {
 		'$ftppwd'	=> array('ftppwd', t("FTP Password"), '',''),
 		'$remotefile'=>array('remotefile','', $u['2'],''),
 	));
-	
+
 }

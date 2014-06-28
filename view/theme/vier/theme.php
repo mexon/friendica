@@ -1,11 +1,11 @@
 <?php
 /**
  * Name: Vier
- * Version: 0.9
+ * Version: 1.1
  * Author: Fabio <http://kirgroup.com/profile/fabrixxm>
  * Author: Ike <http://pirati.ca/profile/heluecht>
  * Maintainer: Ike <http://pirati.ca/profile/heluecht>
- * Description: "Vier" uses the font awesome font library: http://fortawesome.github.com/Font-Awesome/
+ * Description: "Vier" is a very compact and modern theme. It uses the font awesome font library: http://fortawesome.github.com/Font-Awesome/
  */
 
 function vier_init(&$a) {
@@ -16,10 +16,16 @@ $baseurl = $a->get_baseurl();
 $a->theme_info = array();
 
 $style = get_pconfig(local_user(), 'vier', 'style');
+
+if ($style == "")
+	$style = get_config('vier', 'style');
+
 if ($style == "flat")
 	$a->page['htmlhead'] .= '<link rel="stylesheet" href="view/theme/vier/flat.css" type="text/css" media="screen"/>'."\n";
 else if ($style == "netcolour")
 	$a->page['htmlhead'] .= '<link rel="stylesheet" href="view/theme/vier/netcolour.css" type="text/css" media="screen"/>'."\n";
+else if ($style == "breathe")
+	$a->page['htmlhead'] .= '<link rel="stylesheet" href="view/theme/vier/breathe.css" type="text/css" media="screen"/>'."\n";
 
 $a->page['htmlhead'] .= <<< EOT
 <script type="text/javascript" src="$baseurl/view/theme/vier/js/jquery.divgrow-1.3.1.f1.min.js"></script>

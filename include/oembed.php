@@ -10,7 +10,10 @@ function oembed_replacecb($matches){
 }
 
 
-function oembed_fetch_url($embedurl){
+function oembed_fetch_url($embedurl, $no_rich_type = false){
+
+	$embedurl = trim($embedurl, "'");
+	$embedurl = trim($embedurl, '"');
 
 	$a = get_app();
 
@@ -48,9 +51,18 @@ function oembed_fetch_url($embedurl){
 		}
 
 		if ($txt==false || $txt==""){
-			// try oohembed service
-			$ourl = "http://oohembed.com/oohembed/?url=".urlencode($embedurl).'&maxwidth=' . $a->videowidth;  
-			$txt = fetch_url($ourl);
+			$embedly = get_config("system", "embedly");
+			if ($embedly == "") {
+				// try oohembed service
+				$ourl = "http://oohembed.com/oohembed/?url=".urlencode($embedurl).'&maxwidth=' . $a->videowidth;
+				$txt = fetch_url($ourl);
+			} else {
+				// try embedly service
+				$ourl = "https://api.embed.ly/1/oembed?key=".$embedly."&url=".urlencode($embedurl);
+				$txt = fetch_url($ourl);
+			}
+
+			logger("oembed_fetch_url: ".$txt, LOGGER_DEBUG);
 		}
 
 		$txt=trim($txt);
@@ -67,6 +79,32 @@ function oembed_fetch_url($embedurl){
 		return false;
 
 	$j->embedurl = $embedurl;
+
+	// If fetching information doesn't work, then improve via internal functions
+	if (($j->type == "error") OR ($no_rich_type AND ($j->type == "rich"))) {
+		require_once("mod/parse_url.php");
+		$data = parseurl_getsiteinfo($embedurl, true, false);
+		$j->type = $data["type"];
+
+		if ($j->type == "photo") {
+			$j->url = $data["url"];
+			//$j->width = $data["images"][0]["width"];
+			//$j->height = $data["images"][0]["height"];
+		}
+
+		if (isset($data["title"]))
+		        $j->title = $data["title"];
+
+		if (isset($data["text"]))
+	        	$j->description = $data["text"];
+
+		if (is_array($data["images"])) {
+		        $j->thumbnail_url = $data["images"][0]["src"];
+		        $j->thumbnail_width = $data["images"][0]["width"];
+	        	$j->thumbnail_height = $data["images"][0]["height"];
+		}
+	}
+
 	return $j;
 }
 

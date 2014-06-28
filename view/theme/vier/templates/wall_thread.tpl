@@ -96,9 +96,11 @@
 		</div>
 		<div class="wall-item-actions">
 			<div class="wall-item-actions-social">
-			{{if $item.threaded}}{{if $item.comment}}
-				<span id="comment-{{$item.id}}" class="fakelink togglecomment" onclick="openClose('item-comments-{{$item.id}}');"><i class="icon-comment"></i></span>
-			{{/if}}{{/if}}
+			{{if $item.threaded}}
+			{{/if}}
+			{{if $item.comment}}
+				<span id="comment-{{$item.id}}" class="fakelink togglecomment" onclick="openClose('item-comments-{{$item.id}}'); commentExpand({{$item.id}});" title="{{$item.switchcomment}}"><i class="icon-reply"></i></span>
+			{{/if}}
 			{{if $item.vote}}
 				{{if $item.vote.like}}
 				<a href="#" id="like-{{$item.id}}" title="{{$item.vote.like.0}}" onclick="dolike({{$item.id}},'like'); return false"><i class="icon-thumbs-up icon-large"></i></a>
@@ -120,7 +122,7 @@
                                 <a href="#" id="filer-{{$item.id}}" onclick="itemFiler({{$item.id}}); return false;" class="filer-item filer-icon" title="{{$item.filer}}"><i class="icon-folder-close icon-large"></i></a>
 			{{/if}}
 			</div>
-			<div class="wall-item-location">{{$item.location}} {{$item.postopts}}</div>				
+			<div class="wall-item-location">{{$item.location}} {{$item.postopts}}</div>
 			<div class="wall-item-actions-tools">
 
 				{{if $item.drop.pagedrop}}
@@ -171,11 +173,20 @@
 {{if $item.comment_lastcollapsed}}</div>{{/if}}
 {{/if}}
 
-{{if $item.threaded}}{{if $item.comment}}{{if $item.thread_level==1}}
-<div class="wall-item-comment-wrapper" id="item-comments-{{$item.id}}">{{$item.comment}}</div>
-{{/if}}{{/if}}{{/if}}
+{{if $item.total_comments_num}}
+	{{if $item.threaded}}{{if $item.comment}}{{if $item.thread_level==1}}
+		<div class="wall-item-comment-wrapper" id="item-comments-{{$item.id}}">{{$item.comment}}</div>
+	{{/if}}{{/if}}{{/if}}
 
+	{{if $item.flatten}}
+		<div class="wall-item-comment-wrapper" id="item-comments-{{$item.id}}">{{$item.comment}}</div>
+	{{/if}}
+{{else}}
+	{{if $item.threaded}}{{if $item.comment}}{{if $item.thread_level==1}}
+		<div class="wall-item-comment-wrapper" id="item-comments-{{$item.id}}" style="display: none;">{{$item.comment}}</div>
+	{{/if}}{{/if}}{{/if}}
 
-{{if $item.flatten}}
-<div class="wall-item-comment-wrapper" id="item-comments-{{$item.id}}">{{$item.comment}}</div>
+	{{if $item.flatten}}
+		<div class="wall-item-comment-wrapper" id="item-comments-{{$item.id}}" style="display: none;">{{$item.comment}}</div>
+	{{/if}}
 {{/if}}

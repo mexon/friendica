@@ -50,9 +50,13 @@ function completeurl($url, $scheme) {
         return($complete);
 }
 
-function parseurl_getsiteinfo($url, $no_guessing = false) {
+function parseurl_getsiteinfo($url, $no_guessing = false, $do_oembed = true) {
+
 	$siteinfo = array();
 
+	$url = trim($url, "'");
+	$url = trim($url, '"');
+	$siteinfo["url"] = $url;
 	$siteinfo["type"] = "link";
 
 	$ch = curl_init();
@@ -69,7 +73,7 @@ function parseurl_getsiteinfo($url, $no_guessing = false) {
         $http_code = $curl_info['http_code'];
 	curl_close($ch);
 
-	if ((($curl_info['http_code'] == "301") OR ($curl_info['http_code'] == "302"))
+	if ((($curl_info['http_code'] == "301") OR ($curl_info['http_code'] == "302") OR ($curl_info['http_code'] == "303") OR ($curl_info['http_code'] == "307"))
 		AND (($curl_info['redirect_url'] != "") OR ($curl_info['location'] != ""))) {
 		if ($curl_info['redirect_url'] != "")
 			$siteinfo = parseurl_getsiteinfo($curl_info['redirect_url']);
@@ -78,23 +82,21 @@ function parseurl_getsiteinfo($url, $no_guessing = false) {
 		return($siteinfo);
 	}
 
-	require_once("include/oembed.php");
+	if ($do_oembed) {
+		require_once("include/oembed.php");
 
-	$oembed_data = oembed_fetch_url($url);
+		$oembed_data = oembed_fetch_url($url);
 
-	if ($oembed_data->type == "link") {
-		if (isset($oembed_data->title))
-			$siteinfo["title"] = $oembed_data->title;
-		if (isset($oembed_data->description))
-			$siteinfo["text"] = trim($oembed_data->description);
-		if (isset($oembed_data->thumbnail_url))
-			$siteinfo["image"] = $oembed_data->thumbnail_url;
+		if ($oembed_data->type != "error")
+			$siteinfo["type"] = $oembed_data->type;
 	}
 
 	// Fetch the first mentioned charset. Can be in body or header
+	$charset = "";
 	if (preg_match('/charset=(.*?)['."'".'"\s\n]/', $header, $matches))
 		$charset = trim(array_pop($matches));
-	else
+
+	if ($charset == "")
 		$charset = "utf-8";
 
 	$pos = strpos($header, "\r\n\r\n");
@@ -161,32 +163,36 @@ function parseurl_getsiteinfo($url, $no_guessing = false) {
 
 		$attr["content"] = trim(html_entity_decode($attr["content"], ENT_QUOTES, "UTF-8"));
 
-		switch (strtolower($attr["name"])) {
-			case "fulltitle":
-				$siteinfo["title"] = $attr["content"];
-				break;
-			case "description":
-				$siteinfo["text"] = $attr["content"];
-				break;
-			case "twitter:image":
-				$siteinfo["image"] = $attr["content"];
-				break;
-			case "twitter:card":
-				$siteinfo["type"] = $attr["content"];
-				break;
-			case "twitter:description":
-				$siteinfo["text"] = $attr["content"];
-				break;
-			case "twitter:title":
-				$siteinfo["title"] = $attr["content"];
-				break;
-			case "dc.title":
-				$siteinfo["title"] = $attr["content"];
-				break;
-			case "dc.description":
-				$siteinfo["text"] = $attr["content"];
-				break;
-		}
+		if ($attr["content"] != "")
+			switch (strtolower($attr["name"])) {
+				case "fulltitle":
+					$siteinfo["title"] = $attr["content"];
+					break;
+				case "description":
+					$siteinfo["text"] = $attr["content"];
+					break;
+				case "twitter:image":
+					$siteinfo["image"] = $attr["content"];
+					break;
+				case "twitter:card":
+					if (($siteinfo["type"] == "") OR ($attr["content"] == "photo"))
+						$siteinfo["type"] = $attr["content"];
+					break;
+				case "twitter:description":
+					$siteinfo["text"] = $attr["content"];
+					break;
+				case "twitter:title":
+					$siteinfo["title"] = $attr["content"];
+					break;
+				case "dc.title":
+					$siteinfo["title"] = $attr["content"];
+					break;
+				case "dc.description":
+					$siteinfo["text"] = $attr["content"];
+					break;
+			}
+		if ($siteinfo["type"] == "summary")
+			$siteinfo["type"] = "link";
 	}
 
 	//$list = $xpath->query("head/meta[@property]");
@@ -199,17 +205,27 @@ function parseurl_getsiteinfo($url, $no_guessing = false) {
 
 		$attr["content"] = trim(html_entity_decode($attr["content"], ENT_QUOTES, "UTF-8"));
 
-		switch (strtolower($attr["property"])) {
-			case "og:image":
-				$siteinfo["image"] = $attr["content"];
-				break;
-			case "og:title":
-				$siteinfo["title"] = $attr["content"];
-				break;
-			case "og:description":
-				$siteinfo["text"] = $attr["content"];
-				break;
-		}
+		if ($attr["content"] != "")
+			switch (strtolower($attr["property"])) {
+				case "og:image":
+					$siteinfo["image"] = $attr["content"];
+					break;
+				case "og:title":
+					$siteinfo["title"] = $attr["content"];
+					break;
+				case "og:description":
+					$siteinfo["text"] = $attr["content"];
+					break;
+			}
+	}
+
+	if (isset($oembed_data) AND ($oembed_data->type == "link")) {
+		if (isset($oembed_data->title) AND (trim($oembed_data->title) != ""))
+			$siteinfo["title"] = $oembed_data->title;
+		if (isset($oembed_data->description) AND (trim($oembed_data->description) != ""))
+			$siteinfo["text"] = trim($oembed_data->description);
+		if (isset($oembed_data->thumbnail_url) AND (trim($oembed_data->thumbnail_url) != ""))
+			$siteinfo["image"] = $oembed_data->thumbnail_url;
 	}
 
 	if ((@$siteinfo["image"] == "") AND !$no_guessing) {
@@ -283,6 +299,8 @@ function parseurl_getsiteinfo($url, $no_guessing = false) {
 			$siteinfo["text"] = trim(html_entity_decode(substr($text,0,350), ENT_QUOTES, "UTF-8").'...');
 		}
 	}
+
+	logger("parseurl_getsiteinfo: Siteinfo for ".$url." ".print_r($siteinfo, true), LOGGER_DEBUG);
 
 	return($siteinfo);
 }
@@ -361,6 +379,8 @@ function parse_url_content(&$a) {
 
 	$siteinfo = parseurl_getsiteinfo($url);
 
+	$url= $siteinfo["url"];
+
 	$sitedata = "";
 
 	if($siteinfo["title"] == "") {
@@ -373,7 +393,7 @@ function parse_url_content(&$a) {
 
 	$image = "";
 
-	if(sizeof($siteinfo["images"]) > 0){
+	if (($siteinfo["type"] != "video") AND (sizeof($siteinfo["images"]) > 0)){
 		/* Execute below code only if image is present in siteinfo */
 
 		$total_images = 0;
@@ -391,7 +411,7 @@ function parse_url_content(&$a) {
 			$total_images ++;
 			if($max_images && $max_images >= $total_images)
 				break;
-        }
+		}
 	}
 
 	if(strlen($text)) {
@@ -414,10 +434,13 @@ function parse_url_content(&$a) {
 
 	$sitedata .=  trim($result);
 
-	if (($siteinfo["type"] != "photo"))
+	if (($siteinfo["type"] == "video") AND ($url != ""))
+		echo "[class=type-video]".$sitedata."[/class]";
+	elseif (($siteinfo["type"] != "photo"))
 		echo "[class=type-link]".$sitedata."[/class]";
 	else
 		echo "[class=type-photo]".$title.$br.$image."[/class]";
 
 	killme();
 }
+?>

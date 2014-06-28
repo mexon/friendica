@@ -167,6 +167,7 @@ function html2bbcode($message)
 	// Test
 	//node2bbcode($doc, 'span', array('class'=>'/([\w ]+)/'), '[class=$1]', '[/class]');
 	node2bbcode($doc, 'span', array('class'=>'type-link'), '[class=type-link]', '[/class]');
+	node2bbcode($doc, 'span', array('class'=>'type-video'), '[class=type-video]', '[/class]');
 
 	node2bbcode($doc, 'strong', array(), '[b]', '[/b]');
 	node2bbcode($doc, 'em', array(), '[i]', '[/i]');
@@ -212,6 +213,7 @@ function html2bbcode($message)
 	node2bbcode($doc, 'h5', array(), "\n\n[size=small][b]", "[/b][/size]\n");
 	node2bbcode($doc, 'h6', array(), "\n\n[size=x-small][b]", "[/b][/size]\n");
 
+	node2bbcode($doc, 'a', array('href'=>'/mailto:(.+)/'), '[mail=$1]', '[/mail]');
 	node2bbcode($doc, 'a', array('href'=>'/(.+)/'), '[url=$1]', '[/url]');
 
 	node2bbcode($doc, 'img', array('src'=>'/(.+)/', 'width'=>'/(\d+)/', 'height'=>'/(\d+)/'), '[img=$2x$3]$1', '[/img]');
