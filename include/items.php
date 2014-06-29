@@ -3295,7 +3295,7 @@ function local_delivery($importer,$data) {
 
 				if(count($r)) {
 					update_if_newer($r[0], $datarray);
-				update_if_newer($r[0], $datarray);
+				}
 
 				// update last-child if it changes
 
