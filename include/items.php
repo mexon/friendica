@@ -678,8 +678,10 @@ function get_atom_elements($feed, $item, $contact = array()) {
 	if($rawgeo)
 		$res['coord'] = unxmlify($rawgeo[0]['data']);
 
-	if ($contact["network"] == NETWORK_FEED)
+	if ($contact["network"] == NETWORK_FEED) {
 		$res['verb'] = ACTIVITY_POST;
+		$res['object-type'] = ACTIVITY_OBJ_NOTE;
+	}
 
 	$rawverb = $item->get_item_tags(NAMESPACE_ACTIVITY, 'verb');
 
@@ -866,6 +868,7 @@ function get_atom_elements($feed, $item, $contact = array()) {
 	if (isset($contact["network"]) AND ($contact["network"] == NETWORK_FEED) AND $contact['fetch_further_information']) {
 		$res["body"] = $res["title"].add_page_info($res['plink']);
 		$res["title"] = "";
+		$res["object-type"] = ACTIVITY_OBJ_BOOKMARK;
 	} elseif (isset($contact["network"]) AND ($contact["network"] == NETWORK_OSTATUS))
 		$res["body"] = add_page_info_to_body($res["body"]);
 	elseif (isset($contact["network"]) AND ($contact["network"] == NETWORK_FEED) AND strstr($res['plink'], ".app.net/")) {
@@ -1093,8 +1096,13 @@ function item_store($arr,$force_parent = false) {
 	$arr['attach']        = ((x($arr,'attach'))        ? notags(trim($arr['attach']))        : '');
 	$arr['app']           = ((x($arr,'app'))           ? notags(trim($arr['app']))           : '');
 	$arr['origin']        = ((x($arr,'origin'))        ? intval($arr['origin'])              : 0 );
-	$arr['guid']          = ((x($arr,'guid'))          ? notags(trim($arr['guid']))          : get_guid());
+	$arr['guid']          = ((x($arr,'guid'))          ? notags(trim($arr['guid']))          : get_guid(30));
 	$arr['network']       = ((x($arr,'network'))       ? trim($arr['network'])               : '');
+
+	if ($arr['plink'] == "") {
+		$a = get_app();
+		$arr['plink'] = $a->get_baseurl().'/display/'.$arr['guid'];
+	}
 
 	if ($arr['network'] == "") {
 		$r = q("SELECT `network` FROM `contact` WHERE `id` = %d AND `uid` = %d LIMIT 1",
@@ -1274,7 +1282,8 @@ function item_store($arr,$force_parent = false) {
 					'to_email'     => $u[0]['email'],
 					'uid'          => $u[0]['uid'],
 					'item'         => $item[0],
-					'link'         => $a->get_baseurl().'/display/'.$u[0]['nickname'].'/'.$current_post,
+					//'link'         => $a->get_baseurl().'/display/'.$u[0]['nickname'].'/'.$current_post,
+					'link'         => $a->get_baseurl().'/display/'.$arr['guid'],
 					'source_name'  => $item[0]['author-name'],
 					'source_link'  => $item[0]['author-link'],
 					'source_photo' => $item[0]['author-avatar'],
@@ -1395,6 +1404,15 @@ function item_store($arr,$force_parent = false) {
 
 	return $current_post;
 }
+
+function get_item_guid($id) {
+	$r = q("SELECT `guid` FROM `item` WHERE `id` = %d LIMIT 1", intval($id));
+	if (count($r))
+		return($r[0]["guid"]);
+	else
+		return("");
+}
+
 // return - test
 function get_item_contact($item,$contacts) {
 	if(! count($contacts) || (! is_array($item)))
@@ -1494,7 +1512,8 @@ function tag_deliver($uid,$item_id) {
 		'to_email'     => $u[0]['email'],
 		'uid'          => $u[0]['uid'],
 		'item'         => $item,
-		'link'         => $a->get_baseurl() . '/display/' . $u[0]['nickname'] . '/' . $item['id'],
+		//'link'         => $a->get_baseurl() . '/display/' . $u[0]['nickname'] . '/' . $item['id'],
+		'link'         => $a->get_baseurl() . '/display/'.get_item_guid($item['id']),
 		'source_name'  => $item['author-name'],
 		'source_link'  => $item['author-link'],
 		'source_photo' => $photo,
@@ -3273,7 +3292,8 @@ function local_delivery($importer,$data) {
 								'to_email'     => $importer['email'],
 								'uid'          => $importer['importer_uid'],
 								'item'         => $datarray,
-								'link'		   => $a->get_baseurl() . '/display/' . $importer['nickname'] . '/' . $posted_id,
+								//'link'		   => $a->get_baseurl() . '/display/' . $importer['nickname'] . '/' . $posted_id,
+								'link'		   => $a->get_baseurl().'/display/'.get_item_guid($posted_id),
 								'source_name'  => stripslashes($datarray['author-name']),
 								'source_link'  => $datarray['author-link'],
 								'source_photo' => ((link_compare($datarray['author-link'],$importer['url']))
@@ -3310,7 +3330,177 @@ function local_delivery($importer,$data) {
 
 				if(count($r)) {
 					update_if_newer($r[0], $datarray);
+
+					// update last-child if it changes
+
+					$allow = $item->get_item_tags( NAMESPACE_DFRN, 'comment-allow');
+					if(($allow) && ($allow[0]['data'] != $r[0]['last-child'])) {
+						$r = q("UPDATE `item` SET `last-child` = 0, `changed` = '%s' WHERE `parent-uri` = '%s' AND `uid` = %d",
+							dbesc(datetime_convert()),
+							dbesc($parent_uri),
+							intval($importer['importer_uid'])
+						);
+						$r = q("UPDATE `item` SET `last-child` = %d , `changed` = '%s'  WHERE `uri` = '%s' AND `uid` = %d",
+							intval($allow[0]['data']),
+							dbesc(datetime_convert()),
+							dbesc($item_id),
+							intval($importer['importer_uid'])
+						);
+					}
+					continue;
 				}
+
+				$datarray['parent-uri'] = $parent_uri;
+				$datarray['uid'] = $importer['importer_uid'];
+				$datarray['contact-id'] = $importer['id'];
+				if(($datarray['verb'] == ACTIVITY_LIKE) || ($datarray['verb'] == ACTIVITY_DISLIKE)) {
+					$datarray['type'] = 'activity';
+					$datarray['gravity'] = GRAVITY_LIKE;
+					// only one like or dislike per person
+					// splitted into two queries for performance issues
+					$r = q("select id from item where uid = %d and `contact-id` = %d and verb ='%s' and deleted = 0 and (`parent-uri` = '%s') limit 1",
+						intval($datarray['uid']),
+						intval($datarray['contact-id']),
+						dbesc($datarray['verb']),
+						dbesc($parent_uri)
+					);
+					if($r && count($r))
+						continue;
+
+					$r = q("select id from item where uid = %d and `contact-id` = %d and verb ='%s' and deleted = 0 and (`thr-parent` = '%s') limit 1",
+						intval($datarray['uid']),
+						intval($datarray['contact-id']),
+						dbesc($datarray['verb']),
+						dbesc($parent_uri)
+					);
+					if($r && count($r))
+						continue;
+
+				}
+
+				if(($datarray['verb'] === ACTIVITY_TAG) && ($datarray['object-type'] === ACTIVITY_OBJ_TAGTERM)) {
+
+					$xo = parse_xml_string($datarray['object'],false);
+					$xt = parse_xml_string($datarray['target'],false);
+
+					if($xt->type == ACTIVITY_OBJ_NOTE) {
+						$r = q("select * from item where `uri` = '%s' AND `uid` = %d limit 1",
+							dbesc($xt->id),
+							intval($importer['importer_uid'])
+						);
+						if(! count($r))
+							continue;
+
+						// extract tag, if not duplicate, add to parent item
+						if($xo->content) {
+							if(! (stristr($r[0]['tag'],trim($xo->content)))) {
+								q("UPDATE item SET tag = '%s' WHERE id = %d",
+									dbesc($r[0]['tag'] . (strlen($r[0]['tag']) ? ',' : '') . '#[url=' . $xo->id . ']'. $xo->content . '[/url]'),
+									intval($r[0]['id'])
+								);
+								create_tags_from_item($r[0]['id']);
+							}
+						}
+					}
+				}
+
+				$posted_id = item_store($datarray);
+
+				// find out if our user is involved in this conversation and wants to be notified.
+
+				if(!x($datarray['type']) || $datarray['type'] != 'activity') {
+
+					$myconv = q("SELECT `author-link`, `author-avatar`, `parent` FROM `item` WHERE `parent-uri` = '%s' AND `uid` = %d AND `parent` != 0 AND `deleted` = 0",
+						dbesc($top_uri),
+						intval($importer['importer_uid'])
+					);
+
+					if(count($myconv)) {
+						$importer_url = $a->get_baseurl() . '/profile/' . $importer['nickname'];
+
+						// first make sure this isn't our own post coming back to us from a wall-to-wall event
+						if(! link_compare($datarray['author-link'],$importer_url)) {
+
+
+							foreach($myconv as $conv) {
+
+								// now if we find a match, it means we're in this conversation
+
+								if(! link_compare($conv['author-link'],$importer_url))
+									continue;
+
+								require_once('include/enotify.php');
+
+								$conv_parent = $conv['parent'];
+
+								notification(array(
+									'type'         => NOTIFY_COMMENT,
+									'notify_flags' => $importer['notify-flags'],
+									'language'     => $importer['language'],
+									'to_name'      => $importer['username'],
+									'to_email'     => $importer['email'],
+									'uid'          => $importer['importer_uid'],
+									'item'         => $datarray,
+									//'link'		   => $a->get_baseurl() . '/display/' . $importer['nickname'] . '/' . $posted_id,
+									'link'		   => $a->get_baseurl().'/display/'.get_item_guid($posted_id),
+									'source_name'  => stripslashes($datarray['author-name']),
+									'source_link'  => $datarray['author-link'],
+									'source_photo' => ((link_compare($datarray['author-link'],$importer['url']))
+										? $importer['thumb'] : $datarray['author-avatar']),
+									'verb'         => ACTIVITY_POST,
+									'otype'        => 'item',
+									'parent'       => $conv_parent,
+									'parent_uri'   => $parent_uri
+
+								));
+
+								// only send one notification
+								break;
+							}
+						}
+					}
+				}
+				continue;
+			}
+		}
+
+		else {
+
+			// Head post of a conversation. Have we seen it? If not, import it.
+
+
+			$item_id  = $item->get_id();
+			$datarray = get_atom_elements($feed,$item);
+
+			if((x($datarray,'object-type')) && ($datarray['object-type'] === ACTIVITY_OBJ_EVENT)) {
+				$ev = bbtoevent($datarray['body']);
+				if(x($ev,'desc') && x($ev,'start')) {
+					$ev['cid'] = $importer['id'];
+					$ev['uid'] = $importer['uid'];
+					$ev['uri'] = $item_id;
+					$ev['edited'] = $datarray['edited'];
+					$ev['private'] = $datarray['private'];
+
+					$r = q("SELECT * FROM `event` WHERE `uri` = '%s' AND `uid` = %d LIMIT 1",
+						dbesc($item_id),
+						intval($importer['uid'])
+					);
+					if(count($r))
+						$ev['id'] = $r[0]['id'];
+					$xyz = event_store($ev);
+					continue;
+				}
+			}
+
+			$r = q("SELECT `uid`, `last-child`, `edited`, `body` FROM `item` WHERE `uri` = '%s' AND `uid` = %d LIMIT 1",
+				dbesc($item_id),
+				intval($importer['importer_uid'])
+			);
+
+			// Update content if 'updated' changes
+
+			if(count($r)) {
+				update_if_newer($r[0], $datarray);
 
 				// update last-child if it changes
 
@@ -3388,7 +3578,8 @@ function local_delivery($importer,$data) {
 							'to_email'     => $importer['email'],
 							'uid'          => $importer['importer_uid'],
 							'item'         => $datarray,
-							'link'		   => $a->get_baseurl() . '/display/' . $importer['nickname'] . '/' . $posted_id,
+							//'link'		   => $a->get_baseurl() . '/display/' . $importer['nickname'] . '/' . $posted_id,
+							'link'		   => $a->get_baseurl().'/display/'.get_item_guid($posted_id),
 							'source_name'  => stripslashes($datarray['author-name']),
 							'source_link'  => $datarray['author-link'],
 							'source_photo' => ((link_compare($datarray['author-link'],$importer['url']))
@@ -3479,7 +3670,8 @@ function new_follower($importer,$contact,$datarray,$item,$sharing = false) {
 				group_add_member($r[0]['uid'],'',$contact_record['id'],$r[0]['def_gid']);
 			}
 
-			if(($r[0]['notify-flags'] & NOTIFY_INTRO) && ($r[0]['page-flags'] == PAGE_NORMAL)) {
+			if(($r[0]['notify-flags'] & NOTIFY_INTRO) &&
+				(($r[0]['page-flags'] == PAGE_NORMAL) OR ($r[0]['page-flags'] == PAGE_SOAPBOX))) {
 				$email_tpl = get_intltext_template('follow_notify_eml.tpl');
 				$email = replace_macros($email_tpl, array(
 					'$requestor' => ((strlen($name)) ? $name : t('[Name Withheld]')),
