@@ -939,7 +939,23 @@ function add_page_info_to_body($body, $texturl = false, $no_photos = false) {
 	}
 
 	if ($matches)
-		$body .= add_page_info($matches[1], $no_photos);
+		$footer = add_page_info($matches[1], $no_photos);
+
+	// Remove the link from the body if the link is attached at the end of the post
+	if (isset($footer) AND (trim($footer) != "") AND (strpos($footer, $matches[1]))) {
+		$removedlink = trim(str_replace($matches[1], "", $body));
+		if (($removedlink == "") OR strstr($body, $removedlink))
+			$body = $removedlink;
+
+		$url = str_replace(array('/', '.'), array('\/', '\.'), $matches[1]);
+		$removedlink = preg_replace("/\[url\=".$url."\](.*?)\[\/url\]/ism", '', $body);
+		if (($removedlink == "") OR strstr($body, $removedlink))
+			$body = $removedlink;
+	}
+
+	// Add the page information to the bottom
+	if (isset($footer) AND (trim($footer) != ""))
+		$body .= $footer;
 
 	return $body;
 }
