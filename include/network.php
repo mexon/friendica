@@ -97,20 +97,20 @@ function fetch_url($url,$binary = false, &$redirects = 0, $timeout = 0, $accept_
 			$newurl = $new_location_info["scheme"]."://".$new_location_info["host"].$old_location_info["path"];
 
 		$matches = array();
-		if (preg_match('/(Location:|URI:)(.*?)\n/', $header, $matches)) {
+		if (preg_match('/(Location:|URI:)(.*?)\n/i', $header, $matches)) {
 			$newurl = trim(array_pop($matches));
 		}
 		if(strpos($newurl,'/') === 0)
 			$newurl = $old_location_info["scheme"]."://".$old_location_info["host"].$newurl;
 		if (filter_var($newurl, FILTER_VALIDATE_URL)) {
 			$redirects++;
+			$a->set_curl_redirect_url($newurl);
 			return fetch_url($newurl,$binary,$redirects,$timeout,$accept_content,$cookiejar);
 		}
 	}
 
 	$a->set_curl_code($http_code);
 	$a->set_curl_content_type($curl_info['content_type']);
-	$a->set_curl_redirect_url($newurl);
 
 	$body = substr($s,strlen($header));
 	$a->set_curl_headers($header);
