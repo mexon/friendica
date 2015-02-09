@@ -4,6 +4,8 @@
   * Friendica admin
   */
 require_once("include/remoteupdate.php");
+require_once("include/enotify.php");
+require_once("include/text.php");
 
 
 /**
@@ -221,6 +223,8 @@ function admin_page_summary(&$a) {
 		'$accounts' => $accounts,
 		'$pending' => Array( t('Pending registrations'), $pending),
 		'$version' => Array( t('Version'), FRIENDICA_VERSION),
+		'$platform' => FRIENDICA_PLATFORM,
+		'$codename' => FRIENDICA_CODENAME,
 		'$build' =>  get_config('system','build'),
 		'$plugins' => Array( t('Active plugins'), $a->plugins )
 	));
@@ -361,6 +365,8 @@ function admin_page_site_post(&$a){
 	$temppath		=	((x($_POST,'temppath'))			? notags(trim($_POST['temppath']))		: '');
 	$basepath		=	((x($_POST,'basepath'))			? notags(trim($_POST['basepath']))		: '');
 	$singleuser		=	((x($_POST,'singleuser'))		? notags(trim($_POST['singleuser']))		: '');
+	$proxy_disabled		=	((x($_POST,'proxy_disabled'))		? True						: False);
+	$enable_noscrape = ((x($_POST,'enable_noscrape')) ? true : false);
 	if($ssl_policy != intval(get_config('system','ssl_policy'))) {
 		if($ssl_policy == SSL_POLICY_FULL) {
 			q("update `contact` set
@@ -417,9 +423,9 @@ function admin_page_site_post(&$a){
 		set_config('system','banner', $banner);
 	}
 	if ($info=="") {
-	    del_config('config','info');
+		del_config('config','info');
 	} else {
-	    set_config('config','info',$info);
+		set_config('config','info',$info);
 	}
 	set_config('system','language', $language);
 	set_config('system','theme', $theme);
@@ -427,12 +433,12 @@ function admin_page_site_post(&$a){
 		del_config('system','mobile-theme');
 	} else {
 		set_config('system','mobile-theme', $theme_mobile);
-        }
-        if ( $singleuser === '---' ) {
-            del_config('system','singleuser');
-        } else {
-            set_config('system','singleuser', $singleuser);
-        }
+		}
+		if ( $singleuser === '---' ) {
+			del_config('system','singleuser');
+		} else {
+			set_config('system','singleuser', $singleuser);
+		}
 	set_config('system','maximagesize', $maximagesize);
 	set_config('system','max_image_length', $maximagelength);
 	set_config('system','jpeg_quality', $jpegimagequality);
@@ -471,7 +477,7 @@ function admin_page_site_post(&$a){
 	set_config('system','curl_timeout', $timeout);
 	set_config('system','dfrn_only', $dfrn_only);
 	set_config('system','ostatus_disabled', $ostatus_disabled);
-        set_config('system','ostatus_poll_interval', $ostatus_poll_interval);
+		set_config('system','ostatus_poll_interval', $ostatus_poll_interval);
 	set_config('system','diaspora_enabled', $diaspora_enabled);
 	set_config('config','private_addons', $private_addons);
 
@@ -484,6 +490,8 @@ function admin_page_site_post(&$a){
 	set_config('system','lockpath', $lockpath);
 	set_config('system','temppath', $temppath);
 	set_config('system','basepath', $basepath);
+	set_config('system','proxy_disabled', $proxy_disabled);
+	set_config('system','enable_noscrape', $enable_noscrape);
 
 	info( t('Site settings updated.') . EOL);
 	goaway($a->get_baseurl(true) . '/admin/site' );
@@ -520,32 +528,32 @@ function admin_page_site(&$a) {
 		foreach($files as $file) {
 			$f = basename($file);
 			$theme_name = ((file_exists($file . '/experimental')) ?  sprintf("%s - \x28Experimental\x29", $f) : $f);
-            if (file_exists($file . '/mobile')) {
-                $theme_choices_mobile[$f] = $theme_name;
-            }
+			if (file_exists($file . '/mobile')) {
+				$theme_choices_mobile[$f] = $theme_name;
+			}
 		else {
-                $theme_choices[$f] = $theme_name;
+				$theme_choices[$f] = $theme_name;
 			}
 		}
-        }
+		}
 
-        /* OStatus conversation poll choices */
-        $ostatus_poll_choices = array(
+		/* OStatus conversation poll choices */
+		$ostatus_poll_choices = array(
 		"-2" => t("Never"),
 		"-1" => t("At post arrival"),
 		"0" => t("Frequently"),
 		"60" => t("Hourly"),
 		"720" => t("Twice daily"),
 		"1440" => t("Daily")
-            );
+			);
 
-        /* get user names to make the install a personal install of X */
-        $user_names = array();
-        $user_names['---'] = t('Multi user instance');
-        $users = q("SELECT username, nickname FROM `user`");
-        foreach ($users as $user) {
-            $user_names[$user['nickname']] = $user['username'];
-        }
+		/* get user names to make the install a personal install of X */
+		$user_names = array();
+		$user_names['---'] = t('Multi user instance');
+		$users = q("SELECT username, nickname FROM `user`");
+		foreach ($users as $user) {
+			$user_names[$user['nickname']] = $user['username'];
+		}
 
 	/* Banner */
 	$banner = get_config('system','banner');
@@ -622,9 +630,9 @@ function admin_page_site(&$a) {
 		'$no_regfullname'	=> array('no_regfullname', t("Fullname check"), !get_config('system','no_regfullname'), t("Force users to register with a space between firstname and lastname in Full name, as an antispam measure")),
 		'$no_utf'		=> array('no_utf', t("UTF-8 Regular expressions"), !get_config('system','no_utf'), t("Use PHP UTF8 regular expressions")),
 		'$no_community_page' 	=> array('no_community_page', t("Show Community Page"), !get_config('system','no_community_page'), t("Display a Community page showing all recent public postings on this site.")),
-		'$ostatus_disabled' 	=> array('ostatus_disabled', t("Enable OStatus support"), !get_config('system','ostatus_disabled'), t("Provide built-in OStatus \x28StatusNet, GNU Social etc.\x29 compatibility. All communications in OStatus are public, so privacy warnings will be occasionally displayed.")),	
+		'$ostatus_disabled' 	=> array('ostatus_disabled', t("Enable OStatus support"), !get_config('system','ostatus_disabled'), t("Provide built-in OStatus \x28StatusNet, GNU Social etc.\x29 compatibility. All communications in OStatus are public, so privacy warnings will be occasionally displayed.")),
 		'$ostatus_poll_interval'	=> array('ostatus_poll_interval', t("OStatus conversation completion interval"), (string) intval(get_config('system','ostatus_poll_interval')), t("How often shall the poller check for new entries in OStatus conversations? This can be a very ressource task."), $ostatus_poll_choices),
-		'$diaspora_enabled' 	=> array('diaspora_enabled', t("Enable Diaspora support"), get_config('system','diaspora_enabled'), t("Provide built-in Diaspora network compatibility.")),	
+		'$diaspora_enabled' 	=> array('diaspora_enabled', t("Enable Diaspora support"), get_config('system','diaspora_enabled'), t("Provide built-in Diaspora network compatibility.")),
 		'$dfrn_only'        	=> array('dfrn_only', t('Only allow Friendica contacts'), get_config('system','dfrn_only'), t("All contacts must use Friendica protocols. All other built-in communication protocols disabled.")),
 		'$verifyssl' 		=> array('verifyssl', t("Verify SSL"), get_config('system','verifyssl'), t("If you wish, you can turn on strict certificate checking. This will mean you cannot connect (at all) to self-signed SSL sites.")),
 		'$proxyuser'		=> array('proxyuser', t("Proxy user"), get_config('system','proxyuser'), ""),
@@ -642,10 +650,12 @@ function admin_page_site(&$a) {
 		'$lockpath'		=> array('lockpath', t("Path for lock file"), get_config('system','lockpath'), "The lock file is used to avoid multiple pollers at one time. Only define a folder here."),
 		'$temppath'		=> array('temppath', t("Temp path"), get_config('system','temppath'), "If you have a restricted system where the webserver can't access the system temp path, enter another path here."),
 		'$basepath'		=> array('basepath', t("Base path to installation"), get_config('system','basepath'), "If the system cannot detect the correct path to your installation, enter the correct path here. This setting should only be set if you are using a restricted system and symbolic links to your webroot."),
+		'$proxy_disabled'	=> array('proxy_disabled', t("Disable picture proxy"), get_config('system','proxy_disabled'), t("The picture proxy increases performance and privacy. It shouldn't be used on systems with very low bandwith.")),
 
 		'$relocate_url'     => array('relocate_url', t("New base url"), $a->get_baseurl(), "Change base url for this server. Sends relocate message to all DFRN contacts of all users."),
 
-        '$form_security_token' => get_form_security_token("admin_site"),
+		'$enable_noscrape'=> array('enable_noscrape', t("Enable noscrape"), get_config('system','enable_noscrape'), t("The noscrape feature speeds up directory submissions by using JSON data instead of HTML scraping.")),
+	'$form_security_token' => get_form_security_token("admin_site")
 
 	));
 
@@ -665,23 +675,37 @@ function admin_page_dbsync(&$a) {
 		goaway($a->get_baseurl(true) . '/admin/dbsync');
 	}
 
-	if($a->argc > 2 && intval($a->argv[2])) {
+	if(($a->argc > 2) AND (intval($a->argv[2]) OR ($a->argv[2] === 'check'))) {
+		require_once("include/dbstructure.php");
+		$retval = update_structure(false, true);
+		if (!$retval) {
+			$o .= sprintf(t("Database structure update %s was successfully applied."), DB_UPDATE_VERSION)."<br />";
+			set_config('database', 'dbupdate_'.DB_UPDATE_VERSION, 'success');
+		} else
+			$o .= sprintf(t("Executing of database structure update %s failed with error: %s"),
+					DB_UPDATE_VERSION, $retval)."<br />";
+		if ($a->argv[2] === 'check')
+			return $o;
+	}
+
+	if ($a->argc > 2 && intval($a->argv[2])) {
 		require_once('update.php');
 		$func = 'update_' . intval($a->argv[2]);
 		if(function_exists($func)) {
 			$retval = $func();
 			if($retval === UPDATE_FAILED) {
-				$o .= sprintf( t('Executing %s failed. Check system logs.'), $func);
+				$o .= sprintf(t("Executing %s failed with error: %s"), $func, $retval);
 			}
 			elseif($retval === UPDATE_SUCCESS) {
-				$o .= sprintf( t('Update %s was successfully applied.', $func));
+				$o .= sprintf(t('Update %s was successfully applied.', $func));
 				set_config('database',$func, 'success');
 			}
 			else
-				$o .= sprintf( t('Update %s did not return a status. Unknown if it succeeded.'), $func);
+				$o .= sprintf(t('Update %s did not return a status. Unknown if it succeeded.'), $func);
+		} else {
+			$o .= sprintf(t('There was no additional update function %s that needed to be called.'), $func)."<br />";
+			set_config('database',$func, 'success');
 		}
-		else
-			$o .= sprintf( t('Update function %s could not be found.'), $func);
 		return $o;
 	}
 
@@ -695,17 +719,22 @@ function admin_page_dbsync(&$a) {
 			$failed[] = $upd;
 		}
 	}
-	if(! count($failed))
-		return '<h3>' . t('No failed updates.') . '</h3>';
-
-	$o = replace_macros(get_markup_template('failed_updates.tpl'),array(
-		'$base' => $a->get_baseurl(true),
-		'$banner' => t('Failed Updates'),
-		'$desc' => t('This does not include updates prior to 1139, which did not return a status.'),
-		'$mark' => t('Mark success (if update was manually applied)'),
-		'$apply' => t('Attempt to execute this update step automatically'),
-		'$failed' => $failed
-	));
+	if(! count($failed)) {
+		$o = replace_macros(get_markup_template('structure_check.tpl'),array(
+			'$base' => $a->get_baseurl(true),
+			'$banner' => t('No failed updates.'),
+			'$check' => t('Check database structure'),
+		));
+	} else {
+		$o = replace_macros(get_markup_template('failed_updates.tpl'),array(
+			'$base' => $a->get_baseurl(true),
+			'$banner' => t('Failed Updates'),
+			'$desc' => t('This does not include updates prior to 1139, which did not return a status.'),
+			'$mark' => t('Mark success (if update was manually applied)'),
+			'$apply' => t('Attempt to execute this update step automatically'),
+			'$failed' => $failed
+		));
+	}
 
 	return $o;
 
@@ -719,39 +748,61 @@ function admin_page_dbsync(&$a) {
 function admin_page_users_post(&$a){
 	$pending = ( x($_POST, 'pending') ? $_POST['pending'] : Array() );
 	$users = ( x($_POST, 'user') ? $_POST['user'] : Array() );
-	$nu_name = ( x($_POST, 'new_user_name') ? $_POST['new_user_name'] : ''); 
-  $nu_nickname = ( x($_POST, 'new_user_nickname') ? $_POST['new_user_nickname'] : ''); 
-  $nu_email = ( x($_POST, 'new_user_email') ? $_POST['new_user_email'] : '');
+	$nu_name = ( x($_POST, 'new_user_name') ? $_POST['new_user_name'] : '');
+	$nu_nickname = ( x($_POST, 'new_user_nickname') ? $_POST['new_user_nickname'] : '');
+	$nu_email = ( x($_POST, 'new_user_email') ? $_POST['new_user_email'] : '');
 
-  check_form_security_token_redirectOnErr('/admin/users', 'admin_users');
+	check_form_security_token_redirectOnErr('/admin/users', 'admin_users');
 
-  if (!($nu_name==="") && !($nu_email==="") && !($nu_nickname==="")) { 
-      require_once('include/user.php'); 
-      require_once('include/email.php'); 
-      $result = create_user( array('username'=>$nu_name, 'email'=>$nu_email, 'nickname'=>$nu_nickname, 'verified'=>1)  ); 
-      if(! $result['success']) { 
-		    notice($result['message']); 
-		    return; 
-      } 
-      $nu = $result['user']; 
-      $email_tpl = get_intltext_template("register_adminadd_eml.tpl"); 
-      $email_tpl = replace_macros($email_tpl, array( 
-		    '$sitename' => $a->config['sitename'], 
-		    '$siteurl' =>  $a->get_baseurl(), 
-		    '$username' => $nu['username'], 
-		    '$email' => $nu['email'], 
-		    '$password' => $result['password'], 
-		    '$uid' => $nu['uid'] )); 
- 
-      $res = mail($nu['email'], email_header_encode( sprintf( t('Registration details for %s'), $a->config['sitename']),'UTF-8'), 
-		    $email_tpl,  
-		    'From: ' . 'Administrator' . '@' . $_SERVER['SERVER_NAME'] . "\n" 
-		    . 'Content-type: text/plain; charset=UTF-8' . "\n" 
-		    . 'Content-transfer-encoding: 8bit' ); 
-      if ($res) { 
-		    info( t('Registration successful. Email send to user').EOL ); 
-      } 
-  }
+	if (!($nu_name==="") && !($nu_email==="") && !($nu_nickname==="")) {
+		require_once('include/user.php');
+
+		$result = create_user( array('username'=>$nu_name, 'email'=>$nu_email, 'nickname'=>$nu_nickname, 'verified'=>1)  );
+		if(! $result['success']) {
+			notice($result['message']);
+			return;
+		}
+		$nu = $result['user'];
+		$preamble = deindent(t('
+			Dear %1$s,
+				the administrator of %2$s has set up an account for you.'));
+		$body = deindent(t('
+			The login details are as follows:
+
+			Site Location:	%1$s
+			Login Name:		%2$s
+			Password:		%3$s
+
+			You may change your password from your account "Settings" page after logging
+			in.
+
+			Please take a few moments to review the other account settings on that page.
+
+			You may also wish to add some basic information to your default profile
+			(on the "Profiles" page) so that other people can easily find you.
+
+			We recommend setting your full name, adding a profile photo,
+			adding some profile "keywords" (very useful in making new friends) - and
+			perhaps what country you live in; if you do not wish to be more specific
+			than that.
+
+			We fully respect your right to privacy, and none of these items are necessary.
+			If you are new and do not know anybody here, they may help
+			you to make some new and interesting friends.
+
+			Thank you and welcome to %4$s.'));
+
+		$preamble = sprintf($preamble, $nu['username'], $a->config['sitename']);
+		$body = sprintf($body, $a->get_baseurl(), $nu['email'], $result['password'], $a->config['sitename']);
+
+		notification(array(
+			'type' => "SYSTEM_EMAIL",
+			'to_email' => $nu['email'],
+			'subject'=> sprintf( t('Registration details for %s'), $a->config['sitename']),
+			'preamble'=> $preamble,
+			'body' => $body));
+
+	}
 
 	if (x($_POST,'page_users_block')){
 		foreach($users as $uid){
@@ -800,7 +851,7 @@ function admin_page_users(&$a){
 		}
 		switch($a->argv[2]){
 			case "delete":{
-                check_form_security_token_redirectOnErr('/admin/users', 'admin_users', 't');
+				check_form_security_token_redirectOnErr('/admin/users', 'admin_users', 't');
 				// delete user
 				require_once("include/Contact.php");
 				user_remove($uid);
@@ -808,7 +859,7 @@ function admin_page_users(&$a){
 				notice( sprintf(t("User '%s' deleted"), $user[0]['username']) . EOL);
 			}; break;
 			case "block":{
-                check_form_security_token_redirectOnErr('/admin/users', 'admin_users', 't');
+				check_form_security_token_redirectOnErr('/admin/users', 'admin_users', 't');
 				q("UPDATE `user` SET `blocked`=%d WHERE `uid`=%s",
 					intval( 1-$user[0]['blocked'] ),
 					intval( $uid )
@@ -864,7 +915,7 @@ function admin_page_users(&$a){
 			t('Normal Account'),
 			t('Soapbox Account'),
 			t('Community/Celebrity Account'),
-                        t('Automatic Friend Account')
+						t('Automatic Friend Account')
 		);
 		$e['page-flags'] = $accounts[$e['page-flags']];
 		$e['register_date'] = relative_date($e['register_date']);
@@ -1069,7 +1120,7 @@ function admin_page_plugins(&$a){
 		'$baseurl' => $a->get_baseurl(true),
 		'$function' => 'plugins',
 		'$plugins' => $plugins,
-        '$form_security_token' => get_form_security_token("admin_themes"),
+		'$form_security_token' => get_form_security_token("admin_themes"),
 	));
 }
 
@@ -1154,9 +1205,11 @@ function admin_page_themes(&$a){
 		foreach($files as $file) {
 			$f = basename($file);
 			$is_experimental = intval(file_exists($file . '/experimental'));
-			$is_supported = 1-(intval(file_exists($file . '/unsupported'))); // Is not used yet
+			$is_supported = 1-(intval(file_exists($file . '/unsupported')));
 			$is_allowed = intval(in_array($f,$allowed_themes));
-			$themes[] = array('name' => $f, 'experimental' => $is_experimental, 'supported' => $is_supported, 'allowed' => $is_allowed);
+
+			if ($is_allowed OR $is_supported OR get_config("system", "show_unsupported_themes"))
+				$themes[] = array('name' => $f, 'experimental' => $is_experimental, 'supported' => $is_supported, 'allowed' => $is_allowed);
 		}
 	}
 
@@ -1271,7 +1324,7 @@ function admin_page_themes(&$a){
 		'$plugins' => $xthemes,
 		'$experimental' => t('[Experimental]'),
 		'$unsupported' => t('[Unsupported]'),
-        '$form_security_token' => get_form_security_token("admin_themes"),
+		'$form_security_token' => get_form_security_token("admin_themes"),
 	));
 }
 
@@ -1284,7 +1337,7 @@ function admin_page_themes(&$a){
 
 function admin_page_logs_post(&$a) {
 	if (x($_POST,"page_logs")) {
-        check_form_security_token_redirectOnErr('/admin/logs', 'admin_logs');
+		check_form_security_token_redirectOnErr('/admin/logs', 'admin_logs');
 
 		$logfile 		=	((x($_POST,'logfile'))		? notags(trim($_POST['logfile']))	: '');
 		$debugging		=	((x($_POST,'debugging'))	? true								: false);
@@ -1323,7 +1376,7 @@ function admin_page_logs(&$a){
 	$data = '';
 
 	if(!file_exists($f)) {
-		$data = t("Error trying to open <strong>$f</strong> log file.\r\n<br/>Check to see if file $f exist and is 
+		$data = t("Error trying to open <strong>$f</strong> log file.\r\n<br/>Check to see if file $f exist and is
 readable.");
 	}
 	else {
@@ -1363,7 +1416,7 @@ readable.");
 		'$logfile'			=> array('logfile', t("Log file"), get_config('system','logfile'), t("Must be writable by web server. Relative to your Friendica top-level directory.")),
 		'$loglevel' 		=> array('loglevel', t("Log level"), get_config('system','loglevel'), "", $log_choices),
 
-        '$form_security_token' => get_form_security_token("admin_logs"),
+		'$form_security_token' => get_form_security_token("admin_logs"),
 	));
 }
 

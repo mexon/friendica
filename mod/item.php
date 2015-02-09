@@ -77,8 +77,11 @@ function item_post(&$a) {
 	$thr_parent = '';
 	$parid = 0;
 	$r = false;
+	$objecttype = null;
 
 	if($parent || $parent_uri) {
+
+		$objecttype = ACTIVITY_OBJ_COMMENT;
 
 		if(! x($_REQUEST,'type'))
 			$_REQUEST['type'] = 'net-comment';
@@ -195,6 +198,7 @@ function item_post(&$a) {
 		$location          = $orig_post['location'];
 		$coord             = $orig_post['coord'];
 		$verb              = $orig_post['verb'];
+		$objecttype        = $orig_post['object-type'];
 		$emailcc           = $orig_post['emailcc'];
 		$app			   = $orig_post['app'];
 		$categories        = $orig_post['file'];
@@ -425,6 +429,9 @@ function item_post(&$a) {
 	if((! $preview) && preg_match_all("/\[img([\=0-9x]*?)\](.*?)\[\/img\]/",$body,$match)) {
 		$images = $match[2];
 		if(count($images)) {
+
+			$objecttype = ACTIVITY_OBJ_IMAGE;
+
 			foreach($images as $image) {
 				if(! stristr($image,$a->get_baseurl() . '/photo/'))
 					continue;
@@ -494,6 +501,7 @@ function item_post(&$a) {
 
 	$bookmark = 0;
 	if(preg_match_all("/\[bookmark\=([^\]]*)\](.*?)\[\/bookmark\]/ism",$body,$match,PREG_SET_ORDER)) {
+		$objecttype = ACTIVITY_OBJ_BOOKMARK;
 		$bookmark = 1;
 	}
 
@@ -509,6 +517,20 @@ function item_post(&$a) {
 	$body = scale_external_images($body,false);
 
 
+	// Setting the object type if not defined before
+	if (!$objecttype) {
+		$objecttype = ACTIVITY_OBJ_NOTE; // Default value
+		require_once("include/plaintext.php");
+		$objectdata = get_attached_data($body);
+
+		if ($post["type"] == "link")
+			$objecttype = ACTIVITY_OBJ_BOOKMARK;
+		elseif ($post["type"] == "video")
+			$objecttype = ACTIVITY_OBJ_VIDEO;
+		elseif ($post["type"] == "photo")
+			$objecttype = ACTIVITY_OBJ_IMAGE;
+
+	}
 
 	/**
 	 * Look for any tags and linkify them
@@ -551,7 +573,7 @@ function item_post(&$a) {
 			if($fullnametagged)
 				continue;
 
-			$success = handle_tag($a, $body, $inform, $str_tags, (local_user()) ? local_user() : $profile_uid , $tag); 
+			$success = handle_tag($a, $body, $inform, $str_tags, (local_user()) ? local_user() : $profile_uid , $tag, $network);
 			if($success['replaced'])
 				$tagged[] = $tag;
 			if(is_array($success['contact']) && intval($success['contact']['prv'])) {
@@ -641,6 +663,7 @@ function item_post(&$a) {
 	$datarray['file']          = $categories;
 	$datarray['inform']        = $inform;
 	$datarray['verb']          = $verb;
+	$datarray['object-type']   = $objecttype;
 	$datarray['allow_cid']     = $str_contact_allow;
 	$datarray['allow_gid']     = $str_group_allow;
 	$datarray['deny_cid']      = $str_contact_deny;
@@ -713,7 +736,7 @@ function item_post(&$a) {
 		update_thread($post_id);
 
 		// update filetags in pconfig
-                file_tag_update_pconfig($uid,$categories_old,$categories_new,'category');
+		file_tag_update_pconfig($uid,$categories_old,$categories_new,'category');
 
 		proc_run('php', "include/notifier.php", 'edit_post', "$post_id");
 		if((x($_REQUEST,'return')) && strlen($return_path)) {
@@ -728,8 +751,8 @@ function item_post(&$a) {
 
 	$r = q("INSERT INTO `item` (`guid`, `uid`,`type`,`wall`,`gravity`, `network`, `contact-id`,`owner-name`,`owner-link`,`owner-avatar`, 
 		`author-name`, `author-link`, `author-avatar`, `created`, `edited`, `commented`, `received`, `changed`, `uri`, `thr-parent`, `title`, `body`, `app`, `location`, `coord`, 
-		`tag`, `inform`, `verb`, `postopts`, `allow_cid`, `allow_gid`, `deny_cid`, `deny_gid`, `private`, `pubmail`, `attach`, `bookmark`,`origin`, `moderated`, `file` )
-		VALUES( '%s', %d, '%s', %d, %d, '%s', %d, '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', %d, %d, '%s', %d, %d, %d, '%s' )",
+		`tag`, `inform`, `verb`, `object-type`, `postopts`, `allow_cid`, `allow_gid`, `deny_cid`, `deny_gid`, `private`, `pubmail`, `attach`, `bookmark`,`origin`, `moderated`, `file` )
+		VALUES( '%s', %d, '%s', %d, %d, '%s', %d, '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', %d, %d, '%s', %d, %d, %d, '%s' )",
 		dbesc($datarray['guid']),
 		intval($datarray['uid']),
 		dbesc($datarray['type']),
@@ -758,6 +781,7 @@ function item_post(&$a) {
 		dbesc($datarray['tag']),
 		dbesc($datarray['inform']),
 		dbesc($datarray['verb']),
+		dbesc($datarray['object-type']),
 		dbesc($datarray['postopts']),
 		dbesc($datarray['allow_cid']),
 		dbesc($datarray['allow_gid']),
@@ -768,8 +792,8 @@ function item_post(&$a) {
 		dbesc($datarray['attach']),
 		intval($datarray['bookmark']),
 		intval($datarray['origin']),
-	        intval($datarray['moderated']),
-	        dbesc($datarray['file'])
+		intval($datarray['moderated']),
+		dbesc($datarray['file'])
 	       );
 
 	$r = q("SELECT `id` FROM `item` WHERE `uri` = '%s' LIMIT 1",
@@ -780,10 +804,10 @@ function item_post(&$a) {
 		add_thread($post_id);
 
 		// update filetags in pconfig
-                file_tag_update_pconfig($uid,$categories_old,$categories_new,'category');
+		file_tag_update_pconfig($uid,$categories_old,$categories_new,'category');
 
 		// Store the fresh generated item into the cache
-		$cachefile = get_cachefile($datarray["guid"]."-".hash("md5", $datarray['body']));
+		$cachefile = get_cachefile(urlencode($datarray["guid"])."-".hash("md5", $datarray['body']));
 
 		if (($cachefile != '') AND !file_exists($cachefile)) {
 			$s = prepare_text($datarray['body']);
@@ -823,8 +847,7 @@ function item_post(&$a) {
 					'to_email'     => $user['email'],
 					'uid'          => $user['uid'],
 					'item'         => $datarray,
-					//'link'		   => $a->get_baseurl() . '/display/' . $user['nickname'] . '/' . $post_id,
-					'link'		   => $a->get_baseurl().'/display/'.$datarray['guid'],
+					'link'		=> $a->get_baseurl().'/display/'.urlencode($datarray['guid']),
 					'source_name'  => $datarray['author-name'],
 					'source_link'  => $datarray['author-link'],
 					'source_photo' => $datarray['author-avatar'],
@@ -852,8 +875,7 @@ function item_post(&$a) {
 					'to_email'     => $user['email'],
 					'uid'          => $user['uid'],
 					'item'         => $datarray,
-					//'link'		   => $a->get_baseurl() . '/display/' . $user['nickname'] . '/' . $post_id,
-					'link'		   => $a->get_baseurl().'/display/'.$datarray['guid'],
+					'link'		=> $a->get_baseurl().'/display/'.urlencode($datarray['guid']),
 					'source_name'  => $datarray['author-name'],
 					'source_link'  => $datarray['author-link'],
 					'source_photo' => $datarray['author-avatar'],
@@ -872,8 +894,7 @@ function item_post(&$a) {
 			WHERE `id` = %d",
 			intval($parent),
 			dbesc(($parent == $post_id) ? $uri : $parent_item['uri']),
-			//dbesc($a->get_baseurl() . '/display/' . $user['nickname'] . '/' . $post_id),
-			dbesc($a->get_baseurl().'/display/'.$datarray['guid']),
+			dbesc($a->get_baseurl().'/display/'.urlencode($datarray['guid'])),
 			dbesc(datetime_convert()),
 			intval($post_id)
 		);
@@ -906,14 +927,9 @@ function item_post(&$a) {
 	update_thread($parent);
 
 	$datarray['id']    = $post_id;
-	//$datarray['plink'] = $a->get_baseurl() . '/display/' . $user['nickname'] . '/' . $post_id;
-	$datarray['plink'] = $a->get_baseurl().'/display/'.$datarray['guid'];
+	$datarray['plink'] = $a->get_baseurl().'/display/'.urlencode($datarray['guid']);
 
 	call_hooks('post_local_end', $datarray);
-
-	// if no auto update is enabled, then disable it temporarily
-	if (get_pconfig($profile_uid, "system", "no_auto_update") == 1)
-		set_pconfig($profile_uid, "system", "no_auto_update", -1);
 
 	if(strlen($emailcc) && $profile_uid == local_user()) {
 		$erecips = explode(',', $emailcc);
@@ -926,25 +942,25 @@ function item_post(&$a) {
 					. '<br />';
 				$disclaimer .= sprintf( t('You may visit them online at %s'), $a->get_baseurl() . '/profile/' . $a->user['nickname']) . EOL;
 				$disclaimer .= t('Please contact the sender by replying to this post if you do not wish to receive these messages.') . EOL; 
-                                if (!$datarray['title']=='') {
-                                    $subject = email_header_encode($datarray['title'],'UTF-8');
-                                } else {
+				if (!$datarray['title']=='') {
+				    $subject = email_header_encode($datarray['title'],'UTF-8');
+				} else {
 				    $subject = email_header_encode('[Friendica]' . ' ' . sprintf( t('%s posted an update.'),$a->user['username']),'UTF-8');
-                                }
+				}
 				$link = '<a href="' . $a->get_baseurl() . '/profile/' . $a->user['nickname'] . '"><img src="' . $author['thumb'] . '" alt="' . $a->user['username'] . '" /></a><br /><br />';
 				$html    = prepare_body($datarray);
 				$message = '<html><body>' . $link . $html . $disclaimer . '</body></html>';
-                                include_once('include/html2plain.php');
-                                $params = array (
-                                    'fromName' => $a->user['username'],
-                                    'fromEmail' => $a->user['email'],
-                                    'toEmail' => $addr,
-                                    'replyTo' => $a->user['email'],
-                                    'messageSubject' => $subject,
-                                    'htmlVersion' => $message,
-                                    'textVersion' => html2plain($html.$disclaimer),
-                                );
-                                enotify::send($params);
+				include_once('include/html2plain.php');
+				$params = array (
+				    'fromName' => $a->user['username'],
+				    'fromEmail' => $a->user['email'],
+				    'toEmail' => $addr,
+				    'replyTo' => $a->user['email'],
+				    'messageSubject' => $subject,
+				    'htmlVersion' => $message,
+				    'textVersion' => html2plain($html.$disclaimer),
+				);
+				enotify::send($params);
 			}
 		}
 	}
@@ -1024,12 +1040,12 @@ function item_content(&$a) {
  *
  * @return boolean true if replaced, false if not replaced
  */
-function handle_tag($a, &$body, &$inform, &$str_tags, $profile_uid, $tag) {
+function handle_tag($a, &$body, &$inform, &$str_tags, $profile_uid, $tag, $network = "") {
 
 	$replaced = false;
 	$r = null;
 
-	//is it a hash tag? 
+	//is it a hash tag?
 	if(strpos($tag,'#') === 0) {
 		//if the tag is replaced...
 		if(strpos($tag,'[url='))
@@ -1052,15 +1068,15 @@ function handle_tag($a, &$body, &$inform, &$str_tags, $profile_uid, $tag) {
 		}
 		return $replaced;
 	}
-	//is it a person tag? 
+	//is it a person tag?
 	if(strpos($tag,'@') === 0) {
-		//is it already replaced? 
+		//is it already replaced?
 		if(strpos($tag,'[url='))
 			return $replaced;
 		$stat = false;
 		//get the person's name
 		$name = substr($tag,1);
-		//is it a link or a full dfrn address? 
+		//is it a link or a full dfrn address?
 		if((strpos($name,'@')) || (strpos($name,'http://'))) {
 			$newname = $name;
 			//get the profile links
@@ -1077,7 +1093,9 @@ function handle_tag($a, &$body, &$inform, &$str_tags, $profile_uid, $tag) {
 					}
 				}
 			}
-		} else { //if it is a name rather than an address
+		} elseif (($network != NETWORK_OSTATUS) AND ($network != NETWORK_TWITTER) AND
+			($network != NETWORK_STATUSNET) AND ($network != NETWORK_APPNET)) {
+			//if it is a name rather than an address
 			$newname = $name;
 			$alias = '';
 			$tagcid = 0;
@@ -1100,11 +1118,33 @@ function handle_tag($a, &$body, &$inform, &$str_tags, $profile_uid, $tag) {
 			else {
 				$newname = str_replace('_',' ',$name);
 
-				//select someone from this user's contacts by name
-				$r = q("SELECT * FROM `contact` WHERE `name` = '%s' AND `uid` = %d LIMIT 1",
-						dbesc($newname),
-						intval($profile_uid)
-				);
+				// At first try to fetch a contact according to the given network
+				if ($network != "") {
+					//select someone from this user's contacts by name
+					$r = q("SELECT * FROM `contact` WHERE `name` = '%s' AND `network` = '%s' AND `uid` = %d LIMIT 1",
+							dbesc($newname),
+							dbesc($network),
+							intval($profile_uid)
+					);
+					if(! $r) {
+						//select someone by attag or nick and the name passed in
+						$r = q("SELECT * FROM `contact` WHERE `attag` = '%s' OR `nick` = '%s' AND `network` = '%s' AND `uid` = %d ORDER BY `attag` DESC LIMIT 1",
+								dbesc($name),
+								dbesc($name),
+								dbesc($network),
+								intval($profile_uid)
+						);
+					}
+				} else
+					$r = false;
+
+				if(! $r) {
+					//select someone from this user's contacts by name
+					$r = q("SELECT * FROM `contact` WHERE `name` = '%s' AND `uid` = %d LIMIT 1",
+							dbesc($newname),
+							intval($profile_uid)
+					);
+				}
 
 				if(! $r) {
 					//select someone by attag or nick and the name passed in
@@ -1163,10 +1203,10 @@ function handle_tag($a, &$body, &$inform, &$str_tags, $profile_uid, $tag) {
 					$str_tags .= ',';
 				$str_tags .= $newtag;
 			}
-	
+
 			// Status.Net seems to require the numeric ID URL in a mention if the person isn't
 			// subscribed to you. But the nickname URL is OK if they are. Grrr. We'll tag both.
-	
+
 			if(strlen($alias)) {
 				$newtag = '@[url=' . $alias . ']' . $newname	. '[/url]';
 				if(! stristr($str_tags,$newtag)) {
@@ -1178,7 +1218,7 @@ function handle_tag($a, &$body, &$inform, &$str_tags, $profile_uid, $tag) {
 		}
 	}
 
-	return array('replaced' => $replaced, 'contact' => $r[0]);	
+	return array('replaced' => $replaced, 'contact' => $r[0]);
 }
 
 

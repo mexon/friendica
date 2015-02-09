@@ -35,7 +35,7 @@ function settings_init(&$a) {
 		array(
 			'label'	=> t('Account'),
 			'url' 	=> $a->get_baseurl(true).'/settings',
-			'selected'	=> (($a->argc == 1)?'active':''),
+			'selected'	=>  (($a->argc == 1) && ($a->argv[0] === 'settings')?'active':''),
 		),
 		array(
 			'label'	=> t('Additional features'),
@@ -61,7 +61,7 @@ function settings_init(&$a) {
 		array(
 			'label'	=> t('Delegations'),
 			'url' 	=> $a->get_baseurl(true).'/delegate',
-			'selected'	=> (($a->argc > 1) && ($a->argv[1] === 'addon')?'active':''),
+			'selected'	=> (($a->argc == 1) && ($a->argv[0] === 'delegate')?'active':''),
 		),
 		array(
 			'label' => t('Connected apps'),
@@ -71,12 +71,12 @@ function settings_init(&$a) {
 		array(
 			'label' => t('Export personal data'),
 			'url' => $a->get_baseurl(true) . '/uexport',
-			'selected' => ''
+			'selected' => (($a->argc == 1) && ($a->argv[0] === 'uexport')?'active':''),
 		),
 		array(
 			'label' => t('Remove account'),
 			'url' => $a->get_baseurl(true) . '/removeme',
-			'selected' => ''
+			'selected' => (($a->argc == 1) && ($a->argv[0] === 'removeme')?'active':''),
 		)
 	);
 
@@ -886,7 +886,7 @@ function settings_content(&$a) {
 			'$nosmile'	=> array('nosmile', t("Don't show emoticons"), $nosmile, ''),
 			'$noinfo'	=> array('noinfo', t("Don't show notices"), $noinfo, ''),
 			'$infinite_scroll'	=> array('infinite_scroll', t("Infinite scroll"), $infinite_scroll, ''),
-			'$no_auto_update'	=> array('no_auto_update', t("Disable automatic network update"), $no_auto_update, ''),
+			'$no_auto_update'	=> array('no_auto_update', t("Automatic updates only at the top of the network page"), $no_auto_update, 'When disabled, the network page is updated all the time, which could be confusing while reading.'),
 
 			'$theme_config' => $theme_config,
 		));

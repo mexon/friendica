@@ -108,10 +108,12 @@
 	{{include file="field_checkbox.tpl" field=$suppress_language}}
 
 	<h3>{{$performance}}</h3>
+	{{include file="field_checkbox.tpl" field=$enable_noscrape}}
 	{{include file="field_checkbox.tpl" field=$use_fulltext_engine}}
 	{{include file="field_input.tpl" field=$itemcache}}
 	{{include file="field_input.tpl" field=$itemcache_duration}}
 	{{include file="field_input.tpl" field=$max_comments}}
+	{{include file="field_checkbox.tpl" field=$proxy_disabled}}
 	<div class="submit"><input type="submit" name="page_site" value="{{$submit}}" /></div>
 
 	</form>

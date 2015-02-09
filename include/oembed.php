@@ -109,6 +109,8 @@ function oembed_fetch_url($embedurl, $no_rich_type = false){
 }
 
 function oembed_format_object($j){
+	require_once("mod/proxy.php");
+
 	$a = get_app();
 	$embedurl = $j->embedurl;
 	$jhtml = oembed_iframe($j->embedurl,(isset($j->width) ? $j->width : null), (isset($j->height) ? $j->height : null) );
@@ -138,8 +140,8 @@ function oembed_format_object($j){
 			$ret.="<br>";
 		}; break;
 		case "photo": {
-			$ret.= "<img width='".$j->width."' src='".$j->url."'>";
-			//$ret.= "<img width='".$j->width."' height='".$j->height."' src='".$j->url."'>";
+			$ret.= "<img width='".$j->width."' src='".proxy_url($j->url)."'>";
+			//$ret.= "<img width='".$j->width."' height='".$j->height."' src='".proxy_url($j->url)."'>";
 			$ret.="<br>";
 		}; break;
 		case "link": {
@@ -173,13 +175,16 @@ function oembed_format_object($j){
 
 				$embedlink .= $j->author_name;
 			}
+			if (trim($embedlink) == "")
+				$embedlink = $embedurl;
+
 			$ret .= "<a href='$embedurl' rel='oembed'>$embedlink</a>";
 		}
 		//if (isset($j->author_name)) $ret.=" by ".$j->author_name;
 		//if (isset($j->provider_name)) $ret.=" on ".$j->provider_name;
 	} else {
 		// add <a> for html2bbcode conversion
-		$ret .= "<a href='$embedurl' rel='oembed'></a>";
+		$ret .= "<a href='$embedurl' rel='oembed'>$embedurl</a>";
 	}
 	$ret.="<br style='clear:left'></span>";
 	return  mb_convert_encoding($ret, 'HTML-ENTITIES', mb_detect_encoding($ret));

@@ -163,6 +163,11 @@ function get_feed_for(&$a, $dfrn_id, $owner_nick, $last_update, $direction = 0) 
 
 	$salmon = feed_salmonlinks($owner_nick);
 
+	$alternatelink = $owner['url'];
+
+	if(isset($category))
+		$alternatelink .= "/category/".$category;
+
 	$atom .= replace_macros($feed_template, array(
 		'$version'      => xmlify(FRIENDICA_VERSION),
 		'$feed_id'      => xmlify($a->get_baseurl() . '/profile/' . $owner_nick),
@@ -170,6 +175,7 @@ function get_feed_for(&$a, $dfrn_id, $owner_nick, $last_update, $direction = 0) 
 		'$feed_updated' => xmlify(datetime_convert('UTC', 'UTC', 'now' , ATOM_TIME)) ,
 		'$hub'          => $hubxml,
 		'$salmon'       => $salmon,
+		'$alternatelink' => xmlify($alternatelink),
 		'$name'         => xmlify($owner['name']),
 		'$profile_page' => xmlify($owner['url']),
 		'$photo'        => xmlify($owner['photo']),
@@ -866,7 +872,7 @@ function get_atom_elements($feed, $item, $contact = array()) {
 	}
 
 	if (isset($contact["network"]) AND ($contact["network"] == NETWORK_FEED) AND $contact['fetch_further_information']) {
-		$res["body"] = $res["title"].add_page_info($res['plink']);
+		$res["body"] = $res["title"].add_page_info($res['plink'], false, "", true);
 		$res["title"] = "";
 		$res["object-type"] = ACTIVITY_OBJ_BOOKMARK;
 	} elseif (isset($contact["network"]) AND ($contact["network"] == NETWORK_OSTATUS))
@@ -882,7 +888,7 @@ function get_atom_elements($feed, $item, $contact = array()) {
 	return $res;
 }
 
-function add_page_info($url, $no_photos = false, $photo = "") {
+function add_page_info($url, $no_photos = false, $photo = "", $keywords = false) {
 	require_once("mod/parse_url.php");
 
 	$data = parseurl_getsiteinfo($url, true);
@@ -902,7 +908,7 @@ function add_page_info($url, $no_photos = false, $photo = "") {
 		return("");
 
 	if (($data["type"] != "photo") AND is_string($data["title"]))
-		$text .= "[bookmark=".$url."]".trim($data["title"])."[/bookmark]";
+		$text .= "[bookmark=".$data["url"]."]".trim($data["title"])."[/bookmark]";
 
 	if (($data["type"] != "video") AND ($photo != ""))
 		$text .= '[img]'.$photo.'[/img]';
@@ -914,7 +920,17 @@ function add_page_info($url, $no_photos = false, $photo = "") {
 	if (($data["type"] != "photo") AND is_string($data["text"]))
 		$text .= "[quote]".$data["text"]."[/quote]";
 
-	return("\n[class=type-".$data["type"]."]".$text."[/class]");
+	$hashtags = "";
+	if ($keywords AND isset($data["keywords"])) {
+		$a = get_app();
+		$hashtags = "\n";
+		foreach ($data["keywords"] AS $keyword) {
+			$hashtag = str_replace(" ", "", $keyword);
+			$hashtags .= "#[url=".$a->get_baseurl()."/search?tag=".rawurlencode($hashtag)."]".$hashtag."[/url] ";
+		}
+	}
+
+	return("\n[class=type-".$data["type"]."]".$text."[/class]".$hashtags);
 }
 
 function add_page_info_to_body($body, $texturl = false, $no_photos = false) {
@@ -983,7 +999,16 @@ function encode_rel_links($links) {
 
 
 
-function item_store($arr,$force_parent = false) {
+function item_store($arr,$force_parent = false, $notify = false) {
+
+	// If it is a posting where users should get notifications, then define it as wall posting
+	if ($notify) {
+		$arr['wall'] = 1;
+		$arr['type'] = 'wall';
+		$arr['origin'] = 1;
+		$arr['last-child'] = 1;
+		$arr['network'] = NETWORK_DFRN;
+	}
 
 	// If a Diaspora signature structure was passed in, pull it out of the
 	// item array and set it aside for later storage.
@@ -1117,7 +1142,7 @@ function item_store($arr,$force_parent = false) {
 
 	if ($arr['plink'] == "") {
 		$a = get_app();
-		$arr['plink'] = $a->get_baseurl().'/display/'.$arr['guid'];
+		$arr['plink'] = $a->get_baseurl().'/display/'.urlencode($arr['guid']);
 	}
 
 	if ($arr['network'] == "") {
@@ -1144,6 +1169,7 @@ function item_store($arr,$force_parent = false) {
 		$allow_gid = $arr['allow_gid'];
 		$deny_cid  = $arr['deny_cid'];
 		$deny_gid  = $arr['deny_gid'];
+		$notify_type = 'wall-new';
 	}
 	else {
 
@@ -1180,6 +1206,7 @@ function item_store($arr,$force_parent = false) {
 			$deny_cid       = $r[0]['deny_cid'];
 			$deny_gid       = $r[0]['deny_gid'];
 			$arr['wall']    = $r[0]['wall'];
+			$notify_type    = 'comment-new';
 
 			// if the parent is private, force privacy for the entire conversation
 			// This differs from the above settings as it subtly allows comments from
@@ -1298,8 +1325,7 @@ function item_store($arr,$force_parent = false) {
 					'to_email'     => $u[0]['email'],
 					'uid'          => $u[0]['uid'],
 					'item'         => $item[0],
-					//'link'         => $a->get_baseurl().'/display/'.$u[0]['nickname'].'/'.$current_post,
-					'link'         => $a->get_baseurl().'/display/'.$arr['guid'],
+					'link'         => $a->get_baseurl().'/display/'.urlencode($arr['guid']),
 					'source_name'  => $item[0]['author-name'],
 					'source_link'  => $item[0]['author-link'],
 					'source_photo' => $item[0]['author-avatar'],
@@ -1396,7 +1422,7 @@ function item_store($arr,$force_parent = false) {
 	if (!$deleted) {
 
 		// Store the fresh generated item into the cache
-		$cachefile = get_cachefile($arr["guid"]."-".hash("md5", $arr['body']));
+		$cachefile = get_cachefile(urlencode($arr["guid"])."-".hash("md5", $arr['body']));
 
 		if (($cachefile != '') AND !file_exists($cachefile)) {
 			$s = prepare_text($arr['body']);
@@ -1417,6 +1443,9 @@ function item_store($arr,$force_parent = false) {
 
 	create_tags_from_item($current_post);
 	create_files_from_item($current_post);
+
+	if ($notify)
+		proc_run('php', "include/notifier.php", $notify_type, $current_post);
 
 	return $current_post;
 }
@@ -1563,13 +1592,13 @@ function tag_deliver($uid,$item_id) {
 		'to_email'     => $u[0]['email'],
 		'uid'          => $u[0]['uid'],
 		'item'         => $item,
-		//'link'         => $a->get_baseurl() . '/display/' . $u[0]['nickname'] . '/' . $item['id'],
-		'link'         => $a->get_baseurl() . '/display/'.get_item_guid($item['id']),
+		'link'         => $a->get_baseurl() . '/display/'.urlencode(get_item_guid($item['id'])),
 		'source_name'  => $item['author-name'],
 		'source_link'  => $item['author-link'],
 		'source_photo' => $photo,
 		'verb'         => ACTIVITY_TAG,
-		'otype'        => 'item'
+		'otype'        => 'item',
+		'parent'       => $item['parent']
 	));
 
 
@@ -1937,6 +1966,7 @@ function update_if_newer($existing, $update) {
 function consume_feed($xml,$importer,&$contact, &$hub, $datedir = 0, $pass = 0) {
 
 	require_once('library/simplepie/simplepie.inc');
+	require_once('include/contact_selectors.php');
 
 	if(! strlen($xml)) {
 		logger('consume_feed: empty input');
@@ -1990,7 +2020,7 @@ function consume_feed($xml,$importer,&$contact, &$hub, $datedir = 0, $pass = 0) 
 	}
 
 	if((is_array($contact)) && ($photo_timestamp) && (strlen($photo_url)) && ($photo_timestamp > $contact['avatar-date'])) {
-		logger('consume_feed: Updating photo for ' . $contact['name']);
+		logger('consume_feed: Updating photo for '.$contact['name'].' from '.$photo_url.' uid: '.$contact['uid']);
 		require_once("include/Photo.php");
 		$photo_failure = false;
 		$have_photo = false;
@@ -2265,7 +2295,7 @@ function consume_feed($xml,$importer,&$contact, &$hub, $datedir = 0, $pass = 0) 
 		foreach($items as $item) {
 
 			$is_reply = false;
-			$item_id = $item->get_id();
+			$item_id = unxmlify($item->get_id());
 			$rawthread = $item->get_item_tags( NAMESPACE_THREAD,'in-reply-to');
 			if(isset($rawthread[0]['attribs']['']['ref'])) {
 				$is_reply = true;
@@ -2285,7 +2315,7 @@ function consume_feed($xml,$importer,&$contact, &$hub, $datedir = 0, $pass = 0) 
 
 				// Have we seen it? If not, import it.
 
-				$item_id  = $item->get_id();
+				$item_id  = unxmlify($item->get_id());
 				$datarray = get_atom_elements($feed, $item, $contact);
 
 				if((! x($datarray,'author-name')) && ($contact['network'] != NETWORK_DFRN))
@@ -2412,7 +2442,7 @@ function consume_feed($xml,$importer,&$contact, &$hub, $datedir = 0, $pass = 0) 
 
 				// Head post of a conversation. Have we seen it? If not, import it.
 
-				$item_id  = $item->get_id();
+				$item_id  = unxmlify($item->get_id());
 
 				$datarray = get_atom_elements($feed, $item, $contact);
 
@@ -2517,16 +2547,6 @@ function consume_feed($xml,$importer,&$contact, &$hub, $datedir = 0, $pass = 0) 
 				if($contact['network'] === NETWORK_FEED)
 					$datarray['private'] = 2;
 
-				// This is my contact on another system, but it's really me.
-				// Turn this into a wall post.
-
-				if($contact['remote_self']) {
-					$datarray['wall'] = 1;
-					if($contact['network'] === NETWORK_FEED) {
-						$datarray['private'] = 0;
-					}
-				}
-
 				$datarray['parent-uri'] = $item_id;
 				$datarray['uid'] = $importer['uid'];
 				$datarray['contact-id'] = $contact['id'];
@@ -2549,8 +2569,36 @@ function consume_feed($xml,$importer,&$contact, &$hub, $datedir = 0, $pass = 0) 
 				if(($contact['rel'] == CONTACT_IS_FOLLOWER) && (! tgroup_check($importer['uid'],$datarray)))
 					continue;
 
+				// This is my contact on another system, but it's really me.
+				// Turn this into a wall post.
 
-				$r = item_store($datarray);
+				if($contact['remote_self']) {
+					if ($contact['remote_self'] == 2) {
+						$r = q("SELECT `id`,`url`,`name`,`photo`,`network` FROM `contact` WHERE `uid` = %d AND `self`", intval($importer['uid']));
+						if (count($r)) {
+							$datarray['contact-id'] = $r[0]["id"];
+
+							$datarray['owner-name'] = $r[0]["name"];
+							$datarray['owner-link'] = $r[0]["url"];
+							$datarray['owner-avatar'] = $r[0]["photo"];
+
+							$datarray['author-name']   = $datarray['owner-name'];
+							$datarray['author-link']   = $datarray['owner-link'];
+							$datarray['author-avatar'] = $datarray['owner-avatar'];
+						}
+					}
+
+					if (!isset($datarray["app"]) OR ($datarray["app"] == ""))
+						$datarray["app"] = network_to_name($contact['network']);
+
+					$notify = true;
+					if($contact['network'] === NETWORK_FEED) {
+						$datarray['private'] = 0;
+					}
+				} else
+					$notify = false;
+
+				$r = item_store($datarray, false, $notify);
 				continue;
 
 			}
@@ -3135,7 +3183,7 @@ function local_delivery($importer,$data) {
 	foreach($feed->get_items() as $item) {
 
 		$is_reply = false;
-		$item_id = $item->get_id();
+		$item_id = unxmlify($item->get_id());
 		$rawthread = $item->get_item_tags( NAMESPACE_THREAD, 'in-reply-to');
 		if(isset($rawthread[0]['attribs']['']['ref'])) {
 			$is_reply = true;
@@ -3343,8 +3391,7 @@ function local_delivery($importer,$data) {
 								'to_email'     => $importer['email'],
 								'uid'          => $importer['importer_uid'],
 								'item'         => $datarray,
-								//'link'		   => $a->get_baseurl() . '/display/' . $importer['nickname'] . '/' . $posted_id,
-								'link'		   => $a->get_baseurl().'/display/'.get_item_guid($posted_id),
+								'link'		   => $a->get_baseurl().'/display/'.urlencode(get_item_guid($posted_id)),
 								'source_name'  => stripslashes($datarray['author-name']),
 								'source_link'  => $datarray['author-link'],
 								'source_photo' => ((link_compare($datarray['author-link'],$importer['url']))
@@ -3366,7 +3413,7 @@ function local_delivery($importer,$data) {
 
 				// regular comment that is part of this total conversation. Have we seen it? If not, import it.
 
-				$item_id  = $item->get_id();
+				$item_id  = unxmlify($item->get_id());
 				$datarray = get_atom_elements($feed,$item);
 
 				if($importer['rel'] == CONTACT_IS_FOLLOWER)
@@ -3492,8 +3539,7 @@ function local_delivery($importer,$data) {
 									'to_email'     => $importer['email'],
 									'uid'          => $importer['importer_uid'],
 									'item'         => $datarray,
-									//'link'		   => $a->get_baseurl() . '/display/' . $importer['nickname'] . '/' . $posted_id,
-									'link'		   => $a->get_baseurl().'/display/'.get_item_guid($posted_id),
+									'link'		   => $a->get_baseurl().'/display/'.urlencode(get_item_guid($posted_id)),
 									'source_name'  => stripslashes($datarray['author-name']),
 									'source_link'  => $datarray['author-link'],
 									'source_photo' => ((link_compare($datarray['author-link'],$importer['url']))
@@ -3520,7 +3566,7 @@ function local_delivery($importer,$data) {
 			// Head post of a conversation. Have we seen it? If not, import it.
 
 
-			$item_id  = $item->get_id();
+			$item_id  = unxmlify($item->get_id());
 			$datarray = get_atom_elements($feed,$item);
 
 			if((x($datarray,'object-type')) && ($datarray['object-type'] === ACTIVITY_OBJ_EVENT)) {
@@ -3567,12 +3613,6 @@ function local_delivery($importer,$data) {
 				continue;
 			}
 
-			// This is my contact on another system, but it's really me.
-			// Turn this into a wall post.
-
-			if($importer['remote_self'])
-				$datarray['wall'] = 1;
-
 			$datarray['parent-uri'] = $item_id;
 			$datarray['uid'] = $importer['importer_uid'];
 			$datarray['contact-id'] = $importer['id'];
@@ -3592,7 +3632,31 @@ function local_delivery($importer,$data) {
 			if(($importer['rel'] == CONTACT_IS_FOLLOWER) && (! tgroup_check($importer['importer_uid'],$datarray)))
 				continue;
 
-			$posted_id = item_store($datarray);
+			// This is my contact on another system, but it's really me.
+			// Turn this into a wall post.
+
+			if($importer['remote_self']) {
+				if ($importer['remote_self'] == 2) {
+					$r = q("SELECT `id`,`url`,`name`,`photo`,`network` FROM `contact` WHERE `uid` = %d AND `self`",
+						intval($importer['importer_uid']));
+					if (count($r)) {
+						$datarray['contact-id'] = $r[0]["id"];
+
+						$datarray['owner-name'] = $r[0]["name"];
+						$datarray['owner-link'] = $r[0]["url"];
+						$datarray['owner-avatar'] = $r[0]["photo"];
+
+						$datarray['author-name']   = $datarray['owner-name'];
+						$datarray['author-link']   = $datarray['owner-link'];
+						$datarray['author-avatar'] = $datarray['owner-avatar'];
+					}
+				}
+
+				$notify = true;
+			} else
+				$notify = false;
+
+			$posted_id = item_store($datarray, false, $notify);
 
 			if(stristr($datarray['verb'],ACTIVITY_POKE)) {
 				$verb = urldecode(substr($datarray['verb'],strpos($datarray['verb'],'#')+1));
@@ -3629,8 +3693,7 @@ function local_delivery($importer,$data) {
 							'to_email'     => $importer['email'],
 							'uid'          => $importer['importer_uid'],
 							'item'         => $datarray,
-							//'link'		   => $a->get_baseurl() . '/display/' . $importer['nickname'] . '/' . $posted_id,
-							'link'		   => $a->get_baseurl().'/display/'.get_item_guid($posted_id),
+							'link'		   => $a->get_baseurl().'/display/'.urlencode(get_item_guid($posted_id)),
 							'source_name'  => stripslashes($datarray['author-name']),
 							'source_link'  => $datarray['author-link'],
 							'source_photo' => ((link_compare($datarray['author-link'],$importer['url']))
@@ -3710,6 +3773,7 @@ function new_follower($importer,$contact,$datarray,$item,$sharing = false) {
 				dbesc(datetime_convert())
 			);
 		}
+
 		$r = q("SELECT * FROM `user` WHERE `uid` = %d LIMIT 1",
 			intval($importer['uid'])
 		);
@@ -3723,20 +3787,24 @@ function new_follower($importer,$contact,$datarray,$item,$sharing = false) {
 
 			if(($r[0]['notify-flags'] & NOTIFY_INTRO) &&
 				(($r[0]['page-flags'] == PAGE_NORMAL) OR ($r[0]['page-flags'] == PAGE_SOAPBOX))) {
-				$email_tpl = get_intltext_template('follow_notify_eml.tpl');
-				$email = replace_macros($email_tpl, array(
-					'$requestor' => ((strlen($name)) ? $name : t('[Name Withheld]')),
-					'$url' => $url,
-					'$myname' => $r[0]['username'],
-					'$siteurl' => $a->get_baseurl(),
-					'$sitename' => $a->config['sitename']
+
+
+
+				notification(array(
+					'type'         => NOTIFY_INTRO,
+					'notify_flags' => $r[0]['notify-flags'],
+					'language'     => $r[0]['language'],
+					'to_name'      => $r[0]['username'],
+					'to_email'     => $r[0]['email'],
+					'uid'          => $r[0]['uid'],
+					'link'		   => $a->get_baseurl() . '/notifications/intro',
+					'source_name'  => ((strlen(stripslashes($contact_record['name']))) ? stripslashes($contact_record['name']) : t('[Name Withheld]')),
+					'source_link'  => $contact_record['url'],
+					'source_photo' => $contact_record['photo'],
+					'verb'         => ($sharing ? ACTIVITY_FRIEND : ACTIVITY_FOLLOW),
+					'otype'        => 'intro'
 				));
-				$res = mail($r[0]['email'],
-					email_header_encode((($sharing) ? t('A new person is sharing with you at ') : t("You have a new follower at ")) . $a->config['sitename'],'UTF-8'),
-					$email,
-					'From: ' . 'Administrator' . '@' . $_SERVER['SERVER_NAME'] . "\n"
-					. 'Content-type: text/plain; charset=UTF-8' . "\n"
-					. 'Content-transfer-encoding: 8bit' );
+
 
 			}
 		}
@@ -4454,13 +4522,9 @@ function posted_dates($uid,$wall) {
 	if(! $dthen)
 		return array();
 
-	// If it's near the end of a long month, backup to the 28th so that in
-	// consecutive loops we'll always get a whole month difference.
-
-	if(intval(substr($dnow,8)) > 28)
-		$dnow = substr($dnow,0,8) . '28';
-	if(intval(substr($dthen,8)) > 28)
-		$dnow = substr($dthen,0,8) . '28';
+	// Set the start and end date to the beginning of the month
+	$dnow = substr($dnow,0,8).'01';
+	$dthen = substr($dthen,0,8).'01';
 
 	$ret = array();
 	// Starting with the current month, get the first and last days of every

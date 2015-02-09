@@ -1,27 +1,70 @@
 <?php
 require_once("boot.php");
+require_once("include/text.php");
 
-function dbstructure_run(&$argv, &$argc) {
-	global $a, $db;
+define('NEW_UPDATE_ROUTINE_VERSION', 1170);
 
-	if(is_null($a)){
-		$a = new App;
+/*
+ * send the email and do what is needed to do on update fails
+ *
+ * @param update_id		(int) number of failed update
+ * @param error_message	(str) error message
+ */
+function update_fail($update_id, $error_message){
+	//send the administrators an e-mail
+	$admin_mail_list = "'".implode("','", array_map(dbesc, explode(",", str_replace(" ", "", $a->config['admin_email']))))."'";
+	$adminlist = q("SELECT uid, language, email FROM user WHERE email IN (%s)",
+		$admin_mail_list
+	);
+
+	// every admin could had different language
+
+	foreach ($adminlist as $admin) {
+		$lang = (($admin['language'])?$admin['language']:'en');
+		push_lang($lang);
+
+		$preamble = deindent(t("
+			The friendica developers released update %s recently,
+			but when I tried to install it, something went terribly wrong.
+			This needs to be fixed soon and I can't do it alone. Please contact a
+			friendica developer if you can not help me on your own. My database might be invalid."));
+		$body = t("The error message is\n[pre]%s[/pre]");
+		$preamble = sprintf($preamble, $update_id);
+		$body = sprintf($body, $error_message);
+
+		notification(array(
+			'type' => "SYSTEM_EMAIL",
+			'to_email' => $admin['email'],
+			'preamble' => $preamble,
+			'body' => $body,
+			'language' => $lang,
+		));
 	}
 
-	if(is_null($db)) {
-		@include(".htconfig.php");
-		require_once("include/dba.php");
-		$db = new dba($db_host, $db_user, $db_pass, $db_data);
-			unset($db_host, $db_user, $db_pass, $db_data);
-	}
 
-	update_structure(true, true);
+
+
+	/*
+	$email_tpl = get_intltext_template("update_fail_eml.tpl");
+	$email_msg = replace_macros($email_tpl, array(
+		'$sitename' => $a->config['sitename'],
+		'$siteurl' =>  $a->get_baseurl(),
+		'$update' => DB_UPDATE_VERSION,
+		'$error' => sprintf(t('Update %s failed. See error logs.'), DB_UPDATE_VERSION)
+	));
+	$subject=sprintf(t('Update Error at %s'), $a->get_baseurl());
+	require_once('include/email.php');
+	$subject = email_header_encode($subject,'UTF-8');
+	mail($a->config['admin_email'], $subject, $email_msg,
+		'From: ' . 'Administrator' . '@' . $_SERVER['SERVER_NAME']."\n"
+		.'Content-type: text/plain; charset=UTF-8'."\n"
+		.'Content-transfer-encoding: 8bit');
+	*/
+	//try the logger
+	logger("CRITICAL: Database structure update failed: ".$retval);
+	break;
 }
 
-if (array_search(__file__,get_included_files())===0){
-	dbstructure_run($argv,$argc);
-	killme();
-}
 
 function table_structure($table) {
 	$structures = q("DESCRIBE `%s`", $table);
@@ -95,6 +138,8 @@ function update_structure($verbose, $action) {
 
 	$errors = false;
 
+	logger('updating structure', LOGGER_DEBUG);
+
 	// Get the current structure
 	$database = array();
 
@@ -117,10 +162,20 @@ function update_structure($verbose, $action) {
                         if(false === $r)
 				$errors .=  t('Errors encountered creating database tables.').$name.EOL;
 		} else {
+			// Drop the index if it isn't present in the definition
+			foreach ($database[$name]["indexes"] AS $indexname => $fieldnames)
+				if (!isset($structure["indexes"][$indexname])) {
+					$sql2=db_drop_index($indexname);
+					if ($sql3 == "")
+						$sql3 = "ALTER TABLE `".$name."` ".$sql2;
+					else
+						$sql3 .= ", ".$sql2;
+				}
+
 			// Compare the field structure field by field
 			foreach ($structure["fields"] AS $fieldname => $parameters) {
 				if (!isset($database[$name]["fields"][$fieldname])) {
-					$sql2=db_add_table_field($name, $fieldname, $parameters);
+					$sql2=db_add_table_field($fieldname, $parameters);
 					if ($sql3 == "")
 						$sql3 = "ALTER TABLE `".$name."` ".$sql2;
 					else
@@ -140,16 +195,6 @@ function update_structure($verbose, $action) {
 				}
 			}
 		}
-		// Drop the index if it isn't present in the definition
-		if (isset($database[$name]))
-			foreach ($database[$name]["indexes"] AS $indexname => $fieldnames)
-				if (!isset($structure["indexes"][$indexname])) {
-					$sql2=db_drop_index($indexname);
-					if ($sql3 == "")
-						$sql3 = "ALTER TABLE `".$name."` ".$sql2;
-					else
-						$sql3 .= ", ".$sql2;
-				}
 
 		// Create the index
 		foreach ($structure["indexes"] AS $indexname => $fieldnames) {
@@ -173,7 +218,7 @@ function update_structure($verbose, $action) {
 			if ($action) {
 				$r = @$db->q($sql3);
 				if(false === $r)
-					$errors .=  t('Errors encountered performing database changes.').$sql3.EOL;
+					$errors .= t('Errors encountered performing database changes.').$sql3.EOL;
 			}
 		}
 	}
@@ -354,7 +399,7 @@ function db_definition() {
 					),
 			"indexes" => array(
 					"PRIMARY" => array("id"),
-					"access" => array("cat(30)","k(30)"),
+					"cat_k" => array("cat(30)","k(30)"),
 					)
 			);
 	$database["contact"] = array(
@@ -621,7 +666,7 @@ function db_definition() {
 	$database["guid"] = array(
 			"fields" => array(
 					"id" => array("type" => "int(10) unsigned", "not null" => "1", "extra" => "auto_increment", "primary" => "1"),
-					"guid" => array("type" => "varchar(64)", "not null" => "1"),
+					"guid" => array("type" => "varchar(255)", "not null" => "1"),
 					),
 			"indexes" => array(
 					"PRIMARY" => array("id"),
@@ -662,7 +707,7 @@ function db_definition() {
 	$database["item"] = array(
 			"fields" => array(
 					"id" => array("type" => "int(10) unsigned", "not null" => "1", "extra" => "auto_increment", "primary" => "1"),
-					"guid" => array("type" => "varchar(64)", "not null" => "1"),
+					"guid" => array("type" => "varchar(255)", "not null" => "1"),
 					"uri" => array("type" => "varchar(255)", "not null" => "1"),
 					"uid" => array("type" => "int(10) unsigned", "not null" => "1", "default" => "0"),
 					"contact-id" => array("type" => "int(11)", "not null" => "1"),
@@ -890,7 +935,7 @@ function db_definition() {
 					),
 			"indexes" => array(
 					"PRIMARY" => array("id"),
-					"access" => array("uid","cat(30)","k(30)"),
+					"uid_cat_k" => array("uid","cat(30)","k(30)"),
 					)
 			);
 	$database["photo"] = array(
@@ -1160,6 +1205,7 @@ function db_definition() {
 					"visible" => array("type" => "tinyint(1)", "not null" => "1", "default" => "0"),
 					"spam" => array("type" => "tinyint(1)", "not null" => "1", "default" => "0"),
 					"starred" => array("type" => "tinyint(1)", "not null" => "1", "default" => "0"),
+					"ignored" => array("type" => "tinyint(1)", "not null" => "1", "default" => "0"),
 					"bookmark" => array("type" => "tinyint(1)", "not null" => "1", "default" => "0"),
 					"unseen" => array("type" => "tinyint(1)", "not null" => "1", "default" => "1"),
 					"deleted" => array("type" => "tinyint(1)", "not null" => "1", "default" => "0"),
@@ -1269,4 +1315,30 @@ function db_definition() {
 			);
 
 	return($database);
+}
+
+
+/*
+ * run from command line
+ */
+function dbstructure_run(&$argv, &$argc) {
+	global $a, $db;
+
+	if(is_null($a)){
+		$a = new App;
+	}
+
+	if(is_null($db)) {
+		@include(".htconfig.php");
+		require_once("include/dba.php");
+		$db = new dba($db_host, $db_user, $db_pass, $db_data);
+			unset($db_host, $db_user, $db_pass, $db_data);
+	}
+
+	update_structure(true, true);
+}
+
+if (array_search(__file__,get_included_files())===0){
+	dbstructure_run($argv,$argc);
+	killme();
 }

@@ -26,6 +26,19 @@
 		return false;
 	}
 
+	function api_source() {
+		if (requestdata('source'))
+			return (requestdata('source'));
+
+		// Support for known clients that doesn't send a source name
+		if (strstr($_SERVER['HTTP_USER_AGENT'], "Twidere"))
+			return ("Twidere");
+
+		logger("Unrecognized user-agent ".$_SERVER['HTTP_USER_AGENT'], LOGGER_DEBUG);
+
+		return ("api");
+	}
+
 	function api_date($str){
 		//Wed May 23 06:01:13 +0000 2007
 		return datetime_convert('UTC', 'UTC', $str, "D M d H:i:s +0000 Y" );
@@ -122,7 +135,6 @@
 
 		// preset
 		$type="json";
-
 		foreach ($API as $p=>$info){
 			if (strpos($a->query_string, $p)===0){
 				$called_api= explode("/",$p);
@@ -710,8 +722,6 @@
 		if($parent)
 			$_REQUEST['type'] = 'net-comment';
 		else {
-//			logger("api_statuses_update: upload ".print_r($_FILES, true)." ".print_r($_POST, true)." ".print_r($_GET, true), LOGGER_DEBUG);
-//die("blubb");
 			$_REQUEST['type'] = 'wall';
 			if(x($_FILES,'media')) {
 				// upload the image if we have one
@@ -726,6 +736,9 @@
 		// set this so that the item_post() function is quiet and doesn't redirect or emit json
 
 		$_REQUEST['api_source'] = true;
+
+		if (!x($_REQUEST, "source"))
+			$_REQUEST["source"] = api_source();
 
 		// call out normal post function
 
@@ -935,6 +948,35 @@
 
 	}
 	api_register_func('api/users/show','api_users_show');
+
+
+	function api_users_search(&$a, $type) {
+		$page = (x($_REQUEST,'page')?$_REQUEST['page']-1:0);
+
+		$userlist = array();
+
+		if (isset($_GET["q"])) {
+			$r = q("SELECT id FROM unique_contacts WHERE name='%s'", dbesc($_GET["q"]));
+			if (!count($r))
+				$r = q("SELECT id FROM unique_contacts WHERE nick='%s'", dbesc($_GET["q"]));
+
+			if (count($r)) {
+				foreach ($r AS $user) {
+					$user_info = api_get_user($a, $user["id"]);
+					//echo print_r($user_info, true)."\n";
+					$userdata = api_apply_template("user", $type, array('user' => $user_info));
+					$userlist[] = $userdata["user"];
+				}
+				$userlist = array("users" => $userlist);
+			} else
+				die(api_error($a, $type, t("User not found.")));
+		} else
+			die(api_error($a, $type, t("User not found.")));
+
+		return ($userlist);
+	}
+
+	api_register_func('api/users/search','api_users_search');
 
 	/**
 	 *
@@ -1272,6 +1314,9 @@
 			$_REQUEST['type'] = 'wall';
 			$_REQUEST['api_source'] = true;
 
+			if (!x($_REQUEST, "source"))
+				$_REQUEST["source"] = api_source();
+
 			require_once('mod/item.php');
 			item_post($a);
 		}
@@ -1359,7 +1404,7 @@
 			AND `item`.`visible` = 1 and `item`.`moderated` = 0 AND `item`.`deleted` = 0
 			AND `contact`.`id` = `item`.`contact-id`
 			AND `contact`.`blocked` = 0 AND `contact`.`pending` = 0
-			AND `item`.`parent` IN (SELECT `iid` from thread where uid = %d AND `mention`)
+			AND `item`.`parent` IN (SELECT `iid` from thread where uid = %d AND `mention` AND !`ignored`)
 			$sql_extra
 			AND `item`.`id`>%d
 			ORDER BY `item`.`id` DESC LIMIT %d ,%d ",
@@ -1641,21 +1686,16 @@
 
 		$a = get_app();
 
-		$result = q("SELECT `installed` FROM `addon` WHERE `name` = 'privacy_image_cache' AND `installed`");
-		$image_cache = (count($result) > 0);
-
 		$include_entities = strtolower(x($_REQUEST,'include_entities')?$_REQUEST['include_entities']:"false");
 
 		if ($include_entities != "true") {
-			if ($image_cache) {
-				require_once("addon/privacy_image_cache/privacy_image_cache.php");
+			require_once("mod/proxy.php");
 
-				preg_match_all("/\[img](.*?)\[\/img\]/ism", $bbcode, $images);
+			preg_match_all("/\[img](.*?)\[\/img\]/ism", $bbcode, $images);
 
-				foreach ($images[1] AS $image) {
-					$replace = $a->get_baseurl()."/privacy_image_cache/".privacy_image_cache_cachename($image);
-					$text = str_replace($image, $replace, $text);
-				}
+			foreach ($images[1] AS $image) {
+				$replace = proxy_url($image);
+				$text = str_replace($image, $replace, $text);
 			}
 			return array();
 		}
@@ -1750,11 +1790,11 @@
 				require_once("include/Photo.php");
 				$image = get_photo_info($url);
 				if ($image) {
-					// If privacy_image_cache is activated, then use the following sizes:
+					// If image cache is activated, then use the following sizes:
 					// thumb  (150), small (340), medium (600) and large (1024)
-					if ($image_cache) {
-						require_once("addon/privacy_image_cache/privacy_image_cache.php");
-						$media_url = $a->get_baseurl()."/privacy_image_cache/".privacy_image_cache_cachename($url);
+					if (!get_config("system", "proxy_disabled")) {
+						require_once("mod/proxy.php");
+						$media_url = proxy_url($url);
 
 						$sizes = array();
 						$scale = scale_image($image[0], $image[1], 150);
@@ -2315,6 +2355,48 @@
 
 	api_register_func('api/oauth/request_token', 'api_oauth_request_token', false);
 	api_register_func('api/oauth/access_token', 'api_oauth_access_token', false);
+
+
+	function api_fr_photos_list(&$a,$type) {
+		if (api_user()===false) return false;
+		$r = q("select distinct `resource-id` from photo where uid = %d and album != 'Contact Photos' ",
+			intval(local_user())
+		);
+		if($r) {
+			$ret = array();
+			foreach($r as $rr)
+				$ret[] = $rr['resource-id'];
+			header("Content-type: application/json");
+			echo json_encode($ret);
+		}
+		killme();
+	}
+
+	function api_fr_photo_detail(&$a,$type) {
+		if (api_user()===false) return false;
+		if(! $_REQUEST['photo_id']) return false;
+		$scale = ((array_key_exists('scale',$_REQUEST)) ? intval($_REQUEST['scale']) : 0);
+ 		$r = q("select * from photo where uid = %d and `resource-id` = '%s' and scale = %d limit 1",
+			intval(local_user()),
+			dbesc($_REQUEST['photo_id']),
+			intval($scale)
+		);
+		if($r) {
+			header("Content-type: application/json");
+			$r[0]['data'] = base64_encode($r[0]['data']);
+			echo json_encode($r[0]);
+		}
+
+		killme();	
+	}
+
+	api_register_func('api/friendica/photos/list', 'api_fr_photos_list', true);
+	api_register_func('api/friendica/photo', 'api_fr_photo_detail', true);
+
+
+
+
+
 
 function api_share_as_retweet($a, $uid, &$item) {
 	$body = trim($item["body"]);

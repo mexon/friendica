@@ -37,7 +37,10 @@ function contacts_init(&$a) {
 	}
 	else {
 		$vcard_widget = '';
-		$follow_widget = follow_widget();
+		if (isset($_GET['add']))
+			$follow_widget = follow_widget($_GET['add']);
+		else
+			$follow_widget = follow_widget();
 	}
 
 	$groups_widget .= group_side('contacts','group',false,0,$contact_id);
@@ -265,7 +268,7 @@ function contacts_content(&$a) {
 			goaway($a->get_baseurl(true) . '/contacts');
 			return; // NOTREACHED
 		}
-		
+
 		if($cmd === 'update') {
 			_contact_update($contact_id);
 			goaway($a->get_baseurl(true) . '/contacts/' . $contact_id);
@@ -275,9 +278,10 @@ function contacts_content(&$a) {
 		if($cmd === 'block') {
 			$r = _contact_block($contact_id, $orig_record[0]);
 			if($r) {
-				info( (($blocked) ? t('Contact has been blocked') : t('Contact has been unblocked')) . EOL );
+				$blocked = (($orig_record[0]['blocked']) ? 0 : 1);
+				info((($blocked) ? t('Contact has been blocked') : t('Contact has been unblocked')).EOL);
 			}
-			
+
 			goaway($a->get_baseurl(true) . '/contacts/' . $contact_id);
 			return; // NOTREACHED
 		}
@@ -285,9 +289,10 @@ function contacts_content(&$a) {
 		if($cmd === 'ignore') {
 			$r = _contact_ignore($contact_id, $orig_record[0]);
 			if($r) {
-				info( (($readonly) ? t('Contact has been ignored') : t('Contact has been unignored')) . EOL );
+				$readonly = (($orig_record[0]['readonly']) ? 0 : 1);
+				info((($readonly) ? t('Contact has been ignored') : t('Contact has been unignored')).EOL);
 			}
-			
+
 			goaway($a->get_baseurl(true) . '/contacts/' . $contact_id);
 			return; // NOTREACHED
 		}
@@ -296,9 +301,10 @@ function contacts_content(&$a) {
 		if($cmd === 'archive') {
 			$r = _contact_archive($contact_id, $orig_record[0]);
 			if($r) {
-				info( (($archived) ? t('Contact has been archived') : t('Contact has been unarchived')) . EOL );
-			}			
-			
+				$archived = (($orig_record[0]['archive']) ? 0 : 1);
+				info((($archived) ? t('Contact has been archived') : t('Contact has been unarchived')).EOL);
+			}
+
 			goaway($a->get_baseurl(true) . '/contacts/' . $contact_id);
 			return; // NOTREACHED
 		}

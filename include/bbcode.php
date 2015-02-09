@@ -11,11 +11,11 @@ function bb_attachment($Text, $plaintext = false, $tryoembed = true) {
 			$type = "";
 			preg_match("/type='(.*?)'/ism", $attributes, $matches);
 			if ($matches[1] != "")
-				$type = $matches[1];
+				$type = strtolower($matches[1]);
 
 			preg_match('/type="(.*?)"/ism', $attributes, $matches);
 			if ($matches[1] != "")
-				$type = $matches[1];
+				$type = strtolower($matches[1]);
 
 			if ($type == "")
 				return($match[0]);
@@ -41,23 +41,29 @@ function bb_attachment($Text, $plaintext = false, $tryoembed = true) {
 			if ($matches[1] != "")
 				$title = $matches[1];
 
-			$image = "";
-			preg_match("/image='(.*?)'/ism", $attributes, $matches);
-			if ($matches[1] != "")
-				$image = $matches[1];
+			$title = htmlentities($title, ENT_QUOTES, 'UTF-8', false);
 
-			preg_match('/image="(.*?)"/ism', $attributes, $matches);
-			if ($matches[1] != "")
-				$image = $matches[1];
+			$image = "";
+			if ($type != "video") {
+				preg_match("/image='(.*?)'/ism", $attributes, $matches);
+				if ($matches[1] != "")
+					$image = $matches[1];
+
+				preg_match('/image="(.*?)"/ism', $attributes, $matches);
+				if ($matches[1] != "")
+					$image = $matches[1];
+			}
 
 			$preview = "";
-			preg_match("/preview='(.*?)'/ism", $attributes, $matches);
-			if ($matches[1] != "")
-				$preview = $matches[1];
+			if ($type != "video") {
+				preg_match("/preview='(.*?)'/ism", $attributes, $matches);
+				if ($matches[1] != "")
+					$preview = $matches[1];
 
-			preg_match('/preview="(.*?)"/ism', $attributes, $matches);
-			if ($matches[1] != "")
-				$preview = $matches[1];
+				preg_match('/preview="(.*?)"/ism', $attributes, $matches);
+				if ($matches[1] != "")
+					$preview = $matches[1];
+			}
 
 			if ($plaintext)
 				$text = sprintf('<a href="%s" target="_blank">%s</a>', $url, $title);
@@ -71,9 +77,9 @@ function bb_attachment($Text, $plaintext = false, $tryoembed = true) {
 					$oembed = $bookmark[0];
 
 				if (($image != "") AND !strstr(strtolower($oembed), "<img "))
-					$text .= sprintf('<img src="%s" alt="%s" class="attachment-image" />', $image, $title); // To-Do: Anführungszeichen in "alt"
+					$text .= sprintf('<a href="%s" target="_blank"><img src="%s" alt="" title="%s" class="attachment-image" /></a><br />', $url, $image, $title);
 				elseif (($preview != "") AND !strstr(strtolower($oembed), "<img "))
-					$text .= sprintf('<img src="%s" alt="%s" class="attachment-preview" />', $preview, $title); // To-Do: Anführungszeichen in "alt"
+					$text .= sprintf('<a href="%s" target="_blank"><img src="%s" alt="" title="%s" class="attachment-preview" /></a><br />', $url, $preview, $title);
 
 				$text .= $oembed;
 
@@ -86,7 +92,7 @@ function bb_attachment($Text, $plaintext = false, $tryoembed = true) {
 	return($Text);
 }
 
-function bb_rearrange_link($shared) {
+/* function bb_rearrange_link($shared) {
 	if ($shared[1] != "type-link")
 		return($shared[0]);
 
@@ -113,6 +119,66 @@ function bb_rearrange_link($shared) {
 	$newshare = "[class=type-link]".$newshare."[/class]";
 
 	return($newshare);
+} */
+
+function bb_rearrange_share($shared) {
+	if (!in_array(strtolower($shared[2]), array("type-link", "type-audio", "type-video")))
+		return($shared[0]);
+
+	if (!preg_match_all("/\[bookmark\=([^\]]*)\](.*?)\[\/bookmark\]/ism",$shared[3], $bookmark))
+		return($shared[0]);
+
+	$type = substr(trim(strtolower($shared[2])), 5);
+
+	$title = "";
+	$url = "";
+	$preview = "";
+	$description = "";
+
+	if (isset($bookmark[2][0]))
+		$title = $bookmark[2][0];
+
+	if (isset($bookmark[1][0]))
+		$url = $bookmark[1][0];
+
+	$cleanedshare = trim($shared[3]);
+	$cleanedshare = preg_replace("/\[img\=([0-9]*)x([0-9]*)\](.*?)\[\/img\]/ism", '[img]$3[/img]', $cleanedshare);
+	preg_match("/\[img\](.*?)\[\/img\]/ism", $cleanedshare, $matches);
+
+	if ($matches)
+		$preview = trim($matches[1]);
+
+	preg_match("/\[quote\](.*?)\[\/quote\]/ism", $cleanedshare, $matches);
+	if ($matches)
+		$description = trim($matches[1]);
+
+	$url = str_replace(array("[", "]"), array("&#91;", "&#93;"), htmlentities($url, ENT_QUOTES, 'UTF-8', false));
+	$title = str_replace(array("[", "]"), array("&#91;", "&#93;"), htmlentities($title, ENT_QUOTES, 'UTF-8', false));
+	$preview = str_replace(array("[", "]"), array("&#91;", "&#93;"), htmlentities($preview, ENT_QUOTES, 'UTF-8', false));
+
+	$Text = trim($shared[1])."\n[attachment type='".$type."'";
+
+	if ($url != "")
+		$Text .= " url='".$url."'";
+	if ($title != "")
+		$Text .= " title='".$title."'";
+	if ($preview != "") {
+		require_once("include/Photo.php");
+		$picturedata = get_photo_info($preview);
+
+		if (count($picturedata) > 0) {
+			// if the preview picture is larger than 500 pixels then show it in a larger mode
+			// But only, if the picture isn't higher than large (To prevent huge posts)
+			if (($picturedata[0] >= 500) AND ($picturedata[0] >= $picturedata[1]))
+				$Text .= " image='".$preview."'";
+			else
+				$Text .= " preview='".$preview."'";
+		} else
+			$Text .= " preview='".$preview."'";
+	}
+	$Text .= "]".$description."[/attachment]";
+
+	return($Text);
 }
 
 function bb_remove_share_information($Text, $plaintext = false, $nolink = false) {
@@ -145,7 +211,7 @@ function bb_cleanup_share($shared, $plaintext, $nolink) {
 	if (isset($bookmark[1][0]))
 		$link = $bookmark[1][0];
 
-	if (strpos($shared[1],$title) !== false)
+	if (($title != "") AND (strpos($shared[1],$title) !== false))
 		$title = "";
 
 //        if (strpos($shared[1],$link) !== false)
@@ -155,6 +221,10 @@ function bb_cleanup_share($shared, $plaintext, $nolink) {
 
 	if (($text == "") AND ($title != "") AND ($link == ""))
 		$text .= "\n\n".trim($title);
+
+	// If the link already is included in the post, don't add it again
+	if (($link != "") AND strpos($text, $link))
+		return(trim($text));
 
 	if (($link != "") AND ($title != ""))
 		$text .= "\n[url=".trim($link)."]".trim($title)."[/url]";
@@ -210,8 +280,6 @@ function tryoembed($match){
 
 	if (isset($match[2]))
 		$o->title = $match[2];
-
-	//echo "<pre>"; var_dump($match, $url, $o); killme();
 
 	if ($o->type=="error") return $match[0];
 
@@ -466,10 +534,14 @@ function bb_ShareAttributes($share, $simplehtml) {
 			if ($text != "")
 				$text .= "<hr />";
 
-			$text .= $headline.'<blockquote class="shared_content">'.trim($share[3])."</blockquote><br />";
+			if (substr(normalise_link($link), 0, 19) != "http://twitter.com/") {
+				$text .= $headline.'<blockquote class="shared_content">'.trim($share[3])."</blockquote><br />";
 
-			if ($link != "")
-				$text .= '<br /><a href="'.$link.'">[l]</a>';
+				if ($link != "")
+					$text .= '<br /><a href="'.$link.'">[l]</a>';
+			} else
+				$text .= '<br /><a href="'.$link.'">'.$link.'</a>';
+
 			break;
 		case 4:
 			$headline = '<div class="shared_header">';
@@ -516,11 +588,13 @@ function bb_ShareAttributes($share, $simplehtml) {
 	return($text);
 }
 
-function GetProfileUsername($profile, $username, $compact = false) {
+function GetProfileUsername($profile, $username, $compact = false, $getnetwork = false) {
 
 	$twitter = preg_replace("=https?://twitter.com/(.*)=ism", "$1@twitter.com", $profile);
 	if ($twitter != $profile) {
-		if ($compact)
+		if ($getnetwork)
+			return(NETWORK_TWITTER);
+		elseif ($compact)
 			return($twitter);
 		else
 			return($username." (".$twitter.")");
@@ -528,7 +602,9 @@ function GetProfileUsername($profile, $username, $compact = false) {
 
 	$appnet = preg_replace("=https?://alpha.app.net/(.*)=ism", "$1@alpha.app.net", $profile);
 	if ($appnet != $profile) {
-		if ($compact)
+		if ($getnetwork)
+			return(NETWORK_APPNET);
+		elseif ($compact)
 			return($appnet);
 		else
 			return($username." (".$appnet.")");
@@ -536,7 +612,9 @@ function GetProfileUsername($profile, $username, $compact = false) {
 
 	$gplus = preg_replace("=https?://plus.google.com/(.*)=ism", "$1@plus.google.com", $profile);
 	if ($gplus != $profile) {
-		if ($compact)
+		if ($getnetwork)
+			return(NETWORK_GPLUS);
+		elseif ($compact)
 			return($gplususername." (".$username.")");
 		else
 			return($username." (".$gplus.")");
@@ -544,7 +622,9 @@ function GetProfileUsername($profile, $username, $compact = false) {
 
 	$friendica = preg_replace("=https?://(.*)/profile/(.*)=ism", "$2@$1", $profile);
 	if ($friendica != $profile) {
-		if ($compact)
+		if ($getnetwork)
+			return(NETWORK_DFRN);
+		elseif ($compact)
 			return($friendica);
 		else
 			return($username." (".$friendica.")");
@@ -552,7 +632,9 @@ function GetProfileUsername($profile, $username, $compact = false) {
 
 	$diaspora = preg_replace("=https?://(.*)/u/(.*)=ism", "$2@$1", $profile);
 	if ($diaspora != $profile) {
-		if ($compact)
+		if ($getnetwork)
+			return(NETWORK_DIASPORA);
+		elseif ($compact)
 			return($diaspora);
 		else
 			return($username." (".$diaspora.")");
@@ -565,7 +647,9 @@ function GetProfileUsername($profile, $username, $compact = false) {
 			$UserData = fetch_url("http://".$StatusnetHost."/api/users/show.json?user_id=".$StatusnetUser);
 			$user = json_decode($UserData);
 			if ($user) {
-				if ($compact)
+				if ($getnetwork)
+					return(NETWORK_STATUSNET);
+				elseif ($compact)
 					return($user->screen_name."@".$StatusnetHost);
 				else
 					return($username." (".$user->screen_name."@".$StatusnetHost.")");
@@ -578,7 +662,9 @@ function GetProfileUsername($profile, $username, $compact = false) {
 	if ($rest == "") {
 		$pumpio = preg_replace("=https?://([\.\w]+)/([\.\w]+)(.*)=ism", "$2@$1", $profile);
 		if ($pumpio != $profile) {
-			if ($compact)
+			if ($getnetwork)
+				return(NETWORK_PUMPIO);
+			elseif ($compact)
 				return($pumpio);
 			else
 				return($username." (".$pumpio.")");
@@ -592,10 +678,12 @@ function bb_RemovePictureLinks($match) {
 	$text = Cache::get($match[1]);
 
 	if(is_null($text)){
+		$a = get_app();
+
 		$ch = @curl_init($match[1]);
 		@curl_setopt($ch, CURLOPT_NOBODY, true);
 		@curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-		@curl_setopt($ch, CURLOPT_USERAGENT, "Mozilla/5.0 (compatible; Friendica)");
+		@curl_setopt($ch, CURLOPT_USERAGENT, $a->get_useragent());
 		@curl_exec($ch);
 		$curl_info = @curl_getinfo($ch);
 
@@ -640,10 +728,12 @@ function bb_CleanPictureLinksSub($match) {
 	$text = Cache::get($match[1]);
 
 	if(is_null($text)){
+		$a = get_app();
+
 		$ch = @curl_init($match[1]);
 		@curl_setopt($ch, CURLOPT_NOBODY, true);
 		@curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-		@curl_setopt($ch, CURLOPT_USERAGENT, "Mozilla/5.0 (compatible; Friendica)");
+		@curl_setopt($ch, CURLOPT_USERAGENT, $a->get_useragent());
 		@curl_exec($ch);
 		$curl_info = @curl_getinfo($ch);
 
@@ -732,12 +822,15 @@ function bbcode($Text,$preserve_nl = false, $tryoembed = true, $simplehtml = fal
 	$Text = preg_replace("/\n\[code\]/ism", "[code]", $Text);
 	$Text = preg_replace("/\[\/code\]\n/ism", "[/code]", $Text);
 
+	// Rearrange shares to attachments
+	$Text = preg_replace_callback("((.*?)\[class=(.*?)\](.*?)\[\/class\])ism", "bb_rearrange_share",$Text);
+
 	// Handle attached links or videos
 	$Text = bb_attachment($Text, ($simplehtml != 4) AND ($simplehtml != 0), $tryoembed);
 
 	// Rearrange shared links
-	if (get_config("system", "rearrange_shared_links") AND (!$simplehtml OR $tryoembed))
-		$Text = preg_replace_callback("(\[class=(.*?)\](.*?)\[\/class\])ism","bb_rearrange_link",$Text);
+//	if (get_config("system", "rearrange_shared_links") AND (!$simplehtml OR $tryoembed))
+//		$Text = preg_replace_callback("(\[class=(.*?)\](.*?)\[\/class\])ism","bb_rearrange_link",$Text);
 
 	// when the content is meant exporting to other systems then remove the avatar picture since this doesn't really look good on these systems
 	if (!$tryoembed)
@@ -1069,25 +1162,26 @@ function bbcode($Text,$preserve_nl = false, $tryoembed = true, $simplehtml = fal
 	if($saved_image)
 		$Text = bb_replace_images($Text, $saved_image);
 
-	// Clean up the HTML by loading and saving the HTML with the DOM
-	// Only do it when it has to be done - for performance reasons
-	// Update: Now it is done every time - since bad structured html can break a whole page
-	//if (!$tryoembed) {
-	//	$doc = new DOMDocument();
-	//	$doc->preserveWhiteSpace = false;
+	// Clean up the HTML by loading and saving the HTML with the DOM.
+	// Bad structured html can break a whole page.
+	// For performance reasons do it only with ativated item cache or at export.
+	if (!$tryoembed OR (get_itemcachepath() != "")) {
+		$doc = new DOMDocument();
+		$doc->preserveWhiteSpace = false;
 
-	//	$Text = mb_convert_encoding($Text, 'HTML-ENTITIES', "UTF-8");
+		$Text = mb_convert_encoding($Text, 'HTML-ENTITIES', "UTF-8");
 
-	//	$doctype = '<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.0 Transitional//EN" "http://www.w3.org/TR/REC-html40/loose.dtd">';
-	//	@$doc->loadHTML($doctype."<html><body>".$Text."</body></html>");
+		$doctype = '<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.0 Transitional//EN" "http://www.w3.org/TR/REC-html40/loose.dtd">';
+		$encoding = '<?xml encoding="UTF-8">';
+		@$doc->loadHTML($encoding.$doctype."<html><body>".$Text."</body></html>");
+		$doc->encoding = 'UTF-8';
+		$Text = $doc->saveHTML();
+		$Text = str_replace(array("<html><body>", "</body></html>", $doctype, $encoding), array("", "", "", ""), $Text);
 
-	//	$Text = $doc->saveHTML();
-	//	$Text = str_replace(array("<html><body>", "</body></html>", $doctype), array("", "", ""), $Text);
+		$Text = str_replace('<br></li>','</li>', $Text);
 
-	//	$Text = str_replace('<br></li>','</li>', $Text);
-
-	//	$Text = mb_convert_encoding($Text, "UTF-8", 'HTML-ENTITIES');
-	//}
+		//$Text = mb_convert_encoding($Text, "UTF-8", 'HTML-ENTITIES');
+	}
 
 	// Clean up some useless linebreaks in lists
 	//$Text = str_replace('<br /><ul','<ul ', $Text);

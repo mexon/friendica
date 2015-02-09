@@ -2,7 +2,7 @@
 
 
 // curl wrapper. If binary flag is true, return binary
-// results. 
+// results.
 
 // Set the cookiejar argument to a string (e.g. "/tmp/friendica-cookies.txt")
 // to preserve cookies from one request to the next.
@@ -25,10 +25,9 @@ function fetch_url($url,$binary = false, &$redirects = 0, $timeout = 0, $accept_
 		curl_setopt($ch, CURLOPT_COOKIEFILE, $cookiejar);
 	}
 
-	if($curlredirect) {
-		@curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
-		@curl_setopt($ch, CURLOPT_MAXREDIRS, 5);
-	}
+//  These settings aren't needed. We're following the location already.
+//	@curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
+//	@curl_setopt($ch, CURLOPT_MAXREDIRS, 5);
 
 	if (!is_null($accept_content)){
 		curl_setopt($ch,CURLOPT_HTTPHEADER, array (
@@ -37,7 +36,7 @@ function fetch_url($url,$binary = false, &$redirects = 0, $timeout = 0, $accept_
 	}
 
 	@curl_setopt($ch, CURLOPT_RETURNTRANSFER,true);
-	@curl_setopt($ch, CURLOPT_USERAGENT, "Mozilla/5.0 (compatible; Friendica)");
+	@curl_setopt($ch, CURLOPT_USERAGENT, $a->get_useragent());
 
 
 	if(intval($timeout)) {
@@ -73,12 +72,13 @@ function fetch_url($url,$binary = false, &$redirects = 0, $timeout = 0, $accept_
 
 	$base = $s;
 	$curl_info = @curl_getinfo($ch);
+	@curl_close($ch);
 	$http_code = $curl_info['http_code'];
 	$a->set_curl_code($http_code);
 	if($curlredirect) {
 		$a->set_curl_redirect_url($curl_info['url']);
 	}
-//	logger('fetch_url:' . $http_code . ' data: ' . $s);
+	logger('fetch_url '.$url.': '.$http_code." ".$s, LOGGER_DATA);
 	$header = '';
 
 	// Pull out multiple headers, e.g. proxy and continuation headers
@@ -90,6 +90,7 @@ function fetch_url($url,$binary = false, &$redirects = 0, $timeout = 0, $accept_
 		$base = substr($base,strlen($chunk));
 	}
 
+	$newurl = '';
 	if($http_code == 301 || $http_code == 302 || $http_code == 303 || $http_code == 307) {
 		$new_location_info = @parse_url($curl_info["redirect_url"]);
 		$old_location_info = @parse_url($curl_info["url"]);
@@ -100,13 +101,14 @@ function fetch_url($url,$binary = false, &$redirects = 0, $timeout = 0, $accept_
 			$newurl = $new_location_info["scheme"]."://".$new_location_info["host"].$old_location_info["path"];
 
 		$matches = array();
-		if (preg_match('/(Location:|URI:)(.*?)\n/', $header, $matches)) {
+		if (preg_match('/(Location:|URI:)(.*?)\n/i', $header, $matches)) {
 			$newurl = trim(array_pop($matches));
 		}
 		if(strpos($newurl,'/') === 0)
 			$newurl = $old_location_info["scheme"]."://".$old_location_info["host"].$newurl;
 		if (filter_var($newurl, FILTER_VALIDATE_URL)) {
 			$redirects++;
+			$a->set_curl_redirect_url($newurl);
 			return fetch_url($newurl,$binary,$redirects,$timeout,$accept_content,$cookiejar,$curlredirect);
 		}
 	}
@@ -115,7 +117,6 @@ function fetch_url($url,$binary = false, &$redirects = 0, $timeout = 0, $accept_
 
 	$body = substr($s,strlen($header));
 	$a->set_curl_headers($header);
-	@curl_close($ch);
 
 	$a->save_timestamp($stamp1, "network");
 
@@ -139,7 +140,7 @@ function post_url($url,$params, $headers = null, &$redirects = 0, $timeout = 0) 
 	curl_setopt($ch, CURLOPT_RETURNTRANSFER,true);
 	curl_setopt($ch, CURLOPT_POST,1);
 	curl_setopt($ch, CURLOPT_POSTFIELDS,$params);
-	curl_setopt($ch, CURLOPT_USERAGENT, "Mozilla/5.0 (compatible; Friendica)");
+	curl_setopt($ch, CURLOPT_USERAGENT, $a->get_useragent());
 
 	if(intval($timeout)) {
 		curl_setopt($ch, CURLOPT_TIMEOUT, $timeout);
@@ -224,8 +225,8 @@ function post_url($url,$params, $headers = null, &$redirects = 0, $timeout = 0) 
 }}
 
 // Generic XML return
-// Outputs a basic dfrn XML status structure to STDOUT, with a <status> variable 
-// of $st and an optional text <message> of $message and terminates the current process. 
+// Outputs a basic dfrn XML status structure to STDOUT, with a <status> variable
+// of $st and an optional text <message> of $message and terminates the current process.
 
 if(! function_exists('xml_status')) {
 function xml_status($st, $message = '') {
@@ -251,7 +252,7 @@ function http_status_exit($val) {
 	if($val >= 200 && $val < 300)
 		$err = 'OK';
 
-	logger('http_status_exit ' . $val);	
+	logger('http_status_exit ' . $val);
 	header($_SERVER["SERVER_PROTOCOL"] . ' ' . $val . ' ' . $err);
 	killme();
 
@@ -303,16 +304,16 @@ function convert_xml_element_to_array($xml_element, &$recursion_depth=0) {
         }
 }}
 
-// Given an email style address, perform webfinger lookup and 
+// Given an email style address, perform webfinger lookup and
 // return the resulting DFRN profile URL, or if no DFRN profile URL
-// is located, returns an OStatus subscription template (prefixed 
+// is located, returns an OStatus subscription template (prefixed
 // with the string 'stat:' to identify it as on OStatus template).
 // If this isn't an email style address just return $s.
 // Return an empty string if email-style addresses but webfinger fails,
-// or if the resultant personal XRD doesn't contain a supported 
+// or if the resultant personal XRD doesn't contain a supported
 // subscription/friend-request attribute.
 
-// amended 7/9/2011 to return an hcard which could save potentially loading 
+// amended 7/9/2011 to return an hcard which could save potentially loading
 // a lengthy content page to scrape dfrn attributes
 
 if(! function_exists('webfinger_dfrn')) {
@@ -337,7 +338,7 @@ function webfinger_dfrn($s,&$hcard) {
 	return $profile_link;
 }}
 
-// Given an email style address, perform webfinger lookup and 
+// Given an email style address, perform webfinger lookup and
 // return the array of link attributes from the personal XRD file.
 // On error/failure return an empty array.
 
@@ -379,7 +380,7 @@ function lrdd($uri, $debug = false) {
 	// All we have is an email address. Resource-priority is irrelevant
 	// because our URI isn't directly resolvable.
 
-	if(strstr($uri,'@')) {	
+	if(strstr($uri,'@')) {
 		return(webfinger($uri));
 	}
 
@@ -423,7 +424,7 @@ function lrdd($uri, $debug = false) {
 		foreach($properties as $prop)
 			if((string) $prop['@attributes'] === 'http://lrdd.net/priority/resource')
 				$priority = 'resource';
-	} 
+	}
 
 	// save the links in case we need them
 
@@ -454,7 +455,7 @@ function lrdd($uri, $debug = false) {
 		$tpl = '';
 
 	if($priority === 'host') {
-		if(strlen($tpl)) 
+		if(strlen($tpl))
 			$pxrd = str_replace('{uri}', urlencode($uri), $tpl);
 		elseif(isset($href))
 			$pxrd = $href;
@@ -628,6 +629,9 @@ function fetch_xrd_links($url) {
 
 if(! function_exists('validate_url')) {
 function validate_url(&$url) {
+
+	if(get_config('system','disable_url_validation'))
+		return true;
 	// no naked subdomains (allow localhost for tests)
 	if(strpos($url,'.') === false && strpos($url,'/localhost/') === false)
 		return false;
@@ -693,7 +697,7 @@ function allowed_url($url) {
 		foreach($allowed as $a) {
 			$pat = strtolower(trim($a));
 			if(($fnmatch && fnmatch($pat,$host)) || ($pat == $host)) {
-				$found = true; 
+				$found = true;
 				break;
 			}
 		}
@@ -727,7 +731,7 @@ function allowed_email($email) {
 		foreach($allowed as $a) {
 			$pat = strtolower(trim($a));
 			if(($fnmatch && fnmatch($pat,$domain)) || ($pat == $domain)) {
-				$found = true; 
+				$found = true;
 				break;
 			}
 		}
@@ -893,7 +897,7 @@ function scale_external_images($srctext, $include_link = true, $scale_replace = 
 						$new_height = $ph->getHeight();
 						logger('scale_external_images: ' . $orig_width . '->' . $new_width . 'w ' . $orig_height . '->' . $new_height . 'h' . ' match: ' . $mtch[0], LOGGER_DEBUG);
 						$s = str_replace($mtch[0],'[img=' . $new_width . 'x' . $new_height. ']' . $scaled . '[/img]'
-							. "\n" . (($include_link) 
+							. "\n" . (($include_link)
 								? '[url=' . $mtch[1] . ']' . t('view full size') . '[/url]' . "\n"
 								: ''),$s);
 						logger('scale_external_images: new string: ' . $s, LOGGER_DEBUG);
@@ -933,8 +937,8 @@ function fix_contact_ssl_policy(&$contact,$new_policy) {
 	}
 
 	if($ssl_changed) {
-		q("update contact set 
-			url = '%s', 
+		q("update contact set
+			url = '%s',
 			request = '%s',
 			notify = '%s',
 			poll = '%s',
@@ -989,7 +993,7 @@ function xml2array($contents, $namespaces = true, $get_attributes=1, $priority =
 		return array();
 	}
 
-    xml_parser_set_option($parser, XML_OPTION_TARGET_ENCODING, "UTF-8"); 
+    xml_parser_set_option($parser, XML_OPTION_TARGET_ENCODING, "UTF-8");
 	// http://minutillo.com/steve/weblog/2004/6/17/php-xml-and-character-encodings-a-tale-of-sadness-rage-and-data-loss
     xml_parser_set_option($parser, XML_OPTION_CASE_FOLDING, 0);
     xml_parser_set_option($parser, XML_OPTION_SKIP_WHITE, 1);
@@ -1119,6 +1123,8 @@ function xml2array($contents, $namespaces = true, $get_attributes=1, $priority =
 
 function original_url($url, $depth=1, $fetchbody = false) {
 
+	$a = get_app();
+
 	// Remove Analytics Data from Google and other tracking platforms
 	$urldata = parse_url($url);
 	if (is_string($urldata["query"])) {
@@ -1168,8 +1174,7 @@ function original_url($url, $depth=1, $fetchbody = false) {
 
         curl_setopt($ch, CURLOPT_TIMEOUT, 10);
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        //curl_setopt($ch,CURLOPT_USERAGENT,'Mozilla/5.0 (Macintosh; Intel Mac OS X 10.8; rv:24.0) Gecko/20100101 Firefox/24.0');
-	curl_setopt($ch, CURLOPT_USERAGENT, "Mozilla/5.0 (compatible; Friendica)");
+	curl_setopt($ch, CURLOPT_USERAGENT, $a->get_useragent());
 
         $header = curl_exec($ch);
         $curl_info = @curl_getinfo($ch);

@@ -246,6 +246,10 @@ div.pager {
   float: left;
 }
 
+#contacts-actions {
+  clear: both;
+}
+
 #contact-edit-drop-link-end {
   /* clear: both; */
 }
@@ -898,6 +902,10 @@ aside .vcard dd {
   margin-left: 4px;
   /* width: 60%; */
 }
+aside #profile-photo-wrapper img {
+  width: 175px;
+}
+
 aside #profile-extra-links ul {
   padding: 0px;
   margin: 0px;
@@ -1987,6 +1995,7 @@ ul.tabs li .active, span.pager_current a {
 .comment-edit-bb a {
   color: #888;
   padding: 0px 5px 1px 5px;
+  cursor: pointer;
 }
 
 .comment-edit-bb a:hover {
@@ -2718,4 +2727,3 @@ a.mail-list-link {
 .mail-conv-delete-icon {
         border: none;
 }
-
