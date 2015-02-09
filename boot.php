@@ -429,6 +429,7 @@ if(! class_exists('App')) {
 		private $curl_code;
 		private $curl_content_type;
 		private $curl_headers;
+		private $curl_redirect_url;
 
 		private $cached_profile_image;
 		private $cached_profile_picdate;
@@ -762,6 +763,14 @@ if(! class_exists('App')) {
 
 		function get_curl_headers() {
 			return $this->curl_headers;
+		}
+
+		function set_curl_redirect_url($url) {
+			$this->curl_redirect_url = $url;
+		}
+
+		function get_curl_redirect_url() {
+			return $this->curl_redirect_url;
 		}
 
 		function get_cached_avatar_image($avatar_image){

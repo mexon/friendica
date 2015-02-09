@@ -71,6 +71,7 @@ function fetch_url($url,$binary = false, &$redirects = 0, $timeout = 0, $accept_
 
 	$base = $s;
 	$curl_info = @curl_getinfo($ch);
+	@curl_close($ch);
 	$http_code = $curl_info['http_code'];
 	logger('fetch_url '.$url.': '.$http_code." ".$s, LOGGER_DATA);
 	$header = '';
@@ -84,6 +85,7 @@ function fetch_url($url,$binary = false, &$redirects = 0, $timeout = 0, $accept_
 		$base = substr($base,strlen($chunk));
 	}
 
+	$newurl = '';
 	if($http_code == 301 || $http_code == 302 || $http_code == 303 || $http_code == 307) {
 		$new_location_info = @parse_url($curl_info["redirect_url"]);
 		$old_location_info = @parse_url($curl_info["url"]);
@@ -94,13 +96,14 @@ function fetch_url($url,$binary = false, &$redirects = 0, $timeout = 0, $accept_
 			$newurl = $new_location_info["scheme"]."://".$new_location_info["host"].$old_location_info["path"];
 
 		$matches = array();
-		if (preg_match('/(Location:|URI:)(.*?)\n/', $header, $matches)) {
+		if (preg_match('/(Location:|URI:)(.*?)\n/i', $header, $matches)) {
 			$newurl = trim(array_pop($matches));
 		}
 		if(strpos($newurl,'/') === 0)
 			$newurl = $old_location_info["scheme"]."://".$old_location_info["host"].$newurl;
 		if (filter_var($newurl, FILTER_VALIDATE_URL)) {
 			$redirects++;
+			$a->set_curl_redirect_url($newurl);
 			return fetch_url($newurl,$binary,$redirects,$timeout,$accept_content,$cookiejar);
 		}
 	}
@@ -110,7 +113,6 @@ function fetch_url($url,$binary = false, &$redirects = 0, $timeout = 0, $accept_
 
 	$body = substr($s,strlen($header));
 	$a->set_curl_headers($header);
-	@curl_close($ch);
 
 	$a->save_timestamp($stamp1, "network");
 
