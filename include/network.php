@@ -85,7 +85,10 @@ function fetch_url($url,$binary = false, &$redirects = 0, $timeout = 0, $accept_
 		$base = substr($base,strlen($chunk));
 	}
 
-	$newurl = '';
+	$a->set_curl_code($http_code);
+	$a->set_curl_content_type($curl_info['content_type']);
+	$a->set_curl_headers($header);
+
 	if($http_code == 301 || $http_code == 302 || $http_code == 303 || $http_code == 307) {
 		$new_location_info = @parse_url($curl_info["redirect_url"]);
 		$old_location_info = @parse_url($curl_info["url"]);
@@ -108,11 +111,7 @@ function fetch_url($url,$binary = false, &$redirects = 0, $timeout = 0, $accept_
 		}
 	}
 
-	$a->set_curl_code($http_code);
-	$a->set_curl_content_type($curl_info['content_type']);
-
 	$body = substr($s,strlen($header));
-	$a->set_curl_headers($header);
 
 	$a->save_timestamp($stamp1, "network");
 
