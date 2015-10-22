@@ -13,6 +13,8 @@
 {{include file="field_checkbox.tpl" field=$nosmile}}
 {{include file="field_checkbox.tpl" field=$noinfo}}
 {{include file="field_checkbox.tpl" field=$infinite_scroll}}
+<h2>{{$calendar_title}}</h2>
+{{include file="field_select.tpl" field=$first_day_of_week}}
 
 
 <div class="settings-submit-wrapper" >
@@ -20,7 +22,7 @@
 </div>
 
 {{if $theme_config}}
-<h2>Theme settings</h2>
+<h2>{{$stitle}}</h2>
 {{$theme_config}}
 {{/if}}
 

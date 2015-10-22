@@ -22,11 +22,12 @@ function crepair_init(&$a) {
 
 	if($contact_id) {
 			$a->data['contact'] = $r[0];
-			$o .= '<div class="vcard">';
-			$o .= '<div class="fn">' . $a->data['contact']['name'] . '</div>';
-			$o .= '<div id="profile-photo-wrapper"><img class="photo" style="width: 175px; height: 175px;" src="' . $a->data['contact']['photo'] . '" alt="' . $a->data['contact']['name'] . '" /></div>';
-			$o .= '</div>';
-			$a->page['aside'] .= $o;
+                        $tpl = get_markup_template("vcard-widget.tpl");
+                        $vcard_widget .= replace_macros($tpl, array(
+                                '$name' => htmlentities($a->data['contact']['name']),
+                                '$photo' => $a->data['contact']['photo']
+                        ));
+			$a->page['aside'] .= $vcard_widget;
 
 	}
 }
@@ -160,8 +161,12 @@ function crepair_content(&$a) {
 	else
 		$remote_self_options = array('0'=>t('No mirroring'), '2'=>t('Mirror as my own posting'));
 
+	$update_profile = in_array($contact['network'], array(NETWORK_DFRN, NETWORK_DSPR, NETWORK_OSTATUS));
+
 	$tpl = get_markup_template('crepair.tpl');
 	$o .= replace_macros($tpl, array(
+		'$update_profile' => update_profile,
+		'$udprofilenow' => t('Refetch contact data'),
 		'$label_name' => t('Name'),
 		'$label_nick' => t('Account Nickname'),
 		'$label_attag' => t('@Tagname - overrides Name/Nickname'),
@@ -174,8 +179,8 @@ function crepair_content(&$a) {
 		'$label_remote_self' => t('Remote Self'),
 		'$allow_remote_self' => $allow_remote_self,
 		'$remote_self' => array('remote_self', t('Mirror postings from this contact'), $contact['remote_self'], t('Mark this contact as remote_self, this will cause friendica to repost new entries from this contact.'), $remote_self_options),
-		'$contact_name' => $contact['name'],
-		'$contact_nick' => $contact['nick'],
+		'$contact_name' => htmlentities($contact['name']),
+		'$contact_nick' => htmlentities($contact['nick']),
 		'$contact_id'   => $contact['id'],
 		'$contact_url'  => $contact['url'],
 		'$request'      => $contact['request'],

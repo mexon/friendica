@@ -18,12 +18,12 @@
 require_once('include/crypto.php');
 require_once('include/enotify.php');
 require_once('include/email.php');
-require_once('library/langdet/Text/LanguageDetect.php');
 require_once('include/tags.php');
 require_once('include/files.php');
 require_once('include/threads.php');
 require_once('include/text.php');
 require_once('include/items.php');
+require_once('include/Scrape.php');
 
 function item_post(&$a) {
 
@@ -128,27 +128,27 @@ function item_post(&$a) {
 				intval($parent_item['contact-id']),
 				intval($uid)
 			);
-			if(count($r)) {
+			if(count($r))
 				$parent_contact = $r[0];
 
-				// If the contact id doesn't fit with the contact, then set the contact to null
-				$thrparent = q("SELECT `author-link`, `network` FROM `item` WHERE `uri` = '%s' LIMIT 1", dbesc($thr_parent));
-				if (count($thrparent) AND ($thrparent[0]["network"] === NETWORK_OSTATUS)
-					AND (normalise_link($parent_contact["url"]) != normalise_link($thrparent[0]["author-link"]))) {
-					$parent_contact = null;
+			// If the contact id doesn't fit with the contact, then set the contact to null
+			$thrparent = q("SELECT `author-link`, `network` FROM `item` WHERE `uri` = '%s' LIMIT 1", dbesc($thr_parent));
+			if (count($thrparent) AND ($thrparent[0]["network"] === NETWORK_OSTATUS)
+				AND (normalise_link($parent_contact["url"]) != normalise_link($thrparent[0]["author-link"]))) {
+				$parent_contact = null;
 
-					require_once("include/Scrape.php");
-					$probed_contact = probe_url($thrparent[0]["author-link"]);
-					if ($probed_contact["network"] != NETWORK_FEED) {
-						$parent_contact = $probed_contact;
-						$parent_contact["nurl"] = normalise_link($probed_contact["url"]);
-						$parent_contact["thumb"] = $probed_contact["photo"];
-						$parent_contact["micro"] = $probed_contact["photo"];
-					}
-					logger('parent contact: '.print_r($parent_contact, true), LOGGER_DEBUG);
-				} else
-					logger('no contact found: '.print_r($thrparent, true), LOGGER_DEBUG);
-			}
+				require_once("include/Scrape.php");
+				$probed_contact = probe_url($thrparent[0]["author-link"]);
+				if ($probed_contact["network"] != NETWORK_FEED) {
+					$parent_contact = $probed_contact;
+					$parent_contact["nurl"] = normalise_link($probed_contact["url"]);
+					$parent_contact["thumb"] = $probed_contact["photo"];
+					$parent_contact["micro"] = $probed_contact["photo"];
+					$parent_contact["addr"] = $probed_contact["addr"];
+				}
+				logger('no contact found: '.print_r($thrparent, true), LOGGER_DEBUG);
+			} else
+				logger('parent contact: '.print_r($parent_contact, true), LOGGER_DEBUG);
 		}
 	}
 
@@ -267,32 +267,8 @@ function item_post(&$a) {
 		$guid              = get_guid(32);
 
 
-		$naked_body = preg_replace('/\[(.+?)\]/','',$body);
-
-		if (version_compare(PHP_VERSION, '5.3.0', '>=')) {
-			$l = new Text_LanguageDetect;
-			//$lng = $l->detectConfidence($naked_body);
-			//$postopts = (($lng['language']) ? 'lang=' . $lng['language'] . ';' . $lng['confidence'] : '');
-
-			$lng = $l->detect($naked_body, 3);
-
-			if (sizeof($lng) > 0) {
-				$postopts = "";
-
-				foreach ($lng as $language => $score) {
-					if ($postopts == "")
-						$postopts = "lang=";
-					else
-						$postopts .= ":";
-
-					$postopts .= $language.";".$score;
-				}
-			}
-
-			logger('mod_item: detect language' . print_r($lng,true) . $naked_body, LOGGER_DATA);
-		}
-		else
-			$postopts = '';
+		item_add_language_opt($_REQUEST);
+		$postopts = $_REQUEST['postopts'] ? $_REQUEST['postopts'] : "";
 
 
 		$private = ((strlen($str_group_allow) || strlen($str_contact_allow) || strlen($str_group_deny) || strlen($str_contact_deny)) ? 1 : 0);
@@ -569,10 +545,30 @@ function item_post(&$a) {
 	 * and we are replying, and there isn't one already
 	 */
 
-	if(($parent_contact) && ($parent_contact['network'] === NETWORK_OSTATUS)
-		&& ($parent_contact['nick']) && (! in_array('@' . $parent_contact['nick'],$tags))) {
-		$body = '@' . $parent_contact['nick'] . ' ' . $body;
-		$tags[] = '@' . $parent_contact['nick'];
+	if($parent AND ($parent_contact['network'] === NETWORK_OSTATUS)) {
+		if ($parent_contact['id'] != "")
+			$contact = '@'.$parent_contact['nick'].'+'.$parent_contact['id'];
+		else
+			$contact = '@[url='.$parent_contact['url'].']'.$parent_contact['nick'].'[/url]';
+
+		if (!in_array($contact,$tags)) {
+			$body = $contact.' '.$body;
+			$tags[] = $contact;
+		}
+
+		$toplevel_contact = "";
+		$toplevel_parent = q("SELECT `contact`.* FROM `contact`
+						INNER JOIN `item` ON `item`.`contact-id` = `contact`.`id` AND `contact`.`url` = `item`.`author-link`
+						WHERE `item`.`id` = `item`.`parent` AND `item`.`parent` = %d", intval($parent));
+		if ($toplevel_parent)
+			$toplevel_contact = '@'.$toplevel_parent[0]['nick'].'+'.$toplevel_parent[0]['id'];
+		else {
+			$toplevel_parent = q("SELECT `author-link`, `author-name` FROM `item` WHERE `id` = `parent` AND `parent` = %d", intval($parent));
+			$toplevel_contact = '@[url='.$toplevel_parent[0]['author-link'].']'.$toplevel_parent[0]['author-name'].'[/url]';
+		}
+
+		if (!in_array($toplevel_contact,$tags))
+			$tags[] = $toplevel_contact;
 	}
 
 	$tagged = array();
@@ -653,7 +649,7 @@ function item_post(&$a) {
 
 	$notify_type = (($parent) ? 'comment-new' : 'wall-new' );
 
-	$uri = (($message_id) ? $message_id : item_new_uri($a->get_hostname(),$profile_uid));
+	$uri = (($message_id) ? $message_id : item_new_uri($a->get_hostname(),$profile_uid, $guid));
 
 	// Fallback so that we alway have a thr-parent
 	if(!$thr_parent)
@@ -840,6 +836,9 @@ function item_post(&$a) {
 		goaway($a->get_baseurl() . "/" . $return_path );
 		// NOTREACHED
 	}
+
+	// Store the guid and other relevant data
+	add_guid($datarray);
 
 	$post_id = $r[0]['id'];
 	logger('mod_item: saved item ' . $post_id);
@@ -1073,8 +1072,30 @@ function handle_tag($a, &$body, &$inform, &$str_tags, $profile_uid, $tag, $netwo
 	//is it a person tag?
 	if(strpos($tag,'@') === 0) {
 		//is it already replaced?
-		if(strpos($tag,'[url='))
+		if(strpos($tag,'[url=')) {
+			//append tag to str_tags
+			if(!stristr($str_tags,$tag)) {
+				if(strlen($str_tags))
+					$str_tags .= ',';
+				$str_tags .= $tag;
+			}
+
+			// Checking for the alias that is used for OStatus
+			$pattern = "/@\[url\=(.*?)\](.*?)\[\/url\]/ism";
+			if (preg_match($pattern, $tag, $matches)) {
+				$data = probe_url($matches[1]);
+				if ($data["alias"] != "") {
+					$newtag = '@[url='.$data["alias"].']'.$data["name"].'[/url]';
+					if(!stristr($str_tags,$newtag)) {
+						if(strlen($str_tags))
+							$str_tags .= ',';
+						$str_tags .= $newtag;
+					}
+				}
+			}
+
 			return $replaced;
+		}
 		$stat = false;
 		//get the person's name
 		$name = substr($tag,1);

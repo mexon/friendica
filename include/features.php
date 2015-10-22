@@ -23,13 +23,14 @@ function get_features() {
 			t('General Features'),
 			//array('expire',         t('Content Expiration'),		t('Remove old posts/comments after a period of time')),
 			array('multi_profiles', t('Multiple Profiles'),			t('Ability to create multiple profiles')),
+			array('photo_location', t('Photo Location'),			t('Photo metadata is normally stripped. This extracts the location (if present) prior to stripping metadata and links it to a map.'),false),
 		),
 
 		// Post composition
 		'composition' => array(
 			t('Post Composition Features'),
 			array('richtext',       t('Richtext Editor'),			t('Enable richtext editor')),
-			array('preview',        t('Post Preview'),				t('Allow previewing posts and comments before publishing them')),
+			array('preview',        t('Post Preview'),			t('Allow previewing posts and comments before publishing them')),
 			array('aclautomention',	t('Auto-mention Forums'),		t('Add/remove mention when a fourm page is selected/deselected in ACL window.')),
 		),
 

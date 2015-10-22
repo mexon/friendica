@@ -113,7 +113,7 @@ function terminate_friendship($user,$self,$contact) {
 			'$photo' => $self['photo'],
 			'$thumb' => $self['thumb'],
 			'$published' => datetime_convert('UTC','UTC', 'now', ATOM_TIME),
-			'$item_id' => 'urn:X-dfrn:' . $a->get_hostname() . ':unfollow:' . random_string(),
+			'$item_id' => 'urn:X-dfrn:' . $a->get_hostname() . ':unfollow:' . get_guid(32),
 			'$title' => '',
 			'$type' => 'text',
 			'$content' => t('stopped following'),
@@ -219,17 +219,20 @@ function contact_photo_menu($contact) {
 		$status_link = $profile_link . "?url=status";
 		$photos_link = $profile_link . "?url=photos";
 		$profile_link = $profile_link . "?url=profile";
-		$pm_url = $a->get_baseurl() . '/message/new/' . $contact['id'];
 	}
 
-	$poke_link = $a->get_baseurl() . '/poke/?f=&c=' . $contact['id'];
+	if (in_array($contact["network"], array(NETWORK_DFRN, NETWORK_DIASPORA)))
+		$pm_url = $a->get_baseurl() . '/message/new/' . $contact['id'];
+
+	if ($contact["network"] == NETWORK_DFRN)
+		$poke_link = $a->get_baseurl() . '/poke/?f=&c=' . $contact['id'];
+
 	$contact_url = $a->get_baseurl() . '/contacts/' . $contact['id'];
 	$posts_link = $a->get_baseurl() . '/network/0?nets=all&cid=' . $contact['id'];
 	$contact_drop_link = $a->get_baseurl() . "/contacts/" . $contact['id'] . '/drop?confirm=1';
 
 
 	$menu = Array(
-		'poke' => array(t("Poke"), $poke_link),
 		'status' => array(t("View Status"), $status_link),
 		'profile' => array(t("View Profile"), $profile_link),
 		'photos' => array(t("View Photos"), $photos_link),
@@ -237,6 +240,7 @@ function contact_photo_menu($contact) {
 		'edit' => array(t("Edit Contact"), $contact_url),
 		'drop' => array(t("Drop Contact"), $contact_drop_link),
 		'pm' => array(t("Send PM"), $pm_url),
+		'poke' => array(t("Poke"), $poke_link),
 	);
 
 
@@ -254,6 +258,7 @@ function contact_photo_menu($contact) {
 		}
 	}
 	return $o;*/
+
 	foreach($menu as $k=>$v){
 		if ($v[1]!="") {
 			if(($v[0] !== t("Network Posts")) && ($v[0] !== t("Send PM")) && ($v[0] !== t('Edit Contact')))
@@ -262,12 +267,24 @@ function contact_photo_menu($contact) {
 				$menu[$k][2] = 0;
 		}
 	}
-	return $menu;
+
+	$menucondensed = array();
+
+	foreach ($menu AS $menuitem)
+		if ($menuitem[1] != "")
+			$menucondensed[] = $menuitem;
+
+	return $menucondensed;
 }}
 
 
 function random_profile() {
-	$r = q("select url from gcontact where url like '%%://%%/profile/%%' order by rand() limit 1");
+	$r = q("SELECT `url` FROM `gcontact` WHERE `network` = '%s'
+				AND `last_contact` >= `last_failure`
+				AND `updated` > UTC_TIMESTAMP - INTERVAL 1 MONTH
+			ORDER BY rand() LIMIT 1",
+		dbesc(NETWORK_DFRN));
+
 	if(count($r))
 		return dirname($r[0]['url']);
 	return '';
@@ -330,7 +347,8 @@ function get_contact($url, $uid = 0) {
 
 		if (!$update_photo)
 			return($contactid);
-	}
+	} elseif ($uid != 0)
+		return 0;
 
 	if (!count($data))
 		$data = probe_url($url);

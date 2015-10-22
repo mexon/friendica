@@ -18,7 +18,7 @@ function display_init(&$a) {
 		if (local_user()) {
 			$r = q("SELECT `id`, `parent`, `author-name`, `author-link`, `author-avatar`, `network`, `body`, `uid` FROM `item`
 				WHERE `item`.`visible` = 1 AND `item`.`deleted` = 0 and `item`.`moderated` = 0
-					AND `guid` = '%s' AND `uid` = %d", $a->argv[1], local_user());
+					AND `guid` = '%s' AND `uid` = %d", dbesc($a->argv[1]), local_user());
 			if (count($r)) {
 				$nick = $a->user["nickname"];
 				$itemuid = local_user();
@@ -34,7 +34,7 @@ function display_init(&$a) {
 					AND `item`.`allow_cid` = ''  AND `item`.`allow_gid` = ''
 					AND `item`.`deny_cid`  = '' AND `item`.`deny_gid`  = ''
 					AND `item`.`private` = 0 AND NOT `user`.`hidewall`
-					AND `item`.`guid` = '%s'", $a->argv[1]);
+					AND `item`.`guid` = '%s'", dbesc($a->argv[1]));
 				//	AND `item`.`private` = 0 AND `item`.`wall` = 1
 			if (count($r)) {
 				$nick = $r[0]["nickname"];
@@ -50,7 +50,7 @@ function display_init(&$a) {
 					AND `item`.`allow_cid` = ''  AND `item`.`allow_gid` = ''
 					AND `item`.`deny_cid`  = '' AND `item`.`deny_gid`  = ''
 					AND `item`.`private` = 0 AND `item`.`uid` = 0
-					AND `item`.`guid` = '%s'", $a->argv[1]);
+					AND `item`.`guid` = '%s'", dbesc($a->argv[1]));
 				//	AND `item`.`private` = 0 AND `item`.`wall` = 1
 		}
 		if (count($r)) {
@@ -97,33 +97,9 @@ function display_fetchauthor($a, $item) {
 	$profiledata["nickname"] = $item["author-name"];
 	$profiledata["name"] = $item["author-name"];
 	$profiledata["picdate"] = "";
-	$profiledata["photo"] = proxy_url($item["author-avatar"]);
+	$profiledata["photo"] = proxy_url($item["author-avatar"], false, PROXY_SIZE_SMALL);
 	$profiledata["url"] = $item["author-link"];
 	$profiledata["network"] = $item["network"];
-
-	// Fetching further contact data from the contact table
-	$r = q("SELECT `photo`, `nick`, `location`, `about` FROM `contact` WHERE `nurl` = '%s' AND `uid` = %d",
-		normalise_link($profiledata["url"]), $item["uid"]);
-	if (count($r)) {
-		$profiledata["photo"] = proxy_url($r[0]["photo"]);
-		$profiledata["address"] = proxy_parse_html(bbcode($r[0]["location"]));
-		$profiledata["about"] = proxy_parse_html(bbcode($r[0]["about"]));
-		if ($r[0]["nick"] != "")
-			$profiledata["nickname"] = $r[0]["nick"];
-	}
-
-	// Fetching profile data from unique contacts
-	$r = q("SELECT `avatar`, `nick`, `location`, `about` FROM `unique_contacts` WHERE `url` = '%s'", normalise_link($profiledata["url"]));
-	if (count($r)) {
-		if ($profiledata["photo"] == "")
-			$profiledata["photo"] = proxy_url($r[0]["avatar"]);
-		if ($profiledata["address"] == "")
-			$profiledata["address"] = proxy_parse_html(bbcode($r[0]["location"]));
-		if ($profiledata["about"] == "")
-			$profiledata["about"] = proxy_parse_html(bbcode($r[0]["about"]));
-		if (($profiledata["nickname"] == "") AND ($r[0]["nick"] != ""))
-			$profiledata["nickname"] = $r[0]["nick"];
-	}
 
 	// Check for a repeated message
 	$skip = false;
@@ -178,26 +154,49 @@ function display_fetchauthor($a, $item) {
 
 		$profiledata["address"] = "";
 		$profiledata["about"] = "";
+	}
 
-		// Fetching profile data from unique contacts
-		if ($profiledata["url"] != "") {
-			$r = q("SELECT `avatar`, `nick`, `location`, `about` FROM `unique_contacts` WHERE `url` = '%s'", normalise_link($profiledata["url"]));
-			if (count($r)) {
-				$profiledata["photo"] = proxy_url($r[0]["avatar"]);
-				$profiledata["address"] = proxy_parse_html(bbcode($r[0]["location"]));
-				$profiledata["about"] = proxy_parse_html(bbcode($r[0]["about"]));
-				if ($r[0]["nick"] != "")
-					$profiledata["nickname"] = $r[0]["nick"];
-			}
+	// Fetching further contact data from the contact table
+	$r = q("SELECT `uid`, `network`, `photo`, `nick`, `location`, `about` FROM `contact` WHERE `nurl` = '%s' AND `uid` = %d AND `network` = '%s'",
+		dbesc(normalise_link($profiledata["url"])), intval($item["uid"]), dbesc($item["network"]));
+
+	if (!count($r))
+		$r = q("SELECT `uid`, `network`, `photo`, `nick`, `location`, `about` FROM `contact` WHERE `nurl` = '%s' AND `uid` = %d",
+			dbesc(normalise_link($profiledata["url"])), intval($item["uid"]));
+
+	if (!count($r))
+		$r = q("SELECT `uid`, `network`, `photo`, `nick`, `location`, `about` FROM `contact` WHERE `nurl` = '%s' AND `uid` = 0",
+			dbesc(normalise_link($profiledata["url"])));
+
+	if (count($r)) {
+		if ((($r[0]["uid"] != local_user()) OR !local_user()) AND ($profiledata["network"] == NETWORK_DIASPORA)) {
+			$r[0]["location"] = "";
+			$r[0]["about"] = "";
 		}
+
+		$profiledata["photo"] = proxy_url($r[0]["photo"], false, PROXY_SIZE_SMALL);
+		$profiledata["address"] = bbcode($r[0]["location"]);
+		$profiledata["about"] = bbcode($r[0]["about"]);
+		if ($r[0]["nick"] != "")
+			$profiledata["nickname"] = $r[0]["nick"];
+	}
+
+	// Fetching profile data from unique contacts
+	$r = q("SELECT `avatar`, `nick`, `location`, `about` FROM `unique_contacts` WHERE `url` = '%s'", dbesc(normalise_link($profiledata["url"])));
+	if (count($r)) {
+		if ($profiledata["photo"] == "")
+			$profiledata["photo"] = proxy_url($r[0]["avatar"], false, PROXY_SIZE_SMALL);
+		if (($profiledata["address"] == "") AND ($profiledata["network"] != NETWORK_DIASPORA))
+			$profiledata["address"] = bbcode($r[0]["location"]);
+		if (($profiledata["about"] == "") AND ($profiledata["network"] != NETWORK_DIASPORA))
+			$profiledata["about"] = bbcode($r[0]["about"]);
+		if (($profiledata["nickname"] == "") AND ($r[0]["nick"] != ""))
+			$profiledata["nickname"] = $r[0]["nick"];
 	}
 
 	if (local_user()) {
-		if ($profiledata["network"] == NETWORK_DFRN) {
-			$connect = str_replace("/profile/", "/dfrn_request/", $profiledata["url"])."&addr=".bin2hex($a->get_baseurl()."/profile/".$a->user["nickname"]);
-			$profiledata["remoteconnect"] = $connect;
-		} elseif ($profiledata["network"] == NETWORK_DIASPORA)
-			$profiledata["remoteconnect"] = $a->get_baseurl()."/contacts?add=".GetProfileUsername($profiledata["url"], "", true);
+		if (in_array($profiledata["network"], array(NETWORK_DFRN, NETWORK_DIASPORA, NETWORK_OSTATUS)))
+			$profiledata["remoteconnect"] = $a->get_baseurl()."/follow?url=".urlencode($profiledata["url"]);
 	} elseif ($profiledata["network"] == NETWORK_DFRN) {
 		$connect = str_replace("/profile/", "/dfrn_request/", $profiledata["url"]);
 		$profiledata["remoteconnect"] = $connect;
@@ -244,7 +243,7 @@ function display_content(&$a, $update = 0) {
 			if (local_user()) {
 				$r = q("SELECT `id` FROM `item`
 					WHERE `item`.`visible` = 1 AND `item`.`deleted` = 0 and `item`.`moderated` = 0
-						AND `guid` = '%s' AND `uid` = %d", $a->argv[1], local_user());
+						AND `guid` = '%s' AND `uid` = %d", dbesc($a->argv[1]), local_user());
 				if (count($r)) {
 					$item_id = $r[0]["id"];
 					$nick = $a->user["nickname"];
@@ -257,7 +256,7 @@ function display_content(&$a, $update = 0) {
 						AND `item`.`allow_cid` = ''  AND `item`.`allow_gid` = ''
 						AND `item`.`deny_cid`  = '' AND `item`.`deny_gid`  = ''
 						AND `item`.`private` = 0  AND NOT `user`.`hidewall`
-						AND `item`.`guid` = '%s'", $a->argv[1]);
+						AND `item`.`guid` = '%s'", dbesc($a->argv[1]));
 					//	AND `item`.`private` = 0 AND `item`.`wall` = 1
 				if (count($r)) {
 					$item_id = $r[0]["id"];
@@ -270,7 +269,7 @@ function display_content(&$a, $update = 0) {
 						AND `item`.`allow_cid` = ''  AND `item`.`allow_gid` = ''
 						AND `item`.`deny_cid`  = '' AND `item`.`deny_gid`  = ''
 						AND `item`.`private` = 0  AND `item`.`uid` = 0
-						AND `item`.`guid` = '%s'", $a->argv[1]);
+						AND `item`.`guid` = '%s'", dbesc($a->argv[1]));
 					//	AND `item`.`private` = 0 AND `item`.`wall` = 1
 				if (count($r)) {
 					$item_id = $r[0]["id"];
@@ -334,15 +333,13 @@ function display_content(&$a, $update = 0) {
 	}
 
 	if ($is_owner) {
-		$celeb = ((($a->user['page-flags'] == PAGE_SOAPBOX) || ($a->user['page-flags'] == PAGE_COMMUNITY)) ? true : false);
-
 		$x = array(
 			'is_owner' => true,
 			'allow_location' => $a->user['allow_location'],
 			'default_location' => $a->user['default-location'],
 			'nickname' => $a->user['nickname'],
 			'lockstate' => ( (is_array($a->user)) && ((strlen($a->user['allow_cid'])) || (strlen($a->user['allow_gid'])) || (strlen($a->user['deny_cid'])) || (strlen($a->user['deny_gid']))) ? 'lock' : 'unlock'),
-			'acl' => populate_acl($a->user, $celeb),
+			'acl' => populate_acl($a->user, true),
 			'bang' => '',
 			'visitor' => 'block',
 			'profile_uid' => local_user(),
@@ -403,7 +400,7 @@ function display_content(&$a, $update = 0) {
 
 			$r = q("SELECT `item`.*, `item`.`id` AS `item_id`,  `item`.`network` AS `item_network`,
 				`contact`.`name`, `contact`.`photo`, `contact`.`url`, `contact`.`rel`,
-				`contact`.`network`, `contact`.`thumb`, `contact`.`self`, `contact`.`writable`, 
+				`contact`.`network`, `contact`.`thumb`, `contact`.`self`, `contact`.`writable`,
 				`contact`.`id` AS `cid`, `contact`.`uid` AS `contact-uid`
 				FROM `item` INNER JOIN `contact` ON `contact`.`id` = `item`.`contact-id`
 				AND `contact`.`blocked` = 0 AND `contact`.`pending` = 0

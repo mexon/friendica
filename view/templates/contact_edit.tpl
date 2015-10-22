@@ -20,6 +20,7 @@
 					<li><div id="contact-edit-rel">{{$relation_text}}</div></li>
 				{{/if}}
 				<li><div id="contact-edit-nettype">{{$nettype}}</div></li>
+				<li><div id="contact-edit-profileurl">{{$profileurllabel}}: <a href="{{$url}}">{{$profileurl}}</a></div></li>
 				{{if $lost_contact}}
 					<li><div id="lost-contact-message">{{$lost_contact}}</div></li>
 				{{/if}}
@@ -35,8 +36,8 @@
 				{{if $archived}}
 					<li><div id="archive-message">{{$archived}}</div></li>
 				{{/if}}
-
-				<li>&nbsp;</li>
+			</ul>
+			<ul>
 
 				{{if $common_text}}
 					<li><div id="contact-edit-common"><a href="{{$common_link}}">{{$common_text}}</a></div></li>
@@ -49,6 +50,9 @@
 				<li><a href="network/0?nets=all&cid={{$contact_id}}" id="contact-edit-view-recent">{{$lblrecent}}</a></li>
 				{{if $lblsuggest}}
 					<li><a href="fsuggest/{{$contact_id}}" id="contact-edit-suggest">{{$lblsuggest}}</a></li>
+				{{/if}}
+				{{if $follow}}
+					<li><div id="contact-edit-follow"><a href="{{$follow}}">{{$follow_text}}</a></div></li>
 				{{/if}}
 
 			</ul>

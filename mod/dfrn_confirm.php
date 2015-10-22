@@ -340,7 +340,7 @@ function dfrn_confirm_post(&$a,$handsfree = null) {
 				`pending` = 0,
 				`duplex` = %d,
 				`hidden` = %d,
-				`network` = 'dfrn' WHERE `id` = %d
+				`network` = '%s' WHERE `id` = %d
 			",
 				dbesc($photos[0]),
 				dbesc($photos[1]),
@@ -351,6 +351,7 @@ function dfrn_confirm_post(&$a,$handsfree = null) {
 				dbesc(datetime_convert()),
 				intval($duplex),
 				intval($hidden),
+				dbesc(NETWORK_DFRN),
 				intval($contact_id)
 			);
 		}
@@ -381,7 +382,7 @@ function dfrn_confirm_post(&$a,$handsfree = null) {
 				if($duplex)
 					$new_relation = CONTACT_IS_FRIEND;
 				else
-					$new_relation = CONTACT_IS_SHARING;
+					$new_relation = CONTACT_IS_FOLLOWER;
 
 				if($new_relation != CONTACT_IS_FOLLOWER)
 					$writable = 1;

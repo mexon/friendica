@@ -1,4 +1,7 @@
 <?php
+include_once("include/bbcode.php");
+include_once("include/contact_selectors.php");
+include_once("include/Scrape.php");
 
 function notifications_post(&$a) {
 
@@ -78,26 +81,31 @@ function notifications_content(&$a) {
 			'label' => t('System'),
 			'url'=>$a->get_baseurl(true) . '/notifications/system',
 			'sel'=> (($a->argv[1] == 'system') ? 'active' : ''),
+			'accesskey' => 'y',
 		),
 		array(
 			'label' => t('Network'),
 			'url'=>$a->get_baseurl(true) . '/notifications/network',
 			'sel'=> (($a->argv[1] == 'network') ? 'active' : ''),
+			'accesskey' => 'w',
 		),
 		array(
 			'label' => t('Personal'),
 			'url'=>$a->get_baseurl(true) . '/notifications/personal',
 			'sel'=> (($a->argv[1] == 'personal') ? 'active' : ''),
+			'accesskey' => 'r',
 		),
 		array(
 			'label' => t('Home'),
 			'url' => $a->get_baseurl(true) . '/notifications/home',
 			'sel'=> (($a->argv[1] == 'home') ? 'active' : ''),
+			'accesskey' => 'h',
 		),
 		array(
 			'label' => t('Introductions'),
 			'url' => $a->get_baseurl(true) . '/notifications/intros',
 			'sel'=> (($a->argv[1] == 'intros') ? 'active' : ''),
+			'accesskey' => 'i',
 		),
 		/*array(
 			'label' => t('Messages'),
@@ -130,8 +138,14 @@ function notifications_content(&$a) {
 			$a->set_pager_itemspage(20);
 		}
 
-		$r = q("SELECT `intro`.`id` AS `intro_id`, `intro`.*, `contact`.*, `fcontact`.`name` AS `fname`,`fcontact`.`url` AS `furl`,`fcontact`.`photo` AS `fphoto`,`fcontact`.`request` AS `frequest`
-			FROM `intro` LEFT JOIN `contact` ON `contact`.`id` = `intro`.`contact-id` LEFT JOIN `fcontact` ON `intro`.`fid` = `fcontact`.`id`
+		$r = q("SELECT `intro`.`id` AS `intro_id`, `intro`.*, `contact`.*, `fcontact`.`name` AS `fname`,`fcontact`.`url` AS `furl`,`fcontact`.`photo` AS `fphoto`,`fcontact`.`request` AS `frequest`,
+				`gcontact`.`location` AS `glocation`, `gcontact`.`about` AS `gabout`,
+				`gcontact`.`keywords` AS `gkeywords`, `gcontact`.`gender` AS `ggender`,
+				`gcontact`.`network` AS `gnetwork`
+			FROM `intro`
+				LEFT JOIN `contact` ON `contact`.`id` = `intro`.`contact-id`
+				LEFT JOIN `gcontact` ON `gcontact`.`nurl` = `contact`.`nurl`
+				LEFT JOIN `fcontact` ON `intro`.`fid` = `fcontact`.`id`
 			WHERE `intro`.`uid` = %d $sql_extra AND `intro`.`blocked` = 0 ",
 				intval($_SESSION['uid']));
 
@@ -141,6 +155,7 @@ function notifications_content(&$a) {
 			$tpl = get_markup_template("intros.tpl");
 
 			foreach($r as $rr) {
+
 				if($rr['fid']) {
 
 					$return_addr = bin2hex($a->user['nickname'] . '@' . $a->get_hostname() . (($a->path) ? '/' . $a->path : ''));
@@ -151,7 +166,7 @@ function notifications_content(&$a) {
 						'$intro_id' => $rr['intro_id'],
 						'$madeby' => sprintf( t('suggested by %s'),$rr['name']),
 						'$contact_id' => $rr['contact-id'],
-						'$photo' => ((x($rr,'fphoto')) ? $rr['fphoto'] : "images/person-175.jpg"),
+						'$photo' => ((x($rr,'fphoto')) ? proxy_url($rr['fphoto'], false, PROXY_SIZE_SMALL) : "images/person-175.jpg"),
 						'$fullname' => $rr['fname'],
 						'$url' => zrl($rr['furl']),
 						'$hidden' => array('hidden', t('Hide this contact from others'), ($rr['hidden'] == 1), ''),
@@ -195,7 +210,27 @@ function notifications_content(&$a) {
 					));
 				}
 
+				$header = $rr["name"];
+
+				$ret = probe_url($rr["url"]);
+
+				if ($rr['gnetwork'] == "")
+					$rr['gnetwork'] = $ret["network"];
+
+				if ($ret["addr"] != "")
+					$header .= " <".$ret["addr"].">";
+
+				$header .= " (".network_to_name($rr['gnetwork'], $rr['url']).")";
+
+				// Don't show these data until you are connected. Diaspora is doing the same.
+				if($rr['gnetwork'] === NETWORK_DIASPORA) {
+					$rr['glocation'] = "";
+					$rr['gabout'] = "";
+					$rr['ggender'] = "";
+				}
+
 				$notif_content .= replace_macros($tpl, array(
+					'$header' => htmlentities($header),
 					'$str_notifytype' => t('Notification type: '),
 					'$notify_type' => (($rr['network'] !== NETWORK_OSTATUS) ? t('Friend/Connect Request') : t('New Follower')),
 					'$dfrn_text' => $dfrn_text,
@@ -203,11 +238,21 @@ function notifications_content(&$a) {
 					'$uid' => $_SESSION['uid'],
 					'$intro_id' => $rr['intro_id'],
 					'$contact_id' => $rr['contact-id'],
-					'$photo' => ((x($rr,'photo')) ? $rr['photo'] : "images/person-175.jpg"),
+					'$photo' => ((x($rr,'photo')) ? proxy_url($rr['photo'], false, PROXY_SIZE_SMALL) : "images/person-175.jpg"),
 					'$fullname' => $rr['name'],
+					'$location' => bbcode($rr['glocation'], false, false),
+					'$location_label' => t('Location:'),
+					'$about' => bbcode($rr['gabout'], false, false),
+					'$about_label' => t('About:'),
+					'$keywords' => $rr['gkeywords'],
+					'$keywords_label' => t('Tags:'),
+					'$gender' => $rr['ggender'],
+					'$gender_label' => t('Gender:'),
 					'$hidden' => array('hidden', t('Hide this contact from others'), ($rr['hidden'] == 1), ''),
 					'$activity' => array('activity', t('Post a new friend activity'), (intval(get_pconfig(local_user(),'system','post_newfriend')) ? '1' : 0), t('if applicable')),
-					'$url' => zrl($rr['url']),
+					'$url' => $rr['url'],
+					'$zrl' => zrl($rr['url']),
+					'$url_label' => t('Profile URL'),
 					'$knowyou' => $knowyou,
 					'$approve' => t('Approve'),
 					'$note' => $rr['note'],
@@ -258,7 +303,7 @@ function notifications_content(&$a) {
 						$notif_content .= replace_macros($tpl_item_likes,array(
 							//'$item_link' => $a->get_baseurl(true).'/display/'.$a->user['nickname']."/".$it['parent'],
 							'$item_link' => $a->get_baseurl(true).'/display/'.$it['pguid'],
-							'$item_image' => $it['author-avatar'],
+							'$item_image' => proxy_url($it['author-avatar'], false, PROXY_SIZE_MICRO),
 							'$item_text' => sprintf( t("%s liked %s's post"), $it['author-name'], $it['pname']),
 							'$item_when' => relative_date($it['created'])
 						));
@@ -268,7 +313,7 @@ function notifications_content(&$a) {
 						$notif_content .= replace_macros($tpl_item_dislikes,array(
 							//'$item_link' => $a->get_baseurl(true).'/display/'.$a->user['nickname']."/".$it['parent'],
 							'$item_link' => $a->get_baseurl(true).'/display/'.$it['pguid'],
-							'$item_image' => $it['author-avatar'],
+							'$item_image' => proxy_url($it['author-avatar'], false, PROXY_SIZE_MICRO),
 							'$item_text' => sprintf( t("%s disliked %s's post"), $it['author-name'], $it['pname']),
 							'$item_when' => relative_date($it['created'])
 						));
@@ -283,7 +328,7 @@ function notifications_content(&$a) {
 						$notif_content .= replace_macros($tpl_item_friends,array(
 							//'$item_link' => $a->get_baseurl(true).'/display/'.$a->user['nickname']."/".$it['parent'],
 							'$item_link' => $a->get_baseurl(true).'/display/'.$it['pguid'],
-							'$item_image' => $it['author-avatar'],
+							'$item_image' => proxy_url($it['author-avatar'], false, PROXY_SIZE_MICRO),
 							'$item_text' => sprintf( t("%s is now friends with %s"), $it['author-name'], $it['fname']),
 							'$item_when' => relative_date($it['created'])
 						));
@@ -298,7 +343,7 @@ function notifications_content(&$a) {
 						$notif_content .= replace_macros($tpl,array(
 							//'$item_link' => $a->get_baseurl(true).'/display/'.$a->user['nickname']."/".$it['parent'],
 							'$item_link' => $a->get_baseurl(true).'/display/'.$it['pguid'],
-							'$item_image' => $it['author-avatar'],
+							'$item_image' => proxy_url($it['author-avatar'], false, PROXY_SIZE_MICRO),
 							'$item_text' => $item_text,
 							'$item_when' => relative_date($it['created'])
 						));
@@ -331,7 +376,7 @@ function notifications_content(&$a) {
 			foreach ($r as $it) {
 				$notif_content .= replace_macros($not_tpl,array(
 					'$item_link' => $a->get_baseurl(true).'/notify/view/'. $it['id'],
-					'$item_image' => $it['photo'],
+					'$item_image' => proxy_url($it['photo'], false, PROXY_SIZE_MICRO),
 					'$item_text' => strip_tags(bbcode($it['msg'])),
 					'$item_when' => relative_date($it['date'])
 				));

@@ -16,7 +16,7 @@ function common_content(&$a) {
 	if(! $uid)
 		return;
 
-	if($cmd === 'loc' && $cid) {	
+	if($cmd === 'loc' && $cid) {
 		$c = q("select name, url, photo from contact where id = %d and uid = %d limit 1",
 			intval($cid),
 			intval($uid)
@@ -26,20 +26,24 @@ function common_content(&$a) {
 		$c = q("select name, url, photo from contact where self = 1 and uid = %d limit 1",
 			intval($uid)
 		);
-	}	
+	}
 
-	$a->page['aside'] .= '<div class="vcard">' 
-		. '<div class="fn label">' . $c[0]['name'] . '</div>' 
-		. '<div id="profile-photo-wrapper">'
-		. '<img class="photo" width="175" height="175" 
-		src="' . $c[0]['photo'] . '" alt="' . $c[0]['name'] . '" /></div>'
-		. '</div>';
-	
+	$vcard_widget .= replace_macros(get_markup_template("vcard-widget.tpl"),array(
+		'$name' => htmlentities($c[0]['name']),
+		'$photo' => $c[0]['photo'],
+		'url' => z_root() . '/contacts/' . $cid
+	));
+
+	if(! x($a->page,'aside'))
+		$a->page['aside'] = '';
+	$a->page['aside'] .= $vcard_widget;
 
 	if(! count($c))
 		return;
 
-	$o .= '<h2>' . t('Common Friends') . '</h2>';
+	$o .= replace_macros(get_markup_template("section_title.tpl"),array(
+		'$title' => t('Common Friends')
+	));
 
 
 	if(! $cid) {
@@ -93,10 +97,10 @@ function common_content(&$a) {
 	$tpl = get_markup_template('common_friends.tpl');
 
 	foreach($r as $rr) {
-			
+
 		$o .= replace_macros($tpl,array(
 			'$url' => $rr['url'],
-			'$name' => $rr['name'],
+			'$name' => htmlentities($rr['name']),
 			'$photo' => $rr['photo'],
 			'$tags' => ''
 		));

@@ -44,7 +44,7 @@ function profile_init(&$a) {
 	if(x($a->profile,'openidserver'))
 		$a->page['htmlhead'] .= '<link rel="openid.server" href="' . $a->profile['openidserver'] . '" />' . "\r\n";
 	if(x($a->profile,'openid')) {
-		$delegate = ((strstr($a->profile['openid'],'://')) ? $a->profile['openid'] : 'http://' . $a->profile['openid']);
+		$delegate = ((strstr($a->profile['openid'],'://')) ? $a->profile['openid'] : 'https://' . $a->profile['openid']);
 		$a->page['htmlhead'] .= '<link rel="openid.delegate" href="' . $delegate . '" />' . "\r\n";
 	}
 	// site block
@@ -166,7 +166,6 @@ function profile_content(&$a, $update = 0) {
 
 
 		if($tab === 'profile') {
-			require_once('include/profile_advanced.php');
 			$o .= advanced_profile($a);
 			call_hooks('profile_advanced',$o);
 			return $o;
@@ -182,27 +181,27 @@ function profile_content(&$a, $update = 0) {
 		$commpage = (($a->profile['page-flags'] == PAGE_COMMUNITY) ? true : false);
 		$commvisitor = (($commpage && $remote_contact == true) ? true : false);
 
-		$celeb = ((($a->profile['page-flags'] == PAGE_SOAPBOX) || ($a->profile['page-flags'] == PAGE_COMMUNITY)) ? true : false);
-
-		$a->page['aside'] .= posted_date_widget($a->get_baseurl(true) . '/profile/' . $a->profile['nickname'],$a->profile['profile_uid'],true);	
+		$a->page['aside'] .= posted_date_widget($a->get_baseurl(true) . '/profile/' . $a->profile['nickname'],$a->profile['profile_uid'],true);
 		$a->page['aside'] .= categories_widget($a->get_baseurl(true) . '/profile/' . $a->profile['nickname'],(x($category) ? xmlify($category) : ''));
 
 		if(can_write_wall($a,$a->profile['profile_uid'])) {
 
 			$x = array(
 				'is_owner' => $is_owner,
-            	'allow_location' => ((($is_owner || $commvisitor) && $a->profile['allow_location']) ? true : false),
-	            'default_location' => (($is_owner) ? $a->user['default-location'] : ''),
-    	        'nickname' => $a->profile['nickname'],
-        	    'lockstate' => (((is_array($a->user) && ((strlen($a->user['allow_cid'])) || (strlen($a->user['allow_gid'])) || (strlen($a->user['deny_cid'])) || (strlen($a->user['deny_gid']))))) ? 'lock' : 'unlock'),
-            	'acl' => (($is_owner) ? populate_acl($a->user, $celeb) : ''),
-	            'bang' => '',
-    	        'visitor' => (($is_owner || $commvisitor) ? 'block' : 'none'),
-        	    'profile_uid' => $a->profile['profile_uid'],
+				'allow_location' => ((($is_owner || $commvisitor) && $a->profile['allow_location']) ? true : false),
+				'default_location' => (($is_owner) ? $a->user['default-location'] : ''),
+				'nickname' => $a->profile['nickname'],
+				'lockstate' => (((is_array($a->user) && ((strlen($a->user['allow_cid'])) ||
+						(strlen($a->user['allow_gid'])) || (strlen($a->user['deny_cid'])) ||
+						(strlen($a->user['deny_gid']))))) ? 'lock' : 'unlock'),
+				'acl' => (($is_owner) ? populate_acl($a->user, true) : ''),
+				'bang' => '',
+				'visitor' => (($is_owner || $commvisitor) ? 'block' : 'none'),
+				'profile_uid' => $a->profile['profile_uid'],
 				'acl_data' => ( $is_owner ? construct_acl_data($a, $a->user) : '' ), // For non-Javascript ACL selector
-        	);
+		);
 
-        	$o .= status_editor($a,$x);
+		$o .= status_editor($a,$x);
 		}
 
 	}
@@ -222,8 +221,10 @@ function profile_content(&$a, $update = 0) {
 			FROM `item` INNER JOIN `contact` ON `contact`.`id` = `item`.`contact-id`
 			AND `contact`.`blocked` = 0 AND `contact`.`pending` = 0
 			WHERE `item`.`uid` = %d AND `item`.`visible` = 1 AND
-			(`item`.`deleted` = 0 OR item.verb = '" . ACTIVITY_LIKE ."' OR item.verb = '" . ACTIVITY_DISLIKE . "')
-			and `item`.`moderated` = 0 and `item`.`unseen` = 1
+			(`item`.`deleted` = 0 OR item.verb = '" . ACTIVITY_LIKE ."'
+			OR item.verb = '" . ACTIVITY_DISLIKE . "' OR item.verb = '" . ACTIVITY_ATTEND . "'
+			OR item.verb = '" . ACTIVITY_ATTENDNO . "' OR item.verb = '" . ACTIVITY_ATTENDMAYBE . "')
+			AND `item`.`moderated` = 0 and `item`.`unseen` = 1
 			AND `item`.`wall` = 1
 			$sql_extra
 			ORDER BY `item`.`created` DESC",
@@ -303,9 +304,9 @@ function profile_content(&$a, $update = 0) {
 		foreach($r as $rr)
 			$parents_arr[] = $rr['item_id'];
 		$parents_str = implode(', ', $parents_arr);
- 
+
 		$items = q("SELECT `item`.*, `item`.`id` AS `item_id`, `item`.`network` AS `item_network`,
-			`contact`.`name`, `contact`.`photo`, `contact`.`url`, `contact`.`alias`, `contact`.`network`, `contact`.`rel`, 
+			`contact`.`name`, `contact`.`photo`, `contact`.`url`, `contact`.`alias`, `contact`.`network`, `contact`.`rel`,
 			`contact`.`thumb`, `contact`.`self`, `contact`.`writable`,
 			`contact`.`id` AS `cid`, `contact`.`uid` AS `contact-uid`
 			FROM `item`, `contact`
