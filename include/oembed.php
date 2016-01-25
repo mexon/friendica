@@ -1,12 +1,9 @@
 <?php
 function oembed_replacecb($matches){
-//	logger('oembedcb');
 	$embedurl=$matches[1];
 	$j = oembed_fetch_url($embedurl);
 	$s =  oembed_format_object($j);
-	return $s;//oembed_iframe($s,$j->width,$j->height);
-
-
+	return $s;
 }
 
 
@@ -16,7 +13,13 @@ function oembed_fetch_url($embedurl, $no_rich_type = false){
 
 	$a = get_app();
 
-	$txt = Cache::get($a->videowidth . $embedurl);
+	$r = q("SELECT * FROM `oembed` WHERE `url` = '%s'",
+		dbesc(normalise_link($embedurl)));
+
+	if ($r)
+		$txt = $r[0]["content"];
+	else
+		$txt = Cache::get($a->videowidth . $embedurl);
 
 	// These media files should now be caught in bbcode.php
 	// left here as a fallback in case this is called from another source
@@ -69,8 +72,14 @@ function oembed_fetch_url($embedurl, $no_rich_type = false){
 
 		if ($txt[0]!="{")
 			$txt='{"type":"error"}';
-		else	//save in cache
+		else {	//save in cache
+			$j = json_decode($txt);
+			if ($j->type != "error")
+				q("INSERT INTO `oembed` (`url`, `content`, `created`) VALUES ('%s', '%s', '%s')",
+					dbesc(normalise_link($embedurl)), dbesc($txt), dbesc(datetime_convert()));
+
 			Cache::set($a->videowidth . $embedurl,$txt, CACHE_DAY);
+		}
 	}
 
 	$j = json_decode($txt);
@@ -88,7 +97,7 @@ function oembed_fetch_url($embedurl, $no_rich_type = false){
 	// If fetching information doesn't work, then improve via internal functions
 	if (($j->type == "error") OR ($no_rich_type AND ($j->type == "rich"))) {
 		require_once("mod/parse_url.php");
-		$data = parseurl_getsiteinfo($embedurl, true, false);
+		$data = parseurl_getsiteinfo_cached($embedurl, true, false);
 		$j->type = $data["type"];
 
 		if ($j->type == "photo") {
@@ -144,15 +153,12 @@ function oembed_format_object($j){
 			} else {
 				$ret=$jhtml;
 			}
-			$ret.="<br>";
+			//$ret.="<br>";
 		}; break;
 		case "photo": {
 			$ret.= "<img width='".$j->width."' src='".proxy_url($j->url)."'>";
-			//$ret.= "<img width='".$j->width."' height='".$j->height."' src='".proxy_url($j->url)."'>";
-			$ret.="<br>";
 		}; break;
 		case "link": {
-			//$ret = "<a href='".$embedurl."'>".$j->title."</a>";
 		}; break;
 		case "rich": {
 			// not so safe..
@@ -194,10 +200,10 @@ function oembed_format_object($j){
 	} else {
 		// add <a> for html2bbcode conversion
 		$ret .= "<a href='$embedurl' rel='oembed'>$embedurl</a>";
-		$ret .= "<br style='clear:left'>";
 	}
 	$ret.="</span>";
-	return  mb_convert_encoding($ret, 'HTML-ENTITIES', mb_detect_encoding($ret));
+	$ret = str_replace("\n","",$ret);
+	return mb_convert_encoding($ret, 'HTML-ENTITIES', mb_detect_encoding($ret));
 }
 
 function oembed_iframe($src,$width,$height) {

@@ -61,22 +61,15 @@ function poco_init(&$a) {
 		$update_limit =  date("Y-m-d H:i:s",strtotime($_GET['updatedSince']));
 
 	if ($global) {
-		//$r = q("SELECT count(*) AS `total` FROM `gcontact` WHERE `updated` >= '%s' AND ((`last_contact` >= `last_failure`) OR (`updated` >= `last_failure`))  AND `network` IN ('%s')",
-		$r = q("SELECT count(*) AS `total` FROM `gcontact` WHERE `updated` >= '%s' AND `updated` >= `last_failure`  AND `network` IN ('%s', '%s', '%s')",
+		$r = q("SELECT count(*) AS `total` FROM `gcontact` WHERE `updated` >= '%s' AND `updated` >= `last_failure` AND NOT `hide` AND `network` IN ('%s', '%s', '%s')",
 			dbesc($update_limit),
 			dbesc(NETWORK_DFRN),
 			dbesc(NETWORK_DIASPORA),
 			dbesc(NETWORK_OSTATUS)
 		);
 	} elseif($system_mode) {
-		$r = q("SELECT count(*) AS `total` FROM `contact` WHERE `self` = 1 AND `network` IN ('%s', '%s', '%s', '%s')
-			AND (`success_update` >= `failure_update` OR `last-item` >= `failure_update`)
-			AND `uid` IN (SELECT `uid` FROM `pconfig` WHERE `cat` = 'system' AND `k` = 'suggestme' AND `v` = 1) ",
-			dbesc(NETWORK_DFRN),
-			dbesc(NETWORK_DIASPORA),
-			dbesc(NETWORK_OSTATUS),
-			dbesc(NETWORK_STATUSNET)
-			);
+		$r = q("SELECT count(*) AS `total` FROM `contact` WHERE `self` = 1
+			AND `uid` IN (SELECT `uid` FROM `pconfig` WHERE `cat` = 'system' AND `k` = 'suggestme' AND `v` = 1) ");
 	} else {
 		$r = q("SELECT count(*) AS `total` FROM `contact` WHERE `uid` = %d AND `blocked` = 0 AND `pending` = 0 AND `hidden` = 0 AND `archive` = 0
 			AND (`success_update` >= `failure_update` OR `last-item` >= `failure_update`)
@@ -100,8 +93,7 @@ function poco_init(&$a) {
 
 	if ($global) {
 		logger("Start global query", LOGGER_DEBUG);
-		//$r = q("SELECT * FROM `gcontact` WHERE `updated` > '%s' AND `network` IN ('%s') AND ((`last_contact` >= `last_failure`) OR (`updated` > `last_failure`)) LIMIT %d, %d",
-		$r = q("SELECT * FROM `gcontact` WHERE `updated` > '%s' AND `network` IN ('%s', '%s', '%s') AND `updated` > `last_failure`
+		$r = q("SELECT * FROM `gcontact` WHERE `updated` > '%s' AND NOT `hide` AND `network` IN ('%s', '%s', '%s') AND `updated` > `last_failure`
 			ORDER BY `updated` DESC LIMIT %d, %d",
 			dbesc($update_limit),
 			dbesc(NETWORK_DFRN),
@@ -115,13 +107,8 @@ function poco_init(&$a) {
 		$r = q("SELECT `contact`.*, `profile`.`about` AS `pabout`, `profile`.`locality` AS `plocation`, `profile`.`pub_keywords`, `profile`.`gender` AS `pgender`,
 			`profile`.`address` AS `paddress`, `profile`.`region` AS `pregion`, `profile`.`postal-code` AS `ppostalcode`, `profile`.`country-name` AS `pcountry`
 			FROM `contact` INNER JOIN `profile` ON `profile`.`uid` = `contact`.`uid`
-			WHERE `self` = 1 AND `network` IN ('%s', '%s', '%s', '%s') AND `profile`.`is-default`
-			AND ((`contact`.`success_update` >= `contact`.`failure_update`) OR (`contact`.`last-item` >= `contact`.`failure_update`))
+			WHERE `self` = 1 AND `profile`.`is-default`
 			AND `contact`.`uid` IN (SELECT `uid` FROM `pconfig` WHERE `cat` = 'system' AND `k` = 'suggestme' AND `v` = 1) LIMIT %d, %d",
-			dbesc(NETWORK_DFRN),
-			dbesc(NETWORK_DIASPORA),
-			dbesc(NETWORK_OSTATUS),
-			dbesc(NETWORK_STATUSNET),
 			intval($startIndex),
 			intval($itemsPerPage)
 		);

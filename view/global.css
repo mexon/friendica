@@ -93,7 +93,7 @@ span.connector {
 
 /* Shared Messages */
 .shared_header {
-  height: 32px;
+  min-height: 32px;
   color: #999;
   border-top: 1px solid #D2D2D2;
   padding-top: 5px;
@@ -118,10 +118,12 @@ span.connector {
   -moz-border-radius: 4px;
   border-radius: 4px;
   float: left;
+  margin-right: 9px;
 }
 
 .shared_header span {
-  margin-left: 9px;
+  display: table-cell;
+  float: none;
 }
 
 blockquote.shared_content {
@@ -211,4 +213,141 @@ a {
   overflow: hidden;
   clip: rect(0,0,0,0);
   border: 0;
+}
+
+.itentity-match-wrapper {
+  float: left;
+  padding: 10px;
+  width: 120px;
+  height: 140px;
+  margin-bottom: 20px;
+}
+
+.identity-match-photo {
+  float: left;
+  text-align: center;
+  width: 120px;
+}
+
+.identity-match-name {
+  text-align: center;
+}
+
+.identity-match-details {
+  float: left;
+  text-align: center;
+  width: 120px;
+  overflow: hidden;
+  font-size: 10px;
+  font-weight: 500;
+  color: #999999;
+}
+
+.identity-match-break, .identity-match-end {
+  clear: both;
+}
+
+.identity-match-photo button {
+  border: none;
+  padding: 0;
+  margin: 0;
+  background: none;
+  height: 80px;
+  width: 80px;
+  cursor: pointer;
+}
+
+.selected-identity img {
+  border: 2px solid #ff0000;
+}
+/* poke */
+#poke-desc {
+  margin: 5px 0 10px;
+}
+
+#poke-wrapper  {
+  padding: 10px 0 0px;
+}
+
+#poke-recipient, #poke-action, #poke-privacy-settings {
+  margin: 10px 0 30px;
+}
+
+#poke-recip-label, #poke-action-label, #prvmail-message-label {
+  margin: 10px 0 10px;
+}
+.version-match {
+    font-weight: bold;
+    color: #00a700;
+}
+.federation-graph {
+    width: 400px; 
+    height: 400px; 
+    float: right; 
+    margin: 20px;
+}
+.federation-network-graph {
+    width: 240px; 
+    height: 240px; 
+    float: left; 
+    margin: 20px;
+}
+ul.federation-stats,
+ul.credits {
+  list-style: none;
+}
+ul.federation-stats li,
+ul.credits li {
+  float: left;
+  width: 240px;
+}
+table#federation-stats {
+    width: 100%;
+}
+td.federation-data {
+    border-bottom: 1px solid #000;
+}
+
+.contact-entry-photo img {
+  max-width: 80px;
+  max-height: 80px;
+}
+
+/* forumlist widget */
+.forumlist-img {
+  height: 20px;
+  width: 20px;
+  vertical-align: middle;
+}
+
+#forum-widget-collapse {
+  opacity: 0.3;
+}
+
+#forum-widget-collapse:hover {
+  opacity: 1.0;
+}
+
+.crepair-label {
+        margin-top: 10px;
+        float: left;
+        width: 250px;
+}
+
+.crepair-input {
+        margin-top: 10px;
+        float: left;
+        width: 200px;
+}
+
+.renderinfo {
+	clear: both;
+}
+
+.p-addr {
+	clear: both;	
+}
+
+#live-community {
+	clear: both;
 }

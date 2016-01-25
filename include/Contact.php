@@ -144,7 +144,7 @@ function terminate_friendship($user,$self,$contact) {
 // and we won't waste any more time trying to communicate with them.
 // This provides for the possibility that their database is temporarily messed
 // up or some other transient event and that there's a possibility we could recover from it.
- 
+
 if(! function_exists('mark_for_death')) {
 function mark_for_death($contact) {
 
@@ -159,14 +159,15 @@ function mark_for_death($contact) {
 	}
 	else {
 
-		// TODO: We really should send a notification to the owner after 2-3 weeks
-		// so they won't be surprised when the contact vanishes and can take
-		// remedial action if this was a serious mistake or glitch
+		/// @todo 
+		/// We really should send a notification to the owner after 2-3 weeks
+		/// so they won't be surprised when the contact vanishes and can take
+		/// remedial action if this was a serious mistake or glitch
 
 		$expiry = $contact['term-date'] . ' + 32 days ';
 		if(datetime_convert() > datetime_convert('UTC','UTC',$expiry)) {
 
-			// relationship is really truly dead. 
+			// relationship is really truly dead.
 			// archive them rather than delete
 			// though if the owner tries to unarchive them we'll start the whole process over again
 
@@ -191,8 +192,77 @@ function unmark_for_death($contact) {
 	);
 }}
 
+function get_contact_details_by_url($url, $uid = -1) {
+	if ($uid == -1)
+		$uid = local_user();
+
+	$r = q("SELECT `id` AS `gid`, `url`, `name`, `nick`, `addr`, `photo`, `location`, `about`, `keywords`, `gender`, `community`, `network` FROM `gcontact` WHERE `nurl` = '%s' LIMIT 1",
+		dbesc(normalise_link($url)));
+
+	if ($r) {
+		$profile = $r[0];
+
+		if ((($profile["addr"] == "") OR ($profile["name"] == "")) AND
+			in_array($profile["network"], array(NETWORK_DFRN, NETWORK_DIASPORA, NETWORK_OSTATUS)))
+			proc_run('php',"include/update_gcontact.php", $profile["gid"]);
+	}
+
+	// Fetching further contact data from the contact table
+	$r = q("SELECT `id`, `uid`, `url`, `network`, `name`, `nick`, `addr`, `location`, `about`, `keywords`, `gender`, `photo`, `addr`, `forum`, `prv`, `bd` FROM `contact` WHERE `nurl` = '%s' AND `uid` = %d AND `network` = '%s'",
+		dbesc(normalise_link($url)), intval($uid), dbesc($profile["network"]));
+
+	if (!count($r) AND !isset($profile))
+		$r = q("SELECT `id`, `uid`, `url`, `network`, `name`, `nick`, `addr`, `location`, `about`, `keywords`, `gender`, `photo`, `addr`, `forum`, `prv`, `bd` FROM `contact` WHERE `nurl` = '%s' AND `uid` = %d",
+			dbesc(normalise_link($url)), intval($uid));
+
+	if (!count($r) AND !isset($profile))
+		$r = q("SELECT `id`, `uid`, `url`, `network`, `name`, `nick`, `addr`, `location`, `about`, `keywords`, `gender`, `photo`, `addr`, `forum`, `prv`, `bd` FROM `contact` WHERE `nurl` = '%s' AND `uid` = 0",
+			dbesc(normalise_link($url)));
+
+	if ($r) {
+		if (!isset($profile["url"]) AND $r[0]["url"])
+			$profile["url"] = $r[0]["url"];
+		if (!isset($profile["name"]) AND $r[0]["name"])
+			$profile["name"] = $r[0]["name"];
+		if (!isset($profile["nick"]) AND $r[0]["nick"])
+			$profile["nick"] = $r[0]["nick"];
+		if (!isset($profile["addr"]) AND $r[0]["addr"])
+			$profile["addr"] = $r[0]["addr"];
+		if (!isset($profile["photo"]) AND $r[0]["photo"])
+			$profile["photo"] = $r[0]["photo"];
+		if (!isset($profile["location"]) AND $r[0]["location"])
+			$profile["location"] = $r[0]["location"];
+		if (!isset($profile["about"]) AND $r[0]["about"])
+			$profile["about"] = $r[0]["about"];
+		if (!isset($profile["keywords"]) AND $r[0]["keywords"])
+			$profile["keywords"] = $r[0]["keywords"];
+		if (!isset($profile["gender"]) AND $r[0]["gender"])
+			$profile["gender"] = $r[0]["gender"];
+		if (isset($r[0]["forum"]) OR isset($r[0]["prv"]))
+			$profile["community"] = ($r[0]["forum"] OR $r[0]["prv"]);
+		if (!isset($profile["network"]) AND $r[0]["network"])
+			$profile["network"] = $r[0]["network"];
+		if (!isset($profile["addr"]) AND $r[0]["addr"])
+			$profile["addr"] = $r[0]["addr"];
+		if (!isset($profile["bd"]) AND $r[0]["bd"])
+			$profile["bd"] = $r[0]["bd"];
+		if ($r[0]["uid"] == 0)
+			$profile["cid"] = 0;
+		else
+			$profile["cid"] = $r[0]["id"];
+	} else
+		$profile["cid"] = 0;
+
+	if (($profile["cid"] == 0) AND ($profile["network"] == NETWORK_DIASPORA)) {
+		$profile["location"] = "";
+		$profile["about"] = "";
+	}
+
+	return($profile);
+}
+
 if(! function_exists('contact_photo_menu')){
-function contact_photo_menu($contact) {
+function contact_photo_menu($contact, $uid = 0) {
 
 	$a = get_app();
 
@@ -203,6 +273,33 @@ function contact_photo_menu($contact) {
 	$posts_link="";
 	$contact_drop_link = "";
 	$poke_link="";
+
+	if ($uid == 0)
+		$uid = local_user();
+
+	if ($contact["uid"] != $uid) {
+		if ($uid == 0) {
+			$profile_link = zrl($contact['url']);
+			$menu = Array('profile' => array(t("View Profile"), $profile_link, true));
+
+			return $menu;
+		}
+
+		$r = q("SELECT * FROM `contact` WHERE `nurl` = '%s' AND `network` = '%s' AND `uid` = %d",
+			dbesc($contact["nurl"]), dbesc($contact["network"]), intval($uid));
+		if ($r)
+			return contact_photo_menu($r[0], $uid);
+		else {
+			$profile_link = zrl($contact['url']);
+			$connlnk = 'follow/?url='.$contact['url'];
+			$menu = Array(
+				'profile' => array(t("View Profile"), $profile_link, true),
+				'follow' => array(t("Connect/Follow"), $connlnk, true)
+				);
+
+			return $menu;
+		}
+	}
 
 	$sparkle = false;
 	if($contact['network'] === NETWORK_DFRN) {
@@ -228,19 +325,23 @@ function contact_photo_menu($contact) {
 		$poke_link = $a->get_baseurl() . '/poke/?f=&c=' . $contact['id'];
 
 	$contact_url = $a->get_baseurl() . '/contacts/' . $contact['id'];
-	$posts_link = $a->get_baseurl() . '/network/0?nets=all&cid=' . $contact['id'];
+	$posts_link = $a->get_baseurl() . "/contacts/" . $contact['id'] . '/posts';
 	$contact_drop_link = $a->get_baseurl() . "/contacts/" . $contact['id'] . '/drop?confirm=1';
 
 
+	/**
+	 * menu array:
+	 * "name" => [ "Label", "link", (bool)Should the link opened in a new tab? ]
+	 */
 	$menu = Array(
-		'status' => array(t("View Status"), $status_link),
-		'profile' => array(t("View Profile"), $profile_link),
-		'photos' => array(t("View Photos"), $photos_link),
-		'network' => array(t("Network Posts"), $posts_link),
-		'edit' => array(t("Edit Contact"), $contact_url),
-		'drop' => array(t("Drop Contact"), $contact_drop_link),
-		'pm' => array(t("Send PM"), $pm_url),
-		'poke' => array(t("Poke"), $poke_link),
+		'status' => array(t("View Status"), $status_link, true),
+		'profile' => array(t("View Profile"), $profile_link, true),
+		'photos' => array(t("View Photos"), $photos_link,true),
+		'network' => array(t("Network Posts"), $posts_link,false),
+		'edit' => array(t("Edit Contact"), $contact_url, false),
+		'drop' => array(t("Drop Contact"), $contact_drop_link, false),
+		'pm' => array(t("Send PM"), $pm_url, false),
+		'poke' => array(t("Poke"), $poke_link, false),
 	);
 
 
@@ -248,31 +349,11 @@ function contact_photo_menu($contact) {
 
 	call_hooks('contact_photo_menu', $args);
 
-/*	$o = "";
-	foreach($menu as $k=>$v){
-		if ($v!="") {
-			if(($k !== t("Network Posts")) && ($k !== t("Send PM")) && ($k !== t('Edit Contact')))
-				$o .= "<li><a target=\"redir\" href=\"$v\">$k</a></li>\n";
-			else
-				$o .= "<li><a href=\"$v\">$k</a></li>\n";
-		}
-	}
-	return $o;*/
-
-	foreach($menu as $k=>$v){
-		if ($v[1]!="") {
-			if(($v[0] !== t("Network Posts")) && ($v[0] !== t("Send PM")) && ($v[0] !== t('Edit Contact')))
-				$menu[$k][2] = 1;
-			else
-				$menu[$k][2] = 0;
-		}
-	}
-
 	$menucondensed = array();
 
-	foreach ($menu AS $menuitem)
+	foreach ($menu AS $menuname=>$menuitem)
 		if ($menuitem[1] != "")
-			$menucondensed[] = $menuitem;
+			$menucondensed[$menuname] = $menuitem;
 
 	return $menucondensed;
 }}
@@ -321,6 +402,7 @@ function get_contact($url, $uid = 0) {
 	$contactid = 0;
 
 	// is it an address in the format user@server.tld?
+	/// @todo use gcontact and/or the addr field for a lookup
 	if (!strstr($url, "http") OR strstr($url, "@")) {
 		$data = probe_url($url);
 		$url = $data["url"];
@@ -419,3 +501,165 @@ function get_contact($url, $uid = 0) {
 
 	return $contactid;
 }
+
+/**
+ * @brief Returns posts from a given gcontact
+ *
+ * @param App $a argv application class
+ * @param int $gcontact_id Global contact
+ *
+ * @return string posts in HTML
+ */
+function posts_from_gcontact($a, $gcontact_id) {
+
+	require_once('include/conversation.php');
+
+	// There are no posts with "uid = 0" with connector networks
+	// This speeds up the query a lot
+	$r = q("SELECT `network` FROM `gcontact` WHERE `id` = %d", dbesc($gcontact_id));
+	if (in_array($r[0]["network"], array(NETWORK_DFRN, NETWORK_DIASPORA, NETWORK_OSTATUS, "")))
+		$sql = "(`item`.`uid` = 0 OR  (`item`.`uid` = %d AND `item`.`private`))";
+	else
+		$sql = "`item`.`uid` = %d";
+
+	if(get_config('system', 'old_pager')) {
+		$r = q("SELECT COUNT(*) AS `total` FROM `item`
+			WHERE `gcontact-id` = %d and $sql",
+			intval($gcontact_id),
+			intval(local_user()));
+
+		$a->set_pager_total($r[0]['total']);
+	}
+
+	$r = q("SELECT `item`.`uri`, `item`.*, `item`.`id` AS `item_id`,
+			`author-name` AS `name`, `owner-avatar` AS `photo`,
+			`owner-link` AS `url`, `owner-avatar` AS `thumb`
+		FROM `item` FORCE INDEX (`gcontactid_uid_created`)
+		WHERE `gcontact-id` = %d AND $sql AND
+			NOT `deleted` AND NOT `moderated` AND `visible`
+		ORDER BY `item`.`created` DESC LIMIT %d, %d",
+		intval($gcontact_id),
+		intval(local_user()),
+		intval($a->pager['start']),
+		intval($a->pager['itemspage'])
+	);
+
+	$o = conversation($a,$r,'community',false);
+
+	if(!get_config('system', 'old_pager')) {
+		$o .= alt_pager($a,count($r));
+	} else {
+		$o .= paginate($a);
+	}
+
+	return $o;
+}
+
+/**
+ * @brief set the gcontact-id in all item entries
+ *
+ * This job has to be started multiple times until all entries are set.
+ * It isn't started in the update function since it would consume too much time and can be done in the background.
+ */
+function item_set_gcontact() {
+	define ('POST_UPDATE_VERSION', 1192);
+
+	// Was the script completed?
+	if (get_config("system", "post_update_version") >= POST_UPDATE_VERSION)
+		return;
+
+	// Check if the first step is done (Setting "gcontact-id" in the item table)
+	$r = q("SELECT `author-link`, `author-name`, `author-avatar`, `uid`, `network` FROM `item` WHERE `gcontact-id` = 0 LIMIT 1000");
+	if (!$r) {
+		// Are there unfinished entries in the thread table?
+		$r = q("SELECT COUNT(*) AS `total` FROM `thread`
+			INNER JOIN `item` ON `item`.`id` =`thread`.`iid`
+			WHERE `thread`.`gcontact-id` = 0 AND
+				(`thread`.`uid` IN (SELECT `uid` from `user`) OR `thread`.`uid` = 0)");
+
+		if ($r AND ($r[0]["total"] == 0)) {
+			set_config("system", "post_update_version", POST_UPDATE_VERSION);
+			return false;
+		}
+
+		// Update the thread table from the item table
+		q("UPDATE `thread` INNER JOIN `item` ON `item`.`id`=`thread`.`iid`
+				SET `thread`.`gcontact-id` = `item`.`gcontact-id`
+			WHERE `thread`.`gcontact-id` = 0 AND
+				(`thread`.`uid` IN (SELECT `uid` from `user`) OR `thread`.`uid` = 0)");
+
+		return false;
+	}
+
+	$item_arr = array();
+	foreach ($r AS $item) {
+		$index = $item["author-link"]."-".$item["uid"];
+		$item_arr[$index] = array("author-link" => $item["author-link"],
+						"uid" => $item["uid"],
+						"network" => $item["network"]);
+	}
+
+	// Set the "gcontact-id" in the item table and add a new gcontact entry if needed
+	foreach($item_arr AS $item) {
+		$gcontact_id = get_gcontact_id(array("url" => $item['author-link'], "network" => $item['network'],
+						"photo" => $item['author-avatar'], "name" => $item['author-name']));
+		q("UPDATE `item` SET `gcontact-id` = %d WHERE `uid` = %d AND `author-link` = '%s' AND `gcontact-id` = 0",
+			intval($gcontact_id), intval($item["uid"]), dbesc($item["author-link"]));
+	}
+	return true;
+}
+
+/**
+ * @brief Returns posts from a given contact
+ *
+ * @param App $a argv application class
+ * @param int $contact_id contact
+ *
+ * @return string posts in HTML
+ */
+function posts_from_contact($a, $contact_id) {
+
+	require_once('include/conversation.php');
+
+	$r = q("SELECT `url` FROM `contact` WHERE `id` = %d", intval($contact_id));
+	if (!$r)
+		return false;
+
+	$contact = $r[0];
+
+	if(get_config('system', 'old_pager')) {
+		$r = q("SELECT COUNT(*) AS `total` FROM `item`
+			WHERE `item`.`uid` = %d AND `author-link` IN ('%s', '%s')",
+			intval(local_user()),
+			dbesc(str_replace("https://", "http://", $contact["url"])),
+			dbesc(str_replace("http://", "https://", $contact["url"])));
+
+		$a->set_pager_total($r[0]['total']);
+	}
+
+	$r = q("SELECT `item`.`uri`, `item`.*, `item`.`id` AS `item_id`,
+			`author-name` AS `name`, `owner-avatar` AS `photo`,
+			`owner-link` AS `url`, `owner-avatar` AS `thumb`
+		FROM `item` FORCE INDEX (`uid_contactid_created`)
+		WHERE `item`.`uid` = %d AND `contact-id` = %d
+			AND `author-link` IN ('%s', '%s')
+			AND NOT `deleted` AND NOT `moderated` AND `visible`
+		ORDER BY `item`.`created` DESC LIMIT %d, %d",
+		intval(local_user()),
+		intval($contact_id),
+		dbesc(str_replace("https://", "http://", $contact["url"])),
+		dbesc(str_replace("http://", "https://", $contact["url"])),
+		intval($a->pager['start']),
+		intval($a->pager['itemspage'])
+	);
+
+	$o .= conversation($a,$r,'community',false);
+
+	if(!get_config('system', 'old_pager'))
+		$o .= alt_pager($a,count($r));
+	else
+		$o .= paginate($a);
+
+	return $o;
+}
+?>

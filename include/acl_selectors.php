@@ -1,6 +1,7 @@
 <?php
 
 require_once("include/contact_selectors.php");
+require_once("include/contact_widgets.php");
 require_once("include/features.php");
 require_once("mod/proxy.php");
 
@@ -19,7 +20,7 @@ function group_select($selname,$selclass,$preselected = false,$size = 4) {
 
 	$o .= "<select name=\"{$selname}[]\" id=\"$selclass\" class=\"$selclass\" multiple=\"multiple\" size=\"$size\" >\r\n";
 
-	$r = q("SELECT * FROM `group` WHERE `deleted` = 0 AND `uid` = %d ORDER BY `name` ASC",
+	$r = q("SELECT `id`, `name` FROM `group` WHERE NOT `deleted` AND `uid` = %d ORDER BY `name` ASC",
 		intval(local_user())
 	);
 
@@ -308,7 +309,7 @@ function populate_acl($user = null, $show_jotnets = false) {
 		$pubmail_enabled = false;
 
 		if(! $mail_disabled) {
-			$r = q("SELECT * FROM `mailacct` WHERE `uid` = %d AND `server` != '' LIMIT 1",
+			$r = q("SELECT `pubmail` FROM `mailacct` WHERE `uid` = %d AND `server` != '' LIMIT 1",
 				intval(local_user())
 			);
 			if(count($r)) {
@@ -406,7 +407,7 @@ function acl_lookup(&$a, $out_type = 'json') {
 		$search = $_REQUEST['query'];
 	}
 
-//	logger("Searching for ".$search." - type ".$type, LOGGER_DEBUG);
+	logger("Searching for ".$search." - type ".$type, LOGGER_DEBUG);
 
 	if ($search!=""){
 		$sql_extra = "AND `name` LIKE '%%".dbesc($search)."%%'";
@@ -424,6 +425,8 @@ function acl_lookup(&$a, $out_type = 'json') {
 	} else {
 		$group_count = 0;
 	}
+
+	$sql_extra2 .= " ".unavailable_networks();
 
 	if ($type=='' || $type=='c'){
 		$r = q("SELECT COUNT(*) AS c FROM `contact`
@@ -500,7 +503,7 @@ function acl_lookup(&$a, $out_type = 'json') {
 		}
 	}
 
-	if ($type=='' || $type=='c'){
+	if ($type==''){
 
 		$r = q("SELECT `id`, `name`, `nick`, `micro`, `network`, `url`, `attag`, forum FROM `contact`
 			WHERE `uid` = %d AND `self` = 0 AND `blocked` = 0 AND `pending` = 0 AND `archive` = 0 AND `notify` != ''
@@ -509,6 +512,17 @@ function acl_lookup(&$a, $out_type = 'json') {
 			ORDER BY `name` ASC ",
 			intval(local_user()),
 			dbesc(NETWORK_OSTATUS), dbesc(NETWORK_STATUSNET)
+		);
+	}
+	elseif ($type=='c'){
+
+		$r = q("SELECT `id`, `name`, `nick`, `micro`, `network`, `url`, `attag`, forum FROM `contact`
+			WHERE `uid` = %d AND `self` = 0 AND `blocked` = 0 AND `pending` = 0 AND `archive` = 0 AND `notify` != ''
+			AND NOT (`network` IN ('%s'))
+			$sql_extra2
+			ORDER BY `name` ASC ",
+			intval(local_user()),
+			dbesc(NETWORK_STATUSNET)
 		);
 	}
 	elseif($type == 'm') {
