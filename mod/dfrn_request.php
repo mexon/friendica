@@ -10,6 +10,7 @@
  */
 
 require_once('include/enotify.php');
+require_once('include/Scrape.php');
 
 if(! function_exists('dfrn_request_init')) {
 function dfrn_request_init(&$a) {
@@ -112,8 +113,6 @@ function dfrn_request_post(&$a) {
 					 * Scrape the other site's profile page to pick up the dfrn links, key, fn, and photo
 					 */
 
-					require_once('include/Scrape.php');
-
 					$parms = scrape_dfrn($dfrn_url);
 
 					if(! count($parms)) {
@@ -136,7 +135,7 @@ function dfrn_request_post(&$a) {
 
 					$dfrn_request = $parms['dfrn-request'];
 
-                    /********* Escape the entire array ********/
+					/********* Escape the entire array ********/
 
 					dbesc_array($parms);
 
@@ -146,13 +145,14 @@ function dfrn_request_post(&$a) {
 					 * Create a contact record on our site for the other person
 					 */
 
-					$r = q("INSERT INTO `contact` ( `uid`, `created`,`url`, `nurl`, `name`, `nick`, `photo`, `site-pubkey`,
+					$r = q("INSERT INTO `contact` ( `uid`, `created`,`url`, `nurl`, `addr`, `name`, `nick`, `photo`, `site-pubkey`,
 						`request`, `confirm`, `notify`, `poll`, `poco`, `network`, `aes_allow`, `hidden`)
-						VALUES ( %d, '%s', '%s', '%s', '%s' , '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', %d, %d)",
+						VALUES ( %d, '%s', '%s', '%s', '%s', '%s' , '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', %d, %d)",
 						intval(local_user()),
 						datetime_convert(),
 						dbesc($dfrn_url),
 						dbesc(normalise_link($dfrn_url)),
+						$parms['addr'],
 						$parms['fn'],
 						$parms['nick'],
 						$parms['photo'],
@@ -440,30 +440,28 @@ function dfrn_request_post(&$a) {
 
 			// Next send an email verify form to the requestor.
 
-		}
-
-		else {
+		} else {
+			// Detect the network
+			$data = probe_url($url);
+			$network = $data["network"];
 
 			// Canonicalise email-style profile locator
-
 			$url = webfinger_dfrn($url,$hcard);
 
-			if(substr($url,0,5) === 'stat:') {
-				$network = NETWORK_OSTATUS;
+			if (substr($url,0,5) === 'stat:') {
+
+				// Every time we detect the remote subscription we define this as OStatus.
+				// We do this even if it is not OStatus.
+				// we only need to pass this through another section of the code.
+				if ($network != NETWORK_DIASPORA)
+					$network = NETWORK_OSTATUS;
+
 				$url = substr($url,5);
-			}
-			else {
+			} else
 				$network = NETWORK_DFRN;
-			}
 		}
 
 		logger('dfrn_request: url: ' . $url);
-
-		if(! strlen($url)) {
-			notice( t("Unable to resolve your name at the provided location.") . EOL);
-			return;
-		}
-
 
 		if($network === NETWORK_DFRN) {
 			$ret = q("SELECT * FROM `contact` WHERE `uid` = %d AND `url` = '%s' AND `self` = 0 LIMIT 1",
@@ -539,13 +537,14 @@ function dfrn_request_post(&$a) {
 
 
 				dbesc_array($parms);
-				$r = q("INSERT INTO `contact` ( `uid`, `created`, `url`, `nurl`,`name`, `nick`, `issued-id`, `photo`, `site-pubkey`,
+				$r = q("INSERT INTO `contact` ( `uid`, `created`, `url`, `nurl`, `addr`, `name`, `nick`, `issued-id`, `photo`, `site-pubkey`,
 					`request`, `confirm`, `notify`, `poll`, `poco`, `network` )
-					VALUES ( %d, '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s' )",
+					VALUES ( %d, '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s' )",
 					intval($uid),
 					dbesc(datetime_convert()),
 					$parms['url'],
 					dbesc(normalise_link($parms['url'])),
+					$parms['addr'],
 					$parms['fn'],
 					$parms['nick'],
 					$parms['issued-id'],
@@ -608,24 +607,34 @@ function dfrn_request_post(&$a) {
 			);
 			// NOTREACHED
 			// END $network === NETWORK_DFRN
-		}
-		elseif($network === NETWORK_OSTATUS) {
+		} elseif (($network != NETWORK_PHANTOM) AND ($url != "")) {
 
 			/**
 			 *
-			 * OStatus network
-			 * Check contact existence
-			 * Try and scrape together enough information to create a contact record,
-			 * with us as CONTACT_IS_FOLLOWER
 			 * Substitute our user's feed URL into $url template
 			 * Send the subscriber home to subscribe
 			 *
 			 */
 
-			$url = str_replace('{uri}', $a->get_baseurl() . '/profile/' . $nickname, $url);
+			// Diaspora needs the uri in the format user@domain.tld
+			// Diaspora will support the remote subscription in a future version
+			if ($network == NETWORK_DIASPORA) {
+				$uri = $nickname.'@'.$a->get_hostname();
+
+				if ($a->get_path())
+					$uri .= '/'.$a->get_path();
+
+				$uri = urlencode($uri);
+			} else
+				$uri = $a->get_baseurl().'/profile/'.$nickname;
+
+			$url = str_replace('{uri}', $uri, $url);
 			goaway($url);
 			// NOTREACHED
-			// END $network === NETWORK_OSTATUS
+			// END $network != NETWORK_PHANTOM
+		} else {
+			notice(t("Remote subscription can't be done for your network. Please subscribe directly on your system.").EOL);
+			return;
 		}
 
 	}	return;

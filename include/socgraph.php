@@ -1,15 +1,16 @@
 <?php
+/**
+ * @file include/socgraph.php
+ * 
+ * @todo Move GNU Social URL schemata (http://server.tld/user/number) to http://server.tld/username
+ * @todo Fetch profile data from profile page for Redmatrix users
+ * @todo Detect if it is a forum
+ */
 
 require_once('include/datetime.php');
 require_once("include/Scrape.php");
 require_once("include/html2bbcode.php");
 
-/*
- To-Do:
- - Move GNU Social URL schemata (http://server.tld/user/number) to http://server.tld/username
- - Fetch profile data from profile page for Redmatrix users
- - Detect if it is a forum
-*/
 
 /*
  * poco_load
@@ -131,7 +132,7 @@ function poco_load($cid,$uid = 0,$zcid = 0,$url = null) {
 				$keywords = implode(", ", $tag);
 
 		// If you query a Friendica server for its profiles, the network has to be Friendica
-		// To-Do: It could also be a Redmatrix server
+		/// TODO It could also be a Redmatrix server
 		//if ($uid == 0)
 		//	$network = NETWORK_DFRN;
 
@@ -225,15 +226,21 @@ function poco_check($profile_url, $name, $network, $profile_photo, $about, $loca
 		$created = $x[0]["created"];
 		$server_url = $x[0]["server_url"];
 		$nick = $x[0]["nick"];
+		$addr = $x[0]["addr"];
+		$alias =  $x[0]["alias"];
+		$notify =  $x[0]["notify"];
 	} else {
 		$created = "0000-00-00 00:00:00";
 		$server_url = "";
 
 		$urlparts = parse_url($profile_url);
 		$nick = end(explode("/", $urlparts["path"]));
+		$addr = "";
+		$alias = "";
+		$notify = "";
 	}
 
-	if ((($network == "") OR ($name == "") OR ($profile_photo == "") OR ($server_url == "") OR $alternate)
+	if ((($network == "") OR ($name == "") OR ($addr == "") OR ($profile_photo == "") OR ($server_url == "") OR $alternate)
 		AND poco_reachable($profile_url, $server_url, $network, false)) {
 		$data = probe_url($profile_url);
 
@@ -242,6 +249,9 @@ function poco_check($profile_url, $name, $network, $profile_photo, $about, $loca
 		$network = $data["network"];
 		$name = $data["name"];
 		$nick = $data["nick"];
+		$addr = $data["addr"];
+		$alias = $data["alias"];
+		$notify = $data["notify"];
 		$profile_url = $data["url"];
 		$profile_photo = $data["photo"];
 		$server_url = $data["baseurl"];
@@ -279,71 +289,25 @@ function poco_check($profile_url, $name, $network, $profile_photo, $about, $loca
 
 	poco_check_server($server_url, $network);
 
-	if(count($x)) {
-		$gcid = $x[0]['id'];
+	$gcontact = array("url" => $profile_url,
+			"addr" => $addr,
+			"alias" => $alias,
+			"name" => $name,
+			"network" => $network,
+			"photo" => $profile_photo,
+			"about" => $about,
+			"location" => $location,
+			"gender" => $gender,
+			"keywords" => $keywords,
+			"server_url" => $server_url,
+			"connect" => $connect_url,
+			"notify" => $notify,
+			"updated" => $updated,
+			"generation" => $generation);
 
-		if (($location == "") AND ($x[0]['location'] != ""))
-			$location = $x[0]['location'];
+	$gcid = update_gcontact($gcontact);
 
-		if (($about == "") AND ($x[0]['about'] != ""))
-			$about = $x[0]['about'];
-
-		if (($gender == "") AND ($x[0]['gender'] != ""))
-			$gender = $x[0]['gender'];
-
-		if (($keywords == "") AND ($x[0]['keywords'] != ""))
-			$keywords = $x[0]['keywords'];
-
-		if (($generation == 0) AND ($x[0]['generation'] > 0))
-			$generation = $x[0]['generation'];
-
-		if($x[0]['name'] != $name || $x[0]['photo'] != $profile_photo || $x[0]['updated'] < $updated) {
-			q("UPDATE `gcontact` SET `name` = '%s', `network` = '%s', `photo` = '%s', `connect` = '%s', `url` = '%s', `server_url` = '%s',
-				`updated` = '%s', `location` = '%s', `about` = '%s', `keywords` = '%s', `gender` = '%s', `generation` = %d
-				WHERE (`generation` >= %d OR `generation` = 0) AND `nurl` = '%s'",
-				dbesc($name),
-				dbesc($network),
-				dbesc($profile_photo),
-				dbesc($connect_url),
-				dbesc($profile_url),
-				dbesc($server_url),
-				dbesc($updated),
-				dbesc($location),
-				dbesc($about),
-				dbesc($keywords),
-				dbesc($gender),
-				intval($generation),
-				intval($generation),
-				dbesc(normalise_link($profile_url))
-			);
-		}
-	} else {
-		q("INSERT INTO `gcontact` (`name`, `nick`, `network`, `url`, `nurl`, `photo`, `connect`, `server_url`, `created`, `updated`, `location`, `about`, `keywords`, `gender`, `generation`)
-			VALUES ('%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', %d)",
-			dbesc($name),
-			dbesc($nick),
-			dbesc($network),
-			dbesc($profile_url),
-			dbesc(normalise_link($profile_url)),
-			dbesc($profile_photo),
-			dbesc($connect_url),
-			dbesc($server_url),
-			dbesc(datetime_convert()),
-			dbesc($updated),
-			dbesc($location),
-			dbesc($about),
-			dbesc($keywords),
-			dbesc($gender),
-			intval($generation)
-		);
-		$x = q("SELECT * FROM `gcontact` WHERE `nurl` = '%s' LIMIT 1",
-			dbesc(normalise_link($profile_url))
-		);
-		if(count($x))
-			$gcid = $x[0]['id'];
-	}
-
-	if(! $gcid)
+	if(!$gcid)
 		return $gcid;
 
 	$r = q("SELECT * FROM `glink` WHERE `cid` = %d AND `uid` = %d AND `gcid` = %d AND `zcid` = %d LIMIT 1",
@@ -369,13 +333,6 @@ function poco_check($profile_url, $name, $network, $profile_photo, $about, $loca
 			intval($zcid)
 		);
 	}
-
-	// For unknown reasons there are sometimes duplicates
-	q("DELETE FROM `gcontact` WHERE `nurl` = '%s' AND `id` != %d AND
-		NOT EXISTS (SELECT `gcid` FROM `glink` WHERE `gcid` = `gcontact`.`id`)",
-		dbesc(normalise_link($profile_url)),
-		intval($gcid)
-	);
 
 	return $gcid;
 }
@@ -689,6 +646,10 @@ function poco_to_boolean($val) {
 
 function poco_check_server($server_url, $network = "", $force = false) {
 
+	// Unify the server address
+	$server_url = trim($server_url, "/");
+	$server_url = str_replace("/index.php", "", $server_url);
+
 	if ($server_url == "")
 		return false;
 
@@ -748,8 +709,11 @@ function poco_check_server($server_url, $network = "", $force = false) {
 	}
 
 	if (!$serverret["success"] OR ($serverret["body"] == "") OR (sizeof($xmlobj) == 0) OR !is_object($xmlobj)) {
-		$last_failure = datetime_convert();
-		$failure = true;
+		// Workaround for bad configured servers (known nginx problem)
+		if ($serverret["debug"]["http_code"] != "403") {
+			$last_failure = datetime_convert();
+			$failure = true;
+		}
 	} elseif ($network == NETWORK_DIASPORA)
 		$last_contact = datetime_convert();
 
@@ -757,17 +721,23 @@ function poco_check_server($server_url, $network = "", $force = false) {
 		// Test for Diaspora
 		$serverret = z_fetch_url($server_url);
 
-		$lines = explode("\n",$serverret["header"]);
-		if(count($lines))
-			foreach($lines as $line) {
-				$line = trim($line);
-				if(stristr($line,'X-Diaspora-Version:')) {
-					$platform = "Diaspora";
-					$version = trim(str_replace("X-Diaspora-Version:", "", $line));
-					$version = trim(str_replace("x-diaspora-version:", "", $version));
-					$network = NETWORK_DIASPORA;
+		if (!$serverret["success"] OR ($serverret["body"] == ""))
+			$failure = true;
+		else {
+			$lines = explode("\n",$serverret["header"]);
+			if(count($lines))
+				foreach($lines as $line) {
+					$line = trim($line);
+					if(stristr($line,'X-Diaspora-Version:')) {
+						$platform = "Diaspora";
+						$version = trim(str_replace("X-Diaspora-Version:", "", $line));
+						$version = trim(str_replace("x-diaspora-version:", "", $version));
+						$network = NETWORK_DIASPORA;
+						$versionparts = explode("-", $version);
+						$version = $versionparts[0];
+					}
 				}
-			}
+		}
 	}
 
 	if (!$failure) {
@@ -1036,15 +1006,16 @@ function count_common_friends($uid,$cid) {
 
 	$r = q("SELECT count(*) as `total`
 		FROM `glink` INNER JOIN `gcontact` on `glink`.`gcid` = `gcontact`.`id`
-		where `glink`.`cid` = %d and `glink`.`uid` = %d
-		and `gcontact`.`nurl` in (select nurl from contact where uid = %d and self = 0 and blocked = 0 and hidden = 0 and id != %d ) ",
+		WHERE `glink`.`cid` = %d AND `glink`.`uid` = %d AND
+		((`gcontact`.`last_contact` >= `gcontact`.`last_failure`) OR (`gcontact`.`updated` >= `gcontact`.`last_failure`))
+		AND `gcontact`.`nurl` IN (select nurl from contact where uid = %d and self = 0 and blocked = 0 and hidden = 0 and id != %d ) ",
 		intval($cid),
 		intval($uid),
 		intval($uid),
 		intval($cid)
 	);
 
-//	logger("count_common_friends: $uid $cid {$r[0]['total']}"); 
+//	logger("count_common_friends: $uid $cid {$r[0]['total']}");
 	if(count($r))
 		return $r[0]['total'];
 	return 0;
@@ -1059,11 +1030,15 @@ function common_friends($uid,$cid,$start = 0,$limit=9999,$shuffle = false) {
 	else
 		$sql_extra = " order by `gcontact`.`name` asc ";
 
-	$r = q("SELECT `gcontact`.*
-		FROM `glink` INNER JOIN `gcontact` on `glink`.`gcid` = `gcontact`.`id`
-		where `glink`.`cid` = %d and `glink`.`uid` = %d
-		and `gcontact`.`nurl` in (select nurl from contact where uid = %d and self = 0 and blocked = 0 and hidden = 0 and id != %d ) 
-		$sql_extra limit %d, %d",
+	$r = q("SELECT `gcontact`.*, `contact`.`id` AS `cid`
+		FROM `glink`
+		INNER JOIN `gcontact` ON `glink`.`gcid` = `gcontact`.`id`
+		INNER JOIN `contact` ON `gcontact`.`nurl` = `contact`.`nurl`
+		WHERE `glink`.`cid` = %d and `glink`.`uid` = %d
+			AND `contact`.`uid` = %d AND `contact`.`self` = 0 AND `contact`.`blocked` = 0
+			AND `contact`.`hidden` = 0 AND `contact`.`id` != %d
+			AND ((`gcontact`.`last_contact` >= `gcontact`.`last_failure`) OR (`gcontact`.`updated` >= `gcontact`.`last_failure`))
+			$sql_extra LIMIT %d, %d",
 		intval($cid),
 		intval($uid),
 		intval($uid),
@@ -1120,7 +1095,8 @@ function count_all_friends($uid,$cid) {
 
 	$r = q("SELECT count(*) as `total`
 		FROM `glink` INNER JOIN `gcontact` on `glink`.`gcid` = `gcontact`.`id`
-		where `glink`.`cid` = %d and `glink`.`uid` = %d ",
+		where `glink`.`cid` = %d and `glink`.`uid` = %d AND
+		((`gcontact`.`last_contact` >= `gcontact`.`last_failure`) OR (`gcontact`.`updated` >= `gcontact`.`last_failure`))",
 		intval($cid),
 		intval($uid)
 	);
@@ -1134,10 +1110,14 @@ function count_all_friends($uid,$cid) {
 
 function all_friends($uid,$cid,$start = 0, $limit = 80) {
 
-	$r = q("SELECT `gcontact`.*
-		FROM `glink` INNER JOIN `gcontact` on `glink`.`gcid` = `gcontact`.`id`
-		where `glink`.`cid` = %d and `glink`.`uid` = %d
-		order by `gcontact`.`name` asc LIMIT %d, %d ",
+	$r = q("SELECT `gcontact`.*, `contact`.`id` AS `cid`
+		FROM `glink`
+		INNER JOIN `gcontact` on `glink`.`gcid` = `gcontact`.`id`
+		LEFT JOIN `contact` ON `contact`.`nurl` = `gcontact`.`nurl` AND `contact`.`uid` = %d
+		WHERE `glink`.`cid` = %d AND `glink`.`uid` = %d AND
+		((`gcontact`.`last_contact` >= `gcontact`.`last_failure`) OR (`gcontact`.`updated` >= `gcontact`.`last_failure`))
+		ORDER BY `gcontact`.`name` ASC LIMIT %d, %d ",
+		intval($uid),
 		intval($cid),
 		intval($uid),
 		intval($start),
@@ -1167,14 +1147,14 @@ function suggestion_query($uid, $start = 0, $limit = 80) {
 	$sql_network = "'".$sql_network."'";
 
 	$r = q("SELECT count(glink.gcid) as `total`, gcontact.* from gcontact
-		INNER JOIN glink on glink.gcid = gcontact.id
+		INNER JOIN `glink` ON `glink`.`gcid` = `gcontact`.`id`
 		where uid = %d and not gcontact.nurl in ( select nurl from contact where uid = %d )
-		and not gcontact.name in ( select name from contact where uid = %d )
-		and not gcontact.id in ( select gcid from gcign where uid = %d )
+		AND NOT `gcontact`.`name` IN (SELECT `name` FROM `contact` WHERE `uid` = %d)
+		AND NOT `gcontact`.`id` IN (SELECT `gcid` FROM `gcign` WHERE `uid` = %d)
 		AND `gcontact`.`updated` != '0000-00-00 00:00:00'
 		AND `gcontact`.`last_contact` >= `gcontact`.`last_failure`
 		AND `gcontact`.`network` IN (%s)
-		group by glink.gcid order by gcontact.updated desc,total desc limit %d, %d ",
+		GROUP BY `glink`.`gcid` ORDER BY `gcontact`.`updated` DESC,`total` DESC LIMIT %d, %d",
 		intval($uid),
 		intval($uid),
 		intval($uid),
@@ -1187,14 +1167,15 @@ function suggestion_query($uid, $start = 0, $limit = 80) {
 	if(count($r) && count($r) >= ($limit -1))
 		return $r;
 
-	$r2 = q("SELECT gcontact.* from gcontact
-		INNER JOIN glink on glink.gcid = gcontact.id
-		where glink.uid = 0 and glink.cid = 0 and glink.zcid = 0 and not gcontact.nurl in ( select nurl from contact where uid = %d )
-		and not gcontact.name in ( select name from contact where uid = %d )
-		and not gcontact.id in ( select gcid from gcign where uid = %d )
+	$r2 = q("SELECT gcontact.* FROM gcontact
+		INNER JOIN `glink` ON `glink`.`gcid` = `gcontact`.`id`
+		WHERE `glink`.`uid` = 0 AND `glink`.`cid` = 0 AND `glink`.`zcid` = 0 AND NOT `gcontact`.`nurl` IN (SELECT `nurl` FROM `contact` WHERE `uid` = %d)
+		AND NOT `gcontact`.`name` IN (SELECT `name` FROM `contact` WHERE `uid` = %d)
+		AND NOT `gcontact`.`id` IN (SELECT `gcid` FROM `gcign` WHERE `uid` = %d)
 		AND `gcontact`.`updated` != '0000-00-00 00:00:00'
+		AND `gcontact`.`last_contact` >= `gcontact`.`last_failure`
 		AND `gcontact`.`network` IN (%s)
-		order by rand() limit %d, %d ",
+		ORDER BY rand() LIMIT %d, %d",
 		intval($uid),
 		intval($uid),
 		intval($uid),
@@ -1210,6 +1191,9 @@ function suggestion_query($uid, $start = 0, $limit = 80) {
 	foreach ($r AS $suggestion)
 		$list[$suggestion["nurl"]] = $suggestion;
 
+	while (sizeof($list) > ($limit))
+		array_pop($list);
+
 	return $list;
 }
 
@@ -1219,7 +1203,7 @@ function update_suggestions() {
 
 	$done = array();
 
-	// To-Do: Check if it is really neccessary to poll the own server
+	/// TODO Check if it is really neccessary to poll the own server
 	poco_load(0,0,0,$a->get_baseurl() . '/poco');
 
 	$done[] = $a->get_baseurl() . '/poco';
@@ -1264,18 +1248,30 @@ function poco_discover_federation() {
 			return;
 	}
 
+	// Discover Friendica, Hubzilla and Diaspora servers
 	$serverdata = fetch_url("http://the-federation.info/pods.json");
 
-	if (!$serverdata)
-		return;
+	if ($serverdata) {
+		$servers = json_decode($serverdata);
 
-	$servers = json_decode($serverdata);
+		foreach($servers->pods AS $server)
+			poco_check_server("https://".$server->host);
+	}
 
-	foreach($servers->pods AS $server)
-		poco_check_server("https://".$server->host);
+	// Discover GNU Social Servers
+	if (!get_config('system','ostatus_disabled')) {
+		$serverdata = "http://gstools.org/api/get_open_instances/";
+
+		$result = z_fetch_url($serverdata);
+		if ($result["success"]) {
+			$servers = json_decode($result["body"]);
+
+			foreach($servers->data AS $server)
+				poco_check_server($server->instance_address);
+		}
+	}
 
 	set_config('poco','last_federation_discovery', time());
-
 }
 
 function poco_discover($complete = false) {
@@ -1454,5 +1450,215 @@ function poco_discover_server($data, $default_generation = 0) {
 		}
 	}
 	return $success;
+}
+
+/**
+ * @brief Fetch the gcontact id, add an entry if not existed
+ *
+ * @param arr $contact contact array
+ * @return bool|int Returns false if not found, integer if contact was found
+ */
+function get_gcontact_id($contact) {
+
+	$gcontact_id = 0;
+
+	if ($contact["network"] == NETWORK_STATUSNET)
+		$contact["network"] = NETWORK_OSTATUS;
+
+	$r = q("SELECT `id` FROM `gcontact` WHERE `nurl` = '%s' ORDER BY `id` LIMIT 2",
+		dbesc(normalise_link($contact["url"])));
+
+	if ($r)
+		$gcontact_id = $r[0]["id"];
+	else {
+		q("INSERT INTO `gcontact` (`name`, `nick`, `addr` , `network`, `url`, `nurl`, `photo`, `created`, `updated`, `location`, `about`, `generation`)
+			VALUES ('%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', %d)",
+			dbesc($contact["name"]),
+			dbesc($contact["nick"]),
+			dbesc($contact["addr"]),
+			dbesc($contact["network"]),
+			dbesc($contact["url"]),
+			dbesc(normalise_link($contact["url"])),
+			dbesc($contact["photo"]),
+			dbesc(datetime_convert()),
+			dbesc(datetime_convert()),
+			dbesc($contact["location"]),
+			dbesc($contact["about"]),
+			intval($contact["generation"])
+		);
+
+		$r = q("SELECT `id` FROM `gcontact` WHERE `nurl` = '%s' ORDER BY `id` LIMIT 2",
+			dbesc(normalise_link($contact["url"])));
+
+		if ($r)
+			$gcontact_id = $r[0]["id"];
+	}
+
+	if ((count($r) > 1) AND ($gcontact_id > 0) AND ($contact["url"] != ""))
+	 q("DELETE FROM `gcontact` WHERE `nurl` = '%s' AND `id` != %d",
+		dbesc(normalise_link($contact["url"])),
+		intval($gcontact_id));
+
+	return $gcontact_id;
+}
+
+/**
+ * @brief Updates the gcontact table from a given array
+ *
+ * @param arr $contact contact array
+ * @return bool|int Returns false if not found, integer if contact was found
+ */
+function update_gcontact($contact) {
+
+	/// @todo update contact table as well
+
+	$gcontact_id = get_gcontact_id($contact);
+
+	if (!$gcontact_id)
+		return false;
+
+	$r = q("SELECT `name`, `nick`, `photo`, `location`, `about`, `addr`, `generation`, `birthday`, `gender`, `keywords`,
+			`hide`, `nsfw`, `network`, `alias`, `notify`, `server_url`, `connect`, `updated`, `url`
+		FROM `gcontact` WHERE `id` = %d LIMIT 1",
+		intval($gcontact_id));
+
+	// Get all field names
+	$fields = array();
+	foreach ($r[0] AS $field => $data)
+		$fields[$field] = $data;
+
+	unset($fields["url"]);
+	unset($fields["updated"]);
+
+	// assign all unassigned fields from the database entry
+	foreach ($fields AS $field => $data)
+		if (!isset($contact[$field]))
+			$contact[$field] = $r[0][$field];
+
+	if ($contact["network"] == NETWORK_STATUSNET)
+		$contact["network"] = NETWORK_OSTATUS;
+
+	if (!isset($contact["updated"]))
+		$contact["updated"] = datetime_convert();
+
+	// Check if any field changed
+	$update = false;
+	unset($fields["generation"]);
+
+	foreach ($fields AS $field => $data)
+		if ($contact[$field] != $r[0][$field])
+			$update = true;
+
+	if ($contact["generation"] < $r[0]["generation"])
+		$update = true;
+
+	if ($update) {
+		q("UPDATE `gcontact` SET `photo` = '%s', `name` = '%s', `nick` = '%s', `addr` = '%s', `network` = '%s',
+					`birthday` = '%s', `gender` = '%s', `keywords` = %d, `hide` = %d, `nsfw` = %d,
+					`alias` = '%s', `notify` = '%s', `url` = '%s',
+					`location` = '%s', `about` = '%s', `generation` = %d, `updated` = '%s',
+					`server_url` = '%s', `connect` = '%s'
+				WHERE `nurl` = '%s' AND (`generation` = 0 OR `generation` >= %d)",
+			dbesc($contact["photo"]), dbesc($contact["name"]), dbesc($contact["nick"]),
+			dbesc($contact["addr"]), dbesc($contact["network"]), dbesc($contact["birthday"]),
+			dbesc($contact["gender"]), dbesc($contact["keywords"]), intval($contact["hide"]),
+			intval($contact["nsfw"]), dbesc($contact["alias"]), dbesc($contact["notify"]),
+			dbesc($contact["url"]), dbesc($contact["location"]), dbesc($contact["about"]),
+			intval($contact["generation"]), dbesc($contact["updated"]),
+			dbesc($contact["server_url"]), dbesc($contact["connect"]),
+			dbesc(normalise_link($contact["url"])), intval($contact["generation"]));
+	}
+
+	return $gcontact_id;
+}
+
+/**
+ * @brief Updates the gcontact entry from probe
+ *
+ * @param str $url profile link
+ */
+function update_gcontact_from_probe($url) {
+	$data = probe_url($url);
+
+	if ($data["network"] != NETWORK_PHANTOM)
+		update_gcontact($data);
+}
+
+/**
+ * @brief Fetches users of given GNU Social server
+ *
+ * If the "Statistics" plugin is enabled (See http://gstools.org/ for details) we query user data with this.
+ *
+ * @param str $server Server address
+ */
+function gs_fetch_users($server) {
+
+	logger("Fetching users from GNU Social server ".$server, LOGGER_DEBUG);
+
+	$a = get_app();
+
+	$url = $server."/main/statistics";
+
+	$result = z_fetch_url($url);
+	if (!$result["success"])
+		return false;
+
+	$statistics = json_decode($result["body"]);
+
+	if (is_object($statistics->config)) {
+		if ($statistics->config->instance_with_ssl)
+			$server = "https://";
+		else
+			$server = "http://";
+
+		$server .= $statistics->config->instance_address;
+
+		$hostname = $statistics->config->instance_address;
+	} else {
+		if ($statistics->instance_with_ssl)
+			$server = "https://";
+		else
+			$server = "http://";
+
+		$server .= $statistics->instance_address;
+
+		$hostname = $statistics->instance_address;
+	}
+
+	if (is_object($statistics->users))
+		foreach ($statistics->users AS $nick => $user) {
+			$profile_url = $server."/".$user->nickname;
+
+			$contact = array("url" => $profile_url,
+					"name" => $user->fullname,
+					"addr" => $user->nickname."@".$hostname,
+					"nick" => $user->nickname,
+					"about" => $user->bio,
+					"network" => NETWORK_OSTATUS,
+					"photo" => $a->get_baseurl()."/images/person-175.jpg");
+			get_gcontact_id($contact);
+		}
+}
+
+/**
+ * @brief Asking GNU Social server on a regular base for their user data
+ *
+ */
+function gs_discover() {
+
+	$requery_days = intval(get_config("system", "poco_requery_days"));
+
+	$last_update = date("c", time() - (60 * 60 * 24 * $requery_days));
+
+	$r = q("SELECT `nurl`, `url` FROM `gserver` WHERE `last_contact` >= `last_failure` AND `network` = '%s' AND `last_poco_query` < '%s' ORDER BY RAND() LIMIT 5",
+		dbesc(NETWORK_OSTATUS), dbesc($last_update));
+
+	if (!$r)
+		return;
+
+	foreach ($r AS $server) {
+		gs_fetch_users($server["url"]);
+		q("UPDATE `gserver` SET `last_poco_query` = '%s' WHERE `nurl` = '%s'", dbesc(datetime_convert()), dbesc($server["nurl"]));
+	}
 }
 ?>

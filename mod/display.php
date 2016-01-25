@@ -89,15 +89,13 @@ function display_init(&$a) {
 }
 
 function display_fetchauthor($a, $item) {
-	require_once("mod/proxy.php");
-	require_once("include/bbcode.php");
 
 	$profiledata = array();
 	$profiledata["uid"] = -1;
 	$profiledata["nickname"] = $item["author-name"];
 	$profiledata["name"] = $item["author-name"];
 	$profiledata["picdate"] = "";
-	$profiledata["photo"] = proxy_url($item["author-avatar"], false, PROXY_SIZE_SMALL);
+	$profiledata["photo"] = $item["author-avatar"];
 	$profiledata["url"] = $item["author-link"];
 	$profiledata["network"] = $item["network"];
 
@@ -156,42 +154,53 @@ function display_fetchauthor($a, $item) {
 		$profiledata["about"] = "";
 	}
 
+	// Don't show details from Diaspora contacts if you don't follow the contact
+	$showdetails = ($profiledata["network"] != NETWORK_DIASPORA);
+
 	// Fetching further contact data from the contact table
-	$r = q("SELECT `uid`, `network`, `photo`, `nick`, `location`, `about` FROM `contact` WHERE `nurl` = '%s' AND `uid` = %d AND `network` = '%s'",
-		dbesc(normalise_link($profiledata["url"])), intval($item["uid"]), dbesc($item["network"]));
-
+	$r = q("SELECT `uid`, `network`, `name`, `photo`, `nick`, `addr`, `location`, `about`, `gender`, `keywords`
+		FROM `contact` WHERE `nurl` = '%s' AND `uid` = %d AND `network` = '%s' AND `rel` IN (%d, %d)",
+		dbesc(normalise_link($profiledata["url"])), intval(local_user()), dbesc($item["network"]),
+		intval(CONTACT_IS_SHARING), intval(CONTACT_IS_FRIEND));
 	if (!count($r))
-		$r = q("SELECT `uid`, `network`, `photo`, `nick`, `location`, `about` FROM `contact` WHERE `nurl` = '%s' AND `uid` = %d",
-			dbesc(normalise_link($profiledata["url"])), intval($item["uid"]));
-
-	if (!count($r))
-		$r = q("SELECT `uid`, `network`, `photo`, `nick`, `location`, `about` FROM `contact` WHERE `nurl` = '%s' AND `uid` = 0",
-			dbesc(normalise_link($profiledata["url"])));
+		$r = q("SELECT `uid`, `network`, `name`, `photo`, `nick`, `addr`, `location`, `about`, `gender`, `keywords`
+			FROM `contact` WHERE `nurl` = '%s' AND `uid` = %d AND `rel` IN (%d, %d)",
+			dbesc(normalise_link($profiledata["url"])), intval(local_user()),
+			intval(CONTACT_IS_SHARING), intval(CONTACT_IS_FRIEND));
 
 	if (count($r)) {
-		if ((($r[0]["uid"] != local_user()) OR !local_user()) AND ($profiledata["network"] == NETWORK_DIASPORA)) {
-			$r[0]["location"] = "";
-			$r[0]["about"] = "";
-		}
+		$profiledata["name"] = $r[0]["name"];
+		$profiledata["photo"] = $r[0]["photo"];
+		$profiledata["nickname"] = $r[0]["nick"];
+		$profiledata["addr"] = $r[0]["addr"];
+		$profiledata["keywords"] = $r[0]["keywords"];
+		$profiledata["network"] = $r[0]["network"];
 
-		$profiledata["photo"] = proxy_url($r[0]["photo"], false, PROXY_SIZE_SMALL);
-		$profiledata["address"] = bbcode($r[0]["location"]);
-		$profiledata["about"] = bbcode($r[0]["about"]);
-		if ($r[0]["nick"] != "")
-			$profiledata["nickname"] = $r[0]["nick"];
+		if (local_user() OR $showdetails) {
+			$showdetails = true;
+			$profiledata["address"] = $r[0]["location"];
+			$profiledata["about"] = $r[0]["about"];
+			$profiledata["gender"] = $r[0]["gender"];
+		}
 	}
 
-	// Fetching profile data from unique contacts
-	$r = q("SELECT `avatar`, `nick`, `location`, `about` FROM `unique_contacts` WHERE `url` = '%s'", dbesc(normalise_link($profiledata["url"])));
-	if (count($r)) {
-		if ($profiledata["photo"] == "")
-			$profiledata["photo"] = proxy_url($r[0]["avatar"], false, PROXY_SIZE_SMALL);
-		if (($profiledata["address"] == "") AND ($profiledata["network"] != NETWORK_DIASPORA))
-			$profiledata["address"] = bbcode($r[0]["location"]);
-		if (($profiledata["about"] == "") AND ($profiledata["network"] != NETWORK_DIASPORA))
-			$profiledata["about"] = bbcode($r[0]["about"]);
-		if (($profiledata["nickname"] == "") AND ($r[0]["nick"] != ""))
+	// Fetching profile data from global contacts
+	if ($profiledata["network"] != NETWORK_FEED) {
+		$r = q("SELECT `name`, `photo`, `nick`, `addr`, `location`, `about`, `gender`, `keywords`, `network` FROM `gcontact` WHERE `nurl` = '%s'", dbesc(normalise_link($profiledata["url"])));
+		if (count($r)) {
+			$profiledata["name"] = $r[0]["name"];
+			$profiledata["photo"] = $r[0]["photo"];
 			$profiledata["nickname"] = $r[0]["nick"];
+			$profiledata["addr"] = $r[0]["addr"];
+			$profiledata["keywords"] = $r[0]["keywords"];
+			$profiledata["network"] = $r[0]["network"];
+
+			if ($showdetails) {
+				$profiledata["address"] = $r[0]["location"];
+				$profiledata["about"] = $r[0]["about"];
+				$profiledata["gender"] = $r[0]["gender"];
+			}
+		}
 	}
 
 	if (local_user()) {
@@ -212,7 +221,6 @@ function display_content(&$a, $update = 0) {
 		return;
 	}
 
-	require_once("include/bbcode.php");
 	require_once('include/security.php');
 	require_once('include/conversation.php');
 	require_once('include/acl_selectors.php');
@@ -332,6 +340,10 @@ function display_content(&$a, $update = 0) {
 		return;
 	}
 
+	// Why do we need this on the display page? We don't have the possibility to write new content here.
+	// Ad editing of posts work without this as well.
+	// We should remove this completely for the 3.5.1 release.
+	/*
 	if ($is_owner) {
 		$x = array(
 			'is_owner' => true,
@@ -347,6 +359,7 @@ function display_content(&$a, $update = 0) {
 		);
 		$o .= status_editor($a,$x,0,true);
 	}
+	*/
 
 	$sql_extra = item_permissions_sql($a->profile['uid'],$remote_contact,$groups);
 

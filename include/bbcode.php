@@ -3,6 +3,7 @@ require_once("include/oembed.php");
 require_once('include/event.php');
 require_once('include/map.php');
 require_once('mod/proxy.php');
+require_once('include/Contact.php');
 
 function bb_PictureCacheExt($matches) {
 	if (strpos($matches[3], "data:image/") === 0)
@@ -99,10 +100,19 @@ function bb_attachment($Text, $simplehtml = false, $tryoembed = true) {
 				$image = "";
 			}
 
-			if ($simplehtml == 7)
-				$text = sprintf('<a href="%s" title="%s" class="attachment thumbnail" rel="nofollow external">%s</a>',
-						$url, $title, $title);
-			elseif (($simplehtml != 4) AND ($simplehtml != 0))
+			if ($simplehtml == 7) {
+				$title2 = $title;
+
+				$test1 = trim(html_entity_decode($match[1],ENT_QUOTES,'UTF-8'));
+				$test2 = trim(html_entity_decode($title,ENT_QUOTES,'UTF-8'));
+
+				// If the link description is similar to the text above then don't add the link description
+				if (($title != "") AND ((strpos($test1,$test2) !== false) OR
+					(similar_text($test1,$test2) / strlen($title)) > 0.9))
+					$title2 = $url;
+				$text = sprintf('<a href="%s" title="%s" class="attachment thumbnail" rel="nofollow external">%s</a><br />',
+						$url, $title, $title2);
+			} elseif (($simplehtml != 4) AND ($simplehtml != 0))
 				$text = sprintf('<a href="%s" target="_blank">%s</a><br>', $url, $title);
 			else {
 				$text = sprintf('<span class="type-%s">', $type);
@@ -292,14 +302,12 @@ function bb_onelinecode_cb($match) {
 }
 
 function tryoembed($match){
-	//$url = ((count($match)==2)?$match[1]:$match[2]);
 	$url = $match[1];
 
 	// Always embed the SSL version
 	$url = str_replace(array("http://www.youtube.com/", "http://player.vimeo.com/"),
 				array("https://www.youtube.com/", "https://player.vimeo.com/"), $url);
 
-	//logger("tryoembed: $url");
 
 	$o = oembed_fetch_url($url);
 
@@ -309,7 +317,7 @@ function tryoembed($match){
 	if ($o->type=="error") return $match[0];
 
 	$html = oembed_format_object($o);
-	return $html; //oembed_iframe($html,$o->width,$o->height);
+	return $html;
 
 }
 
@@ -534,8 +542,23 @@ function bb_ShareAttributes($share, $simplehtml) {
 		$reldate = (($posted) ? " " . relative_date($posted) : '');
 	}
 
-	$userid = GetProfileUsername($profile,$author, false);
-	$userid_compact = GetProfileUsername($profile,$author, true);
+	$data = get_contact_details_by_url($profile);
+
+	if (isset($data["name"]) AND isset($data["addr"]))
+	        $userid_compact = $data["name"]." (".$data["addr"].")";
+	else
+		$userid_compact = GetProfileUsername($profile,$author, true);
+
+	if (isset($data["addr"]))
+		$userid = $data["addr"];
+	else
+		$userid = GetProfileUsername($profile,$author, false);
+
+	if (isset($data["name"]))
+		$author = $data["name"];
+
+	if (isset($data["photo"]))
+		$avatar = $data["photo"];
 
 	$preshare = trim($share[1]);
 
@@ -950,12 +973,14 @@ function bbcode($Text,$preserve_nl = false, $tryoembed = true, $simplehtml = fal
 	$Text = preg_replace_callback("&\[url=/posts/([^\[\]]*)\](.*)\[\/url\]&Usi", 'bb_DiasporaLinks', $Text);
 
 	// if the HTML is used to generate plain text, then don't do this search, but replace all URL of that kind to text
-	if (!$forplaintext)
-		$Text = preg_replace("/([^\]\='".'"'."]|^)(https?\:\/\/[a-zA-Z0-9\:\/\-\?\&\;\.\=\_\~\#\%\$\!\+\,]+)/ism", '$1<a href="$2" target="_blank">$2</a>', $Text);
-	else {
-		$Text = preg_replace("(\[url\]([$URLSearchString]*)\[\/url\])ism"," $1 ",$Text);
-		$Text = preg_replace_callback("&\[url=([^\[\]]*)\]\[img\](.*)\[\/img\]\[\/url\]&Usi", 'bb_RemovePictureLinks', $Text);
-	}
+//	if ($simplehtml != 7) {
+		if (!$forplaintext)
+			$Text = preg_replace("/([^\]\='".'"'."]|^)(https?\:\/\/[a-zA-Z0-9\:\/\-\?\&\;\.\=\_\~\#\%\$\!\+\,]+)/ism", '$1<a href="$2" target="_blank">$2</a>', $Text);
+		else {
+			$Text = preg_replace("(\[url\]([$URLSearchString]*)\[\/url\])ism"," $1 ",$Text);
+			$Text = preg_replace_callback("&\[url=([^\[\]]*)\]\[img\](.*)\[\/img\]\[\/url\]&Usi", 'bb_RemovePictureLinks', $Text);
+		}
+//	}
 
 	if ($tryoembed)
 		$Text = preg_replace_callback("/\[url\]([$URLSearchString]*)\[\/url\]/ism",'tryoembed',$Text);

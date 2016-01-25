@@ -86,10 +86,9 @@ function z_fetch_url($url,$binary = false, &$redirects = 0, $opts=array()) {
 	if(x($opts,'nobody')){
 		@curl_setopt($ch, CURLOPT_NOBODY, $opts['nobody']);
 	}
-	if(intval($timeout)) {
-		@curl_setopt($ch, CURLOPT_TIMEOUT, $timeout);
-	}
-	else {
+	if(x($opts,'timeout')){
+		@curl_setopt($ch, CURLOPT_TIMEOUT, $opts['timeout']);
+	} else {
 		$curl_time = intval(get_config('system','curl_timeout'));
 		@curl_setopt($ch, CURLOPT_TIMEOUT, (($curl_time !== false) ? $curl_time : 60));
 	}
@@ -596,7 +595,7 @@ function lrdd($uri, $debug = false) {
 	$lines = explode("\n",$headers);
 	if(count($lines)) {
 		foreach($lines as $line) {
-			// TODO alter the following regex to support multiple relations (space separated)
+			/// @TODO Alter the following regex to support multiple relations (space separated)
 			if((stristr($line,'link:')) && preg_match('/<([^>].*)>.*rel\=[\'\"]lrdd[\'\"]/',$line,$matches)) {
 				$pagelink = $matches[1];
 				break;
@@ -1254,6 +1253,9 @@ function original_url($url, $depth=1, $fetchbody = false) {
 	curl_close($ch);
 
 	$a->save_timestamp($stamp1, "network");
+
+	if ($http_code == 0)
+		return($url);
 
 	if ((($curl_info['http_code'] == "301") OR ($curl_info['http_code'] == "302"))
 		AND (($curl_info['redirect_url'] != "") OR ($curl_info['location'] != ""))) {

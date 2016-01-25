@@ -26,16 +26,22 @@ function poller_run(&$argv, &$argc){
 		unset($db_host, $db_user, $db_pass, $db_data);
 	};
 
-	if(function_exists('sys_getloadavg')) {
+	$load = current_load();
+	if($load) {
 		$maxsysload = intval(get_config('system','maxloadavg'));
 		if($maxsysload < 1)
 			$maxsysload = 50;
 
-		$load = sys_getloadavg();
-		if(intval($load[0]) > $maxsysload) {
-			logger('system: load ' . $load[0] . ' too high. poller deferred to next scheduled run.');
+		if(intval($load) > $maxsysload) {
+			logger('system: load ' . $load . ' too high. poller deferred to next scheduled run.');
 			return;
 		}
+	}
+
+	// Checking the number of workers
+	if (poller_too_much_workers(1)) {
+		poller_kill_stale_workers();
+		return;
 	}
 
 	if(($argc <= 1) OR ($argv[1] != "no_cron")) {
@@ -46,27 +52,22 @@ function poller_run(&$argv, &$argc){
 		proc_run("php","include/cronhooks.php");
 
 		// Cleaning dead processes
-		$r = q("SELECT DISTINCT(`pid`) FROM `workerqueue` WHERE `executed` != '0000-00-00 00:00:00'");
-		foreach($r AS $pid)
-			if (!posix_kill($pid["pid"], 0))
-				q("UPDATE `workerqueue` SET `executed` = '0000-00-00 00:00:00', `pid` = 0 WHERE `pid` = %d",
-					intval($pid["pid"]));
-			else {
-				// To-Do: Kill long running processes
-				// But: Update processes (like the database update) mustn't be killed
-			}
-
+		poller_kill_stale_workers();
 	} else
-		// Sleep two seconds before checking for running processes to avoid having too many workers
+		// Sleep four seconds before checking for running processes again to avoid having too many workers
 		sleep(4);
 
 	// Checking number of workers
-	if (poller_too_much_workers())
+	if (poller_too_much_workers(2))
 		return;
 
 	$starttime = time();
 
 	while ($r = q("SELECT * FROM `workerqueue` WHERE `executed` = '0000-00-00 00:00:00' ORDER BY `created` LIMIT 1")) {
+
+		// Count active workers and compare them with a maximum value that depends on the load
+		if (poller_too_much_workers(3))
+			return;
 
 		q("UPDATE `workerqueue` SET `executed` = '%s', `pid` = %d WHERE `id` = %d AND `executed` = '0000-00-00 00:00:00'",
 			dbesc(datetime_convert()),
@@ -100,10 +101,10 @@ function poller_run(&$argv, &$argc){
 		$funcname=str_replace(".php", "", basename($argv[0]))."_run";
 
 		if (function_exists($funcname)) {
-			logger("Process ".getmypid().": ".$funcname." ".$r[0]["parameter"]);
+			logger("Process ".getmypid()." - ID ".$r[0]["id"].": ".$funcname." ".$r[0]["parameter"]);
 			$funcname($argv, $argc);
 
-			logger("Process ".getmypid().": ".$funcname." - done");
+			logger("Process ".getmypid()." - ID ".$r[0]["id"].": ".$funcname." - done");
 
 			q("DELETE FROM `workerqueue` WHERE `id` = %d", intval($r[0]["id"]));
 		} else
@@ -112,15 +113,37 @@ function poller_run(&$argv, &$argc){
 		// Quit the poller once every hour
 		if (time() > ($starttime + 3600))
 			return;
-
-		// Count active workers and compare them with a maximum value that depends on the load
-		if (poller_too_much_workers())
-			return;
 	}
 
 }
 
-function poller_too_much_workers() {
+/**
+ * @brief fix the queue entry if the worker process died
+ *
+ */
+function poller_kill_stale_workers() {
+	$r = q("SELECT `pid`, `executed` FROM `workerqueue` WHERE `executed` != '0000-00-00 00:00:00'");
+	foreach($r AS $pid)
+		if (!posix_kill($pid["pid"], 0))
+			q("UPDATE `workerqueue` SET `executed` = '0000-00-00 00:00:00', `pid` = 0 WHERE `pid` = %d",
+				intval($pid["pid"]));
+		else {
+			// Kill long running processes
+			$duration = (time() - strtotime($pid["executed"])) / 60;
+			if ($duration > 180) {
+				logger("Worker process ".$pid["pid"]." took more than 3 hours. It will be killed now.");
+				posix_kill($pid["pid"], SIGTERM);
+
+				// Question: If a process is stale: Should we remove it or should we reschedule it?
+				// By now we rescheduling it. It's maybe not the wisest decision?
+				q("UPDATE `workerqueue` SET `executed` = '0000-00-00 00:00:00', `pid` = 0 WHERE `pid` = %d",
+					intval($pid["pid"]));
+			} else
+				logger("Worker process ".$pid["pid"]." now runs for ".round($duration)." minutes. That's okay.", LOGGER_DEBUG);
+		}
+}
+
+function poller_too_much_workers($stage) {
 
 	$queues = get_config("system", "worker_queues");
 
@@ -130,9 +153,8 @@ function poller_too_much_workers() {
 	$active = poller_active_workers();
 
 	// Decrease the number of workers at higher load
-	if(function_exists('sys_getloadavg')) {
-		$load = max(sys_getloadavg());
-
+	$load = current_load();
+	if($load) {
 		$maxsysload = intval(get_config('system','maxloadavg'));
 		if($maxsysload < 1)
 			$maxsysload = 50;
@@ -144,7 +166,7 @@ function poller_too_much_workers() {
 		$slope = $maxworkers / pow($maxsysload, $exponent);
 		$queues = ceil($slope * pow(max(0, $maxsysload - $load), $exponent));
 
-		logger("Current load: ".$load." - maximum: ".$maxsysload." - current queues: ".$active." - maximum: ".$queues, LOGGER_DEBUG);
+		logger("Current load stage ".$stage.": ".$load." - maximum: ".$maxsysload." - current queues: ".$active." - maximum: ".$queues, LOGGER_DEBUG);
 
 	}
 

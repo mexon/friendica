@@ -792,15 +792,19 @@ function get_photo_info($url) {
 
 		$filesize = strlen($img_str);
 
-		$tempfile = tempnam(get_temppath(), "cache");
+		if (function_exists("getimagesizefromstring"))
+			$data = getimagesizefromstring($img_str);
+		else {
+			$tempfile = tempnam(get_temppath(), "cache");
 
-		$a = get_app();
-		$stamp1 = microtime(true);
-		file_put_contents($tempfile, $img_str);
-		$a->save_timestamp($stamp1, "file");
+			$a = get_app();
+			$stamp1 = microtime(true);
+			file_put_contents($tempfile, $img_str);
+			$a->save_timestamp($stamp1, "file");
 
-		$data = getimagesize($tempfile);
-		unlink($tempfile);
+			$data = getimagesize($tempfile);
+			unlink($tempfile);
+		}
 
 		if ($data)
 			$data["size"] = $filesize;
@@ -873,9 +877,9 @@ function store_photo($a, $uid, $imagedata = "", $url = "") {
 
 	$page_owner_nick  = $r[0]['nickname'];
 
-//	To-Do:
-//	$default_cid      = $r[0]['id'];
-//	$community_page   = (($r[0]['page-flags'] == PAGE_COMMUNITY) ? true : false);
+	/// @TODO
+	/// $default_cid      = $r[0]['id'];
+	/// $community_page   = (($r[0]['page-flags'] == PAGE_COMMUNITY) ? true : false);
 
 	if ((strlen($imagedata) == 0) AND ($url == "")) {
 		logger("No image data and no url provided", LOGGER_DEBUG);

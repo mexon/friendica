@@ -62,7 +62,6 @@ function update_fail($update_id, $error_message){
 	*/
 	//try the logger
 	logger("CRITICAL: Database structure update failed: ".$retval);
-	break;
 }
 
 
@@ -143,24 +142,36 @@ function update_structure($verbose, $action, $tables=null, $definition=null) {
 	if (is_null($definition))
 		$definition = db_definition();
 
+
 	// Compare it
 	foreach ($definition AS $name => $structure) {
+		$is_new_table = False;
 		$sql3="";
 		if (!isset($database[$name])) {
-			$r = db_create_table($name, $structure["fields"], $verbose, $action);
-                        if(false === $r)
+			$r = db_create_table($name, $structure["fields"], $verbose, $action, $structure['indexes']);
+			if(false === $r) {
 				$errors .=  t('Errors encountered creating database tables.').$name.EOL;
+			}
+			$is_new_table = True;
 		} else {
-			// Drop the index if it isn't present in the definition and index name doesn't start with "local_"
-			foreach ($database[$name]["indexes"] AS $indexname => $fieldnames)
-				if (!isset($structure["indexes"][$indexname]) && substr($indexname, 0, 6) != 'local_') {
+			// Drop the index if it isn't present in the definition
+			// or the definition differ from current status
+			// and index name doesn't start with "local_"
+			foreach ($database[$name]["indexes"] AS $indexname => $fieldnames) {
+				$current_index_definition = implode(",",$fieldnames);
+				if (isset($structure["indexes"][$indexname])) {
+					$new_index_definition = implode(",",$structure["indexes"][$indexname]);
+				} else {
+					$new_index_definition = "__NOT_SET__";
+				}
+				if ($current_index_definition != $new_index_definition && substr($indexname, 0, 6) != 'local_') {
 					$sql2=db_drop_index($indexname);
 					if ($sql3 == "")
 						$sql3 = "ALTER TABLE `".$name."` ".$sql2;
 					else
 						$sql3 .= ", ".$sql2;
 				}
-
+			}
 			// Compare the field structure field by field
 			foreach ($structure["fields"] AS $fieldname => $parameters) {
 				if (!isset($database[$name]["fields"][$fieldname])) {
@@ -185,19 +196,28 @@ function update_structure($verbose, $action, $tables=null, $definition=null) {
 			}
 		}
 
-		// Create the index
-		foreach ($structure["indexes"] AS $indexname => $fieldnames) {
-			if (!isset($database[$name]["indexes"][$indexname])) {
-				$sql2=db_create_index($indexname, $fieldnames);
-				if ($sql2 != "") {
-					if ($sql3 == "")
-						$sql3 = "ALTER TABLE `".$name."` ".$sql2;
-					else
-						$sql3 .= ", ".$sql2;
+		// Create the index if the index don't exists in database
+		// or the definition differ from the current status.
+		// Don't create keys if table is new
+		if (!$is_new_table) {
+			foreach ($structure["indexes"] AS $indexname => $fieldnames) {
+				if (isset($database[$name]["indexes"][$indexname])) {
+					$current_index_definition = implode(",",$database[$name]["indexes"][$indexname]);
+				} else {
+					$current_index_definition = "__NOT_SET__";
+				}
+				$new_index_definition = implode(",",$fieldnames);
+				if ($current_index_definition != $new_index_definition) {
+					$sql2=db_create_index($indexname, $fieldnames);
+					if ($sql2 != "") {
+						if ($sql3 == "")
+							$sql3 = "ALTER TABLE `".$name."` ".$sql2;
+						else
+							$sql3 .= ", ".$sql2;
+					}
 				}
 			}
 		}
-
 		if ($sql3 != "") {
 			$sql3 .= ";";
 
@@ -231,8 +251,8 @@ function db_field_command($parameters, $create = true) {
 	if ($parameters["extra"] != "")
 		$fieldstruct .= " ".$parameters["extra"];
 
-	if (($parameters["primary"] != "") AND $create)
-		$fieldstruct .= " PRIMARY KEY";
+	/*if (($parameters["primary"] != "") AND $create)
+		$fieldstruct .= " PRIMARY KEY";*/
 
 	return($fieldstruct);
 }
@@ -243,13 +263,17 @@ function db_create_table($name, $fields, $verbose, $action, $indexes=null) {
 	$r = true;
 
 	$sql = "";
+
 	$sql_rows = array();
+	$primary_keys = array();
 	foreach($fields AS $fieldname => $field) {
 		$sql_rows[] = "`".dbesc($fieldname)."` ".db_field_command($field);
+		if (x($field,'primary') and $field['primary']!=''){
+			$primary_keys[] = $fieldname;
+		}
 	}
 
 	if (!is_null($indexes)) {
-
 		foreach ($indexes AS $indexname => $fieldnames) {
 			$sql_index = db_create_index($indexname, $fieldnames, "");
 			if (!is_null($sql_index)) $sql_rows[] = $sql_index;
@@ -259,7 +283,6 @@ function db_create_table($name, $fields, $verbose, $action, $indexes=null) {
 	$sql = implode(",\n\t", $sql_rows);
 
 	$sql = sprintf("CREATE TABLE IF NOT EXISTS `%s` (\n\t", dbesc($name)).$sql."\n) DEFAULT CHARSET=utf8";
-
 	if ($verbose)
 		echo $sql.";\n";
 
@@ -286,8 +309,16 @@ function db_drop_index($indexname) {
 
 function db_create_index($indexname, $fieldnames, $method="ADD") {
 
-	if ($indexname == "PRIMARY")
-		return;
+	$method = strtoupper(trim($method));
+	if ($method!="" && $method!="ADD") {
+		throw new Exception("Invalid parameter 'method' in db_create_index(): '$method'");
+		killme();
+	}
+
+
+	if ($indexname == "PRIMARY") {
+		return sprintf("%s PRIMARY KEY(`%s`)", $method, implode("`,`", $fieldnames));
+	}
 
 	$names = "";
 	foreach ($fieldnames AS $fieldname) {
@@ -300,11 +331,6 @@ function db_create_index($indexname, $fieldnames, $method="ADD") {
 			$names .= "`".dbesc($fieldname)."`";
 	}
 
-	$method = strtoupper(trim($method));
-	if ($method!="" && $method!="ADD") {
-		throw new Exception("Invalid parameter 'method' in db_create_index(): '$method'");
-		killme();
-	}
 
 	$sql = sprintf("%s INDEX `%s` (%s)", $method, dbesc($indexname), $names);
 	return($sql);
@@ -640,8 +666,14 @@ function db_definition() {
 					"about" => array("type" => "text", "not null" => "1"),
 					"keywords" => array("type" => "text", "not null" => "1"),
 					"gender" => array("type" => "varchar(32)", "not null" => "1", "default" => ""),
+					"birthday" => array("type" => "varchar(32)", "not null" => "1", "default" => "0000-00-00"),
 					"community" => array("type" => "tinyint(1)", "not null" => "1", "default" => "0"),
+					"hide" => array("type" => "tinyint(1)", "not null" => "1", "default" => "0"),
+					"nsfw" => array("type" => "tinyint(1)", "not null" => "1", "default" => "0"),
 					"network" => array("type" => "varchar(255)", "not null" => "1", "default" => ""),
+					"addr" => array("type" => "varchar(255)", "not null" => "1", "default" => ""),
+					"notify" => array("type" => "text", "not null" => "1"),
+					"alias" => array("type" => "varchar(255)", "not null" => "1", "default" => ""),
 					"generation" => array("type" => "tinyint(3)", "not null" => "1", "default" => "0"),
 					"server_url" => array("type" => "varchar(255)", "not null" => "1", "default" => ""),
 					),
@@ -768,6 +800,7 @@ function db_definition() {
 					"uri" => array("type" => "varchar(255)", "not null" => "1", "default" => ""),
 					"uid" => array("type" => "int(10) unsigned", "not null" => "1", "default" => "0"),
 					"contact-id" => array("type" => "int(11)", "not null" => "1", "default" => "0"),
+					"gcontact-id" => array("type" => "int(11) unsigned", "not null" => "1", "default" => "0"),
 					"type" => array("type" => "varchar(255)", "not null" => "1", "default" => ""),
 					"wall" => array("type" => "tinyint(1)", "not null" => "1", "default" => "0"),
 					"gravity" => array("type" => "tinyint(1)", "not null" => "1", "default" => "0"),
@@ -844,6 +877,7 @@ function db_definition() {
 					"uid_thrparent" => array("uid","thr-parent"),
 					"uid_parenturi" => array("uid","parent-uri"),
 					"uid_contactid_created" => array("uid","contact-id","created"),
+					"gcontactid_uid_created" => array("gcontact-id","uid","created"),
 					"wall_body" => array("wall","body(6)"),
 					"uid_visible_moderated_created" => array("uid","visible","moderated","created"),
 					"uid_uri" => array("uid","uri"),
@@ -985,6 +1019,30 @@ function db_definition() {
 					"PRIMARY" => array("id"),
 					"master-parent-item" => array("master-parent-item"),
 					"receiver-uid" => array("receiver-uid"),
+					)
+			);
+	$database["oembed"] = array(
+			"fields" => array(
+					"url" => array("type" => "varchar(255)", "not null" => "1", "primary" => "1"),
+					"content" => array("type" => "text", "not null" => "1"),
+					"created" => array("type" => "datetime", "not null" => "1", "default" => "0000-00-00 00:00:00"),
+					),
+			"indexes" => array(
+					"PRIMARY" => array("url"),
+					"created" => array("created"),
+					)
+			);
+	$database["parsed_url"] = array(
+			"fields" => array(
+					"url" => array("type" => "varchar(255)", "not null" => "1", "primary" => "1"),
+					"guessing" => array("type" => "tinyint(1)", "not null" => "1", "default" => "0", "primary" => "1"),
+					"oembed" => array("type" => "tinyint(1)", "not null" => "1", "default" => "0", "primary" => "1"),
+					"content" => array("type" => "text", "not null" => "1"),
+					"created" => array("type" => "datetime", "not null" => "1", "default" => "0000-00-00 00:00:00"),
+					),
+			"indexes" => array(
+					"PRIMARY" => array("url", "guessing", "oembed"),
+					"created" => array("created"),
 					)
 			);
 	$database["pconfig"] = array(
@@ -1260,6 +1318,7 @@ function db_definition() {
 					"iid" => array("type" => "int(10) unsigned", "not null" => "1", "default" => "0", "primary" => "1"),
 					"uid" => array("type" => "int(10) unsigned", "not null" => "1", "default" => "0"),
 					"contact-id" => array("type" => "int(11) unsigned", "not null" => "1", "default" => "0"),
+					"gcontact-id" => array("type" => "int(11) unsigned", "not null" => "1", "default" => "0"),
 					"created" => array("type" => "datetime", "not null" => "1", "default" => "0000-00-00 00:00:00"),
 					"edited" => array("type" => "datetime", "not null" => "1", "default" => "0000-00-00 00:00:00"),
 					"commented" => array("type" => "datetime", "not null" => "1", "default" => "0000-00-00 00:00:00"),
@@ -1289,6 +1348,8 @@ function db_definition() {
 					"uid_network_created" => array("uid","network","created"),
 					"uid_contactid_commented" => array("uid","contact-id","commented"),
 					"uid_contactid_created" => array("uid","contact-id","created"),
+					"uid_gcontactid_commented" => array("uid","gcontact-id","commented"),
+					"uid_gcontactid_created" => array("uid","gcontact-id","created"),
 					"wall_private_received" => array("wall","private","received"),
 					"uid_created" => array("uid","created"),
 					"uid_commented" => array("uid","commented"),
@@ -1305,21 +1366,6 @@ function db_definition() {
 					),
 			"indexes" => array(
 					"PRIMARY" => array("id"),
-					)
-			);
-	$database["unique_contacts"] = array(
-			"fields" => array(
-					"id" => array("type" => "int(11)", "not null" => "1", "extra" => "auto_increment", "primary" => "1"),
-					"url" => array("type" => "varchar(255)", "not null" => "1", "default" => ""),
-					"nick" => array("type" => "varchar(255)", "not null" => "1", "default" => ""),
-					"name" => array("type" => "varchar(255)", "not null" => "1", "default" => ""),
-					"avatar" => array("type" => "varchar(255)", "not null" => "1", "default" => ""),
-					"location" => array("type" => "varchar(255)", "not null" => "1", "default" => ""),
-					"about" => array("type" => "text", "not null" => "1"),
-					),
-			"indexes" => array(
-					"PRIMARY" => array("id"),
-					"url" => array("url"),
 					)
 			);
 	$database["user"] = array(

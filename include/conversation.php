@@ -100,7 +100,7 @@ function localize_item(&$item){
 		$item['body'] = item_redir_and_replace_images($extracted['body'], $extracted['images'], $item['contact-id']);
 
 	$xmlhead="<"."?xml version='1.0' encoding='UTF-8' ?".">";
-	if (activity_match($item['verb'],ACTIVITY_LIKE) 
+	if (activity_match($item['verb'],ACTIVITY_LIKE)
 		|| activity_match($item['verb'],ACTIVITY_DISLIKE)
 		|| activity_match($item['verb'],ACTIVITY_ATTEND)
 		|| activity_match($item['verb'],ACTIVITY_ATTENDNO)
@@ -354,7 +354,7 @@ function count_descendants($item) {
 
 function visible_activity($item) {
 
-	// likes (etc.) can apply to other things besides posts. Check if they are post children, 
+	// likes (etc.) can apply to other things besides posts. Check if they are post children,
 	// in which case we handle them specially
 
 	$hidden_activities = array(ACTIVITY_LIKE, ACTIVITY_DISLIKE, ACTIVITY_ATTEND, ACTIVITY_ATTENDNO, ACTIVITY_ATTENDMAYBE);
@@ -505,7 +505,7 @@ function conversation(&$a, $items, $mode, $update, $preview = false) {
 	$hide_comments_tpl = get_markup_template('hide_comments.tpl');
 
 	$conv_responses = array(
-		'like' => array('title' => t('Likes','title')), 'dislike' => array('title' => t('Dislikes','title')), 
+		'like' => array('title' => t('Likes','title')), 'dislike' => array('title' => t('Dislikes','title')),
 		'attendyes' => array('title' => t('Attending','title')), 'attendno' => array('title' => t('Not attending','title')), 'attendmaybe' => array('title' => t('Might attend','title'))
 	);
 
@@ -811,16 +811,16 @@ function best_link_url($item,&$sparkle,$ssl_state = false) {
 	if((local_user()) && (local_user() == $item['uid'])) {
 		if(isset($a->contacts) && x($a->contacts,$clean_url)) {
 			if($a->contacts[$clean_url]['network'] === NETWORK_DFRN) {
-				$best_url = $a->get_baseurl($ssl_state) . '/redir/' . $a->contacts[$clean_url]['id'];
+				$best_url = 'redir/'.$a->contacts[$clean_url]['id'];
 				$sparkle = true;
 			} else
 				$best_url = $a->contacts[$clean_url]['url'];
 		}
 	} elseif (local_user()) {
-		$r = q("SELECT `id`, `network` FROM `contact` WHERE `network` = '%s' AND `uid` = %d AND `nurl` = '%s'",
+		$r = q("SELECT `id` FROM `contact` WHERE `network` = '%s' AND `uid` = %d AND `nurl` = '%s' LIMIT 1",
 			dbesc(NETWORK_DFRN), intval(local_user()), dbesc(normalise_link($clean_url)));
 		if ($r) {
-			$best_url = $a->get_baseurl($ssl_state).'/redir/'.$r[0]['id'];
+			$best_url = 'redir/'.$r[0]['id'];
 			$sparkle = true;
 		}
 	}
@@ -876,7 +876,7 @@ function item_photo_menu($item){
 		if(local_user() && local_user() == $item['uid'] && link_compare($item['url'],$item['author-link'])) {
 			$cid = $item['contact-id'];
 		} else {
-			$r = q("SELECT `id`, `network` FROM `contact` WHERE `uid` = %d AND `nurl` = '%s' ORDER BY `uid` DESC LIMIT 1",
+			$r = q("SELECT `id`, `network` FROM `contact` WHERE `uid` = %d AND `nurl` = '%s' LIMIT 1",
 				intval(local_user()), dbesc(normalise_link($item['author-link'])));
 			if ($r) {
 				$cid = $r[0]["id"];
@@ -891,7 +891,7 @@ function item_photo_menu($item){
 	if(($cid) && (! $item['self'])) {
 		$poke_link = $a->get_baseurl($ssl_state) . '/poke/?f=&c=' . $cid;
 		$contact_url = $a->get_baseurl($ssl_state) . '/contacts/' . $cid;
-		$posts_link = $a->get_baseurl($ssl_state) . '/network/0?nets=all&cid=' . $cid;
+		$posts_link = $a->get_baseurl($ssl_state) . '/contacts/' . $cid . '/posts';
 
 		$clean_url = normalise_link($item['author-link']);
 
@@ -946,12 +946,11 @@ function item_photo_menu($item){
  * @brief Checks item to see if it is one of the builtin activities (like/dislike, event attendance, consensus items, etc.)
  * Increments the count of each matching activity and adds a link to the author as needed.
  *
- * @param array $a (not used)
  * @param array $item
  * @param array &$conv_responses (already created with builtin activity structure)
  * @return void
  */
-if(! function_exists(builtin_activity_puller)) {
+if(! function_exists('builtin_activity_puller')) {
 function builtin_activity_puller($item, &$conv_responses) {
 	foreach($conv_responses as $mode => $v) {
 		$url = '';
@@ -984,15 +983,15 @@ function builtin_activity_puller($item, &$conv_responses) {
 				$url = z_root(true) . '/redir/' . $item['contact-id'];
 				$sparkle = ' class="sparkle" ';
 			}
-			else 
+			else
 				$url = zrl($url);
-			
+
 			$url = '<a href="'. $url . '"'. $sparkle .'>' . htmlentities($item['author-name']) . '</a>';
 
 			if(! $item['thr-parent'])
 				$item['thr-parent'] = $item['parent-uri'];
 
-			if(! ((isset($conv_responses[$mode][$item['thr-parent'] . '-l'])) 
+			if(! ((isset($conv_responses[$mode][$item['thr-parent'] . '-l']))
 				&& (is_array($conv_responses[$mode][$item['thr-parent'] . '-l']))))
 				$conv_responses[$mode][$item['thr-parent'] . '-l'] = array();
 
@@ -1064,9 +1063,9 @@ function format_like($cnt,$arr,$type,$id) {
 		}
 
 		$likers = $str;
-	
+
 		$spanatts = "class=\"fakelink\" onclick=\"openClose('{$type}list-$id');\"";
-		
+
 		switch($type) {
 			case 'like':
 				$phrase = sprintf( t('<span  %1$s>%2$d people</span> like this'), $spanatts, $cnt);
@@ -1291,6 +1290,15 @@ function conv_sort($arr,$order) {
 
 	$parents = array();
 	$children = array();
+	$newarr = array();
+
+	// This is a preparation for having two different items with the same uri in one thread
+	// This will otherwise lead to an endless loop.
+	foreach($arr as $x)
+		if (!isset($newarr[$x['uri']]))
+			$newarr[$x['uri']] = $x;
+
+	$arr = $newarr;
 
 	foreach($arr as $x)
 		if($x['id'] == $x['parent'])
@@ -1373,7 +1381,7 @@ function get_responses($conv_responses,$response_verbs,$ob,$item) {
 		$ret[$v]['list']  = ((x($conv_responses[$v],$item['uri'])) ? $conv_responses[$v][$item['uri'] . '-l'] : '');
 		if(count($ret[$v]['list']) > MAX_LIKERS) {
 			$ret[$v]['list_part'] = array_slice($ret[$v]['list'], 0, MAX_LIKERS);
-			array_push($ret[$v]['list_part'], '<a href="#" data-toggle="modal" data-target="#' . $v . 'Modal-' 
+			array_push($ret[$v]['list_part'], '<a href="#" data-toggle="modal" data-target="#' . $v . 'Modal-'
 				. (($ob) ? $ob->get_id() : $item['id']) . '"><b>' . t('View all') . '</b></a>');
 		}
 		else {
