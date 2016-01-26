@@ -116,6 +116,7 @@ function z_fetch_url($url,$binary = false, &$redirects = 0, $opts=array()) {
 	// don't let curl abort the entire application
 	// if it throws any errors.
 
+	$mat_time = time();
 	$s = @curl_exec($ch);
 	if (curl_errno($ch) !== CURLE_OK) {
 		logger('fetch_url error fetching '.$url.': '.curl_error($ch), LOGGER_NORMAL);
@@ -190,6 +191,7 @@ function z_fetch_url($url,$binary = false, &$redirects = 0, $opts=array()) {
 
 	$a->save_timestamp($stamp1, "network");
 
+	logger('@@@ z_fetch_url ' . $url . ' time ' . (time() - $mat_time));
 	return($ret);
 
 }}

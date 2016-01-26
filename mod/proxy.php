@@ -245,9 +245,12 @@ function proxy_url($url, $writemode = false, $size = "") {
 	// Only continue if it isn't a local image and the isn't deactivated
 	if (proxy_is_local_image($url)) {
 		$url = str_replace(normalise_link($a->get_baseurl())."/", $a->get_baseurl()."/", $url);
+		logger('@@@ local image ' . $url);
 		return($url);
 	}
 
+	if (get_config("system", "proxy_disabled"))
+		logger('@@@ proxy disabled do not proxy ' . $url);
 	if (get_config("system", "proxy_disabled"))
 		return($url);
 
@@ -285,6 +288,7 @@ function proxy_url($url, $writemode = false, $size = "") {
 
 	// Too long files aren't supported by Apache
 	// Writemode in combination with long files shouldn't be possible
+	logger('@@@ proxy url ' . $url . ' proxypath ' . $proxypath);
 	if ((strlen($proxypath) > 250) AND $writemode)
 		return (hash("md5", $url));
 	elseif (strlen($proxypath) > 250)

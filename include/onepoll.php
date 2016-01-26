@@ -11,6 +11,7 @@ function RemoveReply($subject) {
 }
 
 function onepoll_run(&$argv, &$argc){
+logger('@@@ onepoll_run');
 	global $a, $db;
 
 	if(is_null($a)) {
@@ -62,6 +63,7 @@ function onepoll_run(&$argv, &$argc){
 	}
 
 	$lockpath = get_lockpath();
+	logger('@@@ onepoll: start contact ' . $contact_id . ' lockpath ' . $lockpath);
 	if ($lockpath != '') {
 		$pidfile = new pidfile($lockpath, 'onepoll'.$contact_id);
 		if ($pidfile->is_already_running()) {
@@ -97,6 +99,7 @@ function onepoll_run(&$argv, &$argc){
 		return;
 
 	$contact = $contacts[0];
+	logger('@@@ got contact ' . $contact['id'] . ' ' . $contact['name']);
 
 	// load current friends if possible.
 	if (($contact['poco'] != "") AND ($contact['success_update'] > $contact['failure_update'])) {
@@ -112,6 +115,7 @@ function onepoll_run(&$argv, &$argc){
 	/// @TODO Check why we don't poll the Diaspora feed at the moment (some guid problem in the items?)
 	/// @TODO Check whether this is possible with Redmatrix
 	if ($contact["network"] == NETWORK_DIASPORA) {
+		logger('@@@ network is diaspora');
 		if (poco_do_update($contact["created"], $contact["last-item"], $contact["failure_update"], $contact["success_update"])) {
 			$last_updated = poco_last_updated($contact["url"]);
 			$updated = datetime_convert();
@@ -136,6 +140,7 @@ function onepoll_run(&$argv, &$argc){
 	$xml = false;
 
 	$t = $contact['last-update'];
+	logger('@@@ time of last contact is ' . $t);
 
 	if($contact['subhub']) {
 		$poll_interval = get_config('system','pushpoll_frequency');
@@ -168,6 +173,7 @@ function onepoll_run(&$argv, &$argc){
 
 	// Update the contact entry
 	if(($contact['network'] === NETWORK_OSTATUS) || ($contact['network'] === NETWORK_DIASPORA) || ($contact['network'] === NETWORK_DFRN)) {
+		logger('@@@ Update the contact entry');
 		if (!poco_reachable($contact['url'])) {
 			logger("Skipping probably dead contact ".$contact['url']);
 			return;
@@ -183,6 +189,7 @@ function onepoll_run(&$argv, &$argc){
 	if($contact['network'] === NETWORK_DFRN) {
 
 
+		logger('@@@ network is DFRN');
 		$idtosend = $orig_id = (($contact['dfrn-id']) ? $contact['dfrn-id'] : $contact['issued-id']);
 		if(intval($contact['duplex']) && $contact['dfrn-id'])
 			$idtosend = '0:' . $orig_id;
@@ -306,12 +313,14 @@ function onepoll_run(&$argv, &$argc){
 		$postvars['dfrn_version'] = DFRN_PROTOCOL_VERSION;
 		$postvars['perm'] = 'rw';
 
+		logger('@@@ About to post to URL ' . $contact['poll']);
 		$xml = post_url($contact['poll'],$postvars);
 
 	}
 	elseif(($contact['network'] === NETWORK_OSTATUS)
 		|| ($contact['network'] === NETWORK_DIASPORA)
 		|| ($contact['network'] === NETWORK_FEED) ) {
+		logger('@@@ Network is ostatus or diaspora or feed '. $contact['network']);
 
 		// Upgrading DB fields from an older Friendica version
 		// Will only do this once per notify-enabled OStatus contact
@@ -335,8 +344,11 @@ function onepoll_run(&$argv, &$argc){
 		if($contact['rel'] == CONTACT_IS_FOLLOWER || $contact['blocked'] || $contact['readonly'])
 			return;
 
+		logger('@@@ About to fetch URL for contact ' . $contact['id'] . ' URL ' . $contact['poll']);
+		$mat_time = time();
 		$cookiejar = tempnam(get_temppath(), 'cookiejar-onepoll-');
 		$xml = fetch_url($contact['poll'], false, $redirects, 0, Null, $cookiejar);
+		logger('@@@ Finished fetching URL for contact ' . $contact['id'] . ' URL ' . $contact['poll'] . ' time ' . (time() - $mat_time));
 		unlink($cookiejar);
 	}
 	elseif($contact['network'] === NETWORK_MAIL || $contact['network'] === NETWORK_MAIL2) {
@@ -590,14 +602,17 @@ function onepoll_run(&$argv, &$argc){
 		}
 	}
 	elseif($contact['network'] === NETWORK_FACEBOOK) {
+		logger('@@@ network facebook');
 		// This is picked up by the Facebook plugin on a cron hook.
 		// Ignored here.
 	} elseif($contact['network'] === NETWORK_PUMPIO) {
+		logger('@@@ network pumpio');
 		// This is picked up by the pump.io plugin on a cron hook.
 		// Ignored here.
 	}
 
 	if($xml) {
+		logger('@@@ got some XML for contact ' . $contact_id . ' got ' . strlen($xml) . ' bytes');
 		logger('poller: received xml : ' . $xml, LOGGER_DATA);
 		if(! strstr($xml,'<')) {
 			logger('poller: post_handshake: response from ' . $url . ' did not contain XML.');
@@ -612,11 +627,17 @@ function onepoll_run(&$argv, &$argc){
 
 		logger("Consume feed of contact ".$contact['id']);
 
+		$mat_time = time();
+		logger('@@@ About to consume feed for contact ' . $contact['id']);
 		consume_feed($xml,$importer,$contact,$hub,1,1);
+		logger('@@@ Consumed feed for contact ' . $contact['id'] . ' time ' . (time() - $mat_time));
 
 		// do it twice. Ensures that children of parents which may be later in the stream aren't tossed
 
+		$mat_time = time();
+		logger('@@@ About to consume feed 2 for contact ' . $contact['id']);
 		consume_feed($xml,$importer,$contact,$hub,1,2);
+		logger('@@@ Consumed feed 2 for contact ' . $contact['id'] . ' time ' . (time() - $mat_time));
 
 		$hubmode = 'subscribe';
 		if($contact['network'] === NETWORK_DFRN || $contact['blocked'] || $contact['readonly'])
@@ -676,6 +697,7 @@ function onepoll_run(&$argv, &$argc){
 		);
 	}
 
+	logger('@@@ finished the onepoll function for ' . $contact_id . ' time ' . $pidfile->running_time());
 	return;
 }
 

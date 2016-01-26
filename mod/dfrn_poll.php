@@ -10,6 +10,7 @@ function dfrn_poll_init(&$a) {
 
 
 	$dfrn_id         = ((x($_GET,'dfrn_id'))         ? $_GET['dfrn_id']              : '');
+	logger('@@@ dfrn_poll_init dfrn_id ' . $dfrn_id . ' time ' . time());
 	$type            = ((x($_GET,'type'))            ? $_GET['type']                 : 'data');
 	$last_update     = ((x($_GET,'last_update'))     ? $_GET['last_update']          : '');
 	$destination_url = ((x($_GET,'destination_url')) ? $_GET['destination_url']      : '');
@@ -29,6 +30,7 @@ function dfrn_poll_init(&$a) {
 
 	if(($dfrn_id === '') && (! x($_POST,'dfrn_id'))) {
 		if((get_config('system','block_public')) && (! local_user()) && (! remote_user())) {
+			logger('@@@ exiting 403');
 			http_status_exit(403);
 		}
 
@@ -45,13 +47,16 @@ function dfrn_poll_init(&$a) {
 		}
 
 		logger('dfrn_poll: public feed request from ' . $_SERVER['REMOTE_ADDR'] . ' for ' . $user);
+		logger('@@@ dfrn_poll start time is ' . date('c'));
 		header("Content-type: application/atom+xml");
 		echo get_feed_for($a, '', $user,$last_update);
+		logger('@@@ dfrn_poll end time is ' . date('c'));
 		killme();
 	}
 
 	if(($type === 'profile') && (! strlen($sec))) {
 
+		logger('@@@ type is profile');
 		$sql_extra = '';
 		switch($direction) {
 			case (-1):
@@ -80,7 +85,9 @@ function dfrn_poll_init(&$a) {
 
 		if(count($r)) {
 
+			logger('@@@ old profile about to fetch url ' . $date('c'));
 			$s = fetch_url($r[0]['poll'] . '?dfrn_id=' . $my_id . '&type=profile-check');
+			logger('@@@ old profile fetched url ' . $date('c'));
 
 			logger("dfrn_poll: old profile returns " . $s, LOGGER_DATA);
 
@@ -117,7 +124,9 @@ function dfrn_poll_init(&$a) {
 
 	}
 
+	logger('@@@ random log line 1');
 	if($type === 'profile-check' && $dfrn_version < 2.2 ) {
+		logger('@@@ type is profile-check');
 
 		if((strlen($challenge)) && (strlen($sec))) {
 
@@ -198,12 +207,14 @@ function dfrn_poll_init(&$a) {
 		}
 	}
 
+	logger('@@@ finish dfrn_poll_init');
 }
 
 
 
 function dfrn_poll_post(&$a) {
 
+	logger('@@@ dfrn_poll_post start');
 	$dfrn_id      = ((x($_POST,'dfrn_id'))      ? $_POST['dfrn_id']              : '');
 	$challenge    = ((x($_POST,'challenge'))    ? $_POST['challenge']            : '');
 	$url          = ((x($_POST,'url'))          ? $_POST['url']                  : '');
@@ -373,7 +384,10 @@ function dfrn_poll_post(&$a) {
 		}
 
 		header("Content-type: application/atom+xml");
+		$mat_time = time();
+		logger('@@@ dfrn_poll_post about to get_feed_for ' . date('c'));
 		$o = get_feed_for($a,$dfrn_id, $a->argv[1], $last_update, $direction);
+		logger('@@@ dfrn_poll_post get_feed_for dfrn_id ' . $dfrn_id . ' third ' . $a->argv[1] . ' time ' . (time() - $mat_time) . ' now ' . date('c'));
 		echo $o;
 		killme();
 
