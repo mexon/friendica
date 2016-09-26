@@ -23,7 +23,6 @@ require_once('library/defuse/php-encryption-1.2.1/Crypto.php');
 function get_feed_for(&$a, $dfrn_id, $owner_nick, $last_update, $direction = 0, $forpubsub = false) {
 
 
-	logger('@@@ get_feed_for dfrn_id '. $dfrn_id . ' owner_nick ' . $owner_nick . ' now ' . date('c'));
 	$sitefeed    = ((strlen($owner_nick)) ? false : true); // not yet implemented, need to rewrite huge chunks of following logic
 	$public_feed = (($dfrn_id) ? false : true);
 	$starred     = false;   // not yet implemented, possible security issues
@@ -64,9 +63,7 @@ function get_feed_for(&$a, $dfrn_id, $owner_nick, $last_update, $direction = 0, 
 	$sql_post_table = "";
 	$visibility = "";
 
-	logger('@@@ random log line 2 ' . date('c'));
 	if(! $public_feed) {
-		logger('@@@ not public feed');
 
 		$sql_extra = '';
 		switch($direction) {
@@ -126,7 +123,6 @@ function get_feed_for(&$a, $dfrn_id, $owner_nick, $last_update, $direction = 0, 
 
 	// Include answers to status.net posts in pubsub feeds
 	if($forpubsub) {
-		logger('@@@ forpubsub');
 		$sql_post_table = "INNER JOIN `thread` ON `thread`.`iid` = `item`.`parent`
 				LEFT JOIN `item` AS `thritem` ON `thritem`.`uri`=`item`.`thr-parent` AND `thritem`.`uid`=`item`.`uid`";
 		$visibility = sprintf("AND (`item`.`parent` = `item`.`id`) OR (`item`.`network` = '%s' AND ((`thread`.`network`='%s') OR (`thritem`.`network` = '%s')))",
@@ -157,7 +153,6 @@ function get_feed_for(&$a, $dfrn_id, $owner_nick, $last_update, $direction = 0, 
 	//	AND ( `item`.`edited` > '%s' OR `item`.`changed` > '%s' )
 	//	dbesc($check_date),
 
-	logger('@@@ about to select straight join');
 	$r = q("SELECT STRAIGHT_JOIN `item`.*, `item`.`id` AS `item_id`,
 		`contact`.`name`, `contact`.`network`, `contact`.`photo`, `contact`.`url`,
 		`contact`.`name-date`, `contact`.`uri-date`, `contact`.`avatar-date`,
@@ -195,7 +190,6 @@ function get_feed_for(&$a, $dfrn_id, $owner_nick, $last_update, $direction = 0, 
 	if(isset($category))
 		$alternatelink .= "/category/".$category;
 
-	logger('@@@ about to replace_macros for atom');
 	$atom .= replace_macros($feed_template, array(
 		'$version'      => xmlify(FRIENDICA_VERSION),
 		'$feed_id'      => xmlify($a->get_baseurl() . '/profile/' . $owner_nick),
@@ -215,9 +209,7 @@ function get_feed_for(&$a, $dfrn_id, $owner_nick, $last_update, $direction = 0, 
 		'$community'    => (($owner['page-flags'] == PAGE_COMMUNITY) ? '<dfrn:community>1</dfrn:community>' : '')
 	));
 
-	logger('@@@ about to call hook atom_feed');
 	call_hooks('atom_feed', $atom);
-	logger('@@@ finished call hook atom_feed');
 
 	if(! count($items)) {
 
@@ -227,7 +219,6 @@ function get_feed_for(&$a, $dfrn_id, $owner_nick, $last_update, $direction = 0, 
 		return $atom;
 	}
 
-	logger('@@@ about to iterate over ' . count($items) . ' items');
 	foreach($items as $item) {
 
 		// prevent private email from leaking.
@@ -249,7 +240,6 @@ function get_feed_for(&$a, $dfrn_id, $owner_nick, $last_update, $direction = 0, 
 		$atom .= atom_entry($item,$type,null,$owner,true);
 	}
 
-	logger('@@@ finished iterating over ' . count($items) . ' items');
 	call_hooks('atom_feed_end', $atom);
 
 	$atom .= '</feed>' . "\r\n";
@@ -4496,9 +4486,7 @@ function atom_entry($item,$type,$author,$owner,$comment = false,$cid = 0) {
 	if ($item['title'] != "")
 		$htmlbody = "[b]".$item['title']."[/b]\n\n".$htmlbody;
 
-	$mat_time = time();
 	$htmlbody = bbcode($htmlbody, false, false, 7);
-	logger('@@@ atom_entry item id ' . $item['id'] . ' contact ' . $item['contact-id'] . ' time to bbcode ' . (time() - $mat_time));
 
 	$o .= '<id>' . xmlify($item['uri']) . '</id>' . "\r\n";
 	$o .= '<title>' . xmlify($item['title']) . '</title>' . "\r\n";
