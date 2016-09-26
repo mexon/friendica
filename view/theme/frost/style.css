@@ -113,6 +113,51 @@ blockquote {
 
 .pull-right { float: right }
 
+.btn {
+	outline: none;
+	-moz-box-shadow: inset 0px 1px 0px 0px #ffffff;
+	-webkit-box-shadow: inset 0px 1px 0px 0px #ffffff;
+	box-shadow: inset 0px 1px 0px 0px #ffffff;
+	background-color: #ededed;
+	text-indent: 0;
+	border: 1px solid #dcdcdc;
+	display: inline-block;
+	color: #777777;
+	padding: 5px 10px;
+	text-align: center;
+	border-radius: 8px;
+}
+a.btn {
+	text-decoration: none;
+	color: inherit;
+}
+
+.menu-popup {
+	width: auto;
+	border: 2px solid #444444;
+	background: #FFFFFF;
+	position: absolute;
+	margin: 2px 0 0;
+	display: none;
+	z-index: 10000;
+}
+
+.menu-popup li a {
+	display: block;
+	padding: 2px;
+}
+
+.menu-popup li a:hover {
+	color: #FFFFFF;
+	background: #3465A4;
+	text-decoration: none;
+}
+ul.menu-popup li.divider {
+	height: 1px;
+	margin: 3px 0;
+	overflow: hidden;
+	background-color: #2d2d2d;
+}
 
 
 /* nav */
@@ -1340,6 +1385,17 @@ input#dfrn-url {
 	cursor: pointer;
 }
 
+.wall-item-tools a {
+	border-radius: 4px;
+	padding: 2px;
+	background-position: center;
+	background-size: initial !important;
+}
+
+.wall-item-tools a.active {
+	background-color: rgba(59, 101, 164, 0.5);
+}
+
 .wall-item-share-buttons {
 	margin-left: 10px;
 	margin-right: 10px;
@@ -1952,6 +2008,20 @@ input#dfrn-url {
 	margin-left: 15px;
 }
 
+#contact-edit-status-wrapper {
+	padding: 10px;
+	border: 1px solid #aaa;
+	border-radius: 8px;
+}
+
+#contact-edit-contact-status {
+	font-weight: bold;
+}
+#contact-edit-actions {
+	float: right;
+	display: inline-block;
+}
+
 #contact-edit-wrapper {
 	margin-top: 10px;
 }
@@ -1987,11 +2057,6 @@ input#dfrn-url {
 
 #contact-edit-links li {
 	margin-top: 5px;
-}
-
-#contact-edit-drop-link {
-	float: right;
-	margin-right: 20px;
 }
 
 #contact-edit-nav-end {
@@ -3832,7 +3897,7 @@ aside input[type='text'] {
 .event-maybeattend-icon { background-image: url('images/event-maybeattend-16.png'); }
 .event-dontattend-icon { background-image: url('images/event-dontattend-16.png'); }
 
-.filer-icon:hover {
+.event-icon:hover {
 	opacity: 1.0;
 }
 
@@ -4010,12 +4075,14 @@ aside input[type='text'] {
 
 
 /* autocomplete popup */
-.acpopup {
-	max-height:150px;
+.acpopup, .acpopup-mce {
 	background-color:#ffffff;
 	overflow:auto;
 	z-index:100000;
 	border:1px solid #cccccc;
+}
+.acpopup-mce {
+	max-height:150px;
 }
 .acpopupitem {
 	background-color:#ffffff; padding: 4px;
@@ -4028,6 +4095,65 @@ aside input[type='text'] {
 
 .acpopupitem.selected {
 	color: #FFFFFF; background: #3465A4;
+}
+
+ul.acpopup {
+	list-style: none;
+	float: left;
+	min-width: 160px;
+	padding: 5px 0;
+	margin: 2px 0 0;
+}
+nav .acpopup {
+	width: 290px;
+	margin-left: -35px;
+	max-height: 450px;
+	max-width: 300px;
+	overflow-y: auto;
+	overflow-x: hidden;
+	margin-top: 0px;
+}
+img.acpopup-img {
+	float: left;
+	width: 36px;
+	height: 36px;
+	margin-right: 5px;
+	vertical-align: middle;
+}
+.acpopup-contactname {
+	padding-top: 2px;
+	font-weight: bold;
+	line-height: 1em;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	display: block;
+}
+.acpopup-sub-text {
+	color: #777;
+	font-size: 0.833em;
+	line-height: 1em;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	display: block;
+}
+.textcomplete-item a {
+	color: inherit;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	clear: both;
+	white-space: nowrap;
+	padding: 3px 20px;
+	display: block;
+}
+.textcomplete-item a:hover {
+	text-decoration: none;
+}
+.textcomplete-item.active {
+	color: #FFFFFF; background: #3465A4;
+}
+.active a .acpopup-sub-text {
+	color: #fff;
 }
 
 /* popup notifications */

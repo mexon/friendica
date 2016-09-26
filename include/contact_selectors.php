@@ -7,10 +7,10 @@ function contact_profile_assign($current,$foreign_net) {
 
 	$disabled = (($foreign_net) ? ' disabled="true" ' : '');
 
-	$o .= "<select id=\"contact-profile-selector\" $disabled name=\"profile-assign\" />\r\n";
+	$o .= "<select id=\"contact-profile-selector\" class=\"form-control\" $disabled name=\"profile-assign\" />\r\n";
 
 	$r = q("SELECT `id`, `profile-name` FROM `profile` WHERE `uid` = %d",
-                        intval($_SESSION['uid']));
+			intval($_SESSION['uid']));
 
 	if(count($r)) {
 		foreach($r as $rr) {
@@ -99,8 +99,16 @@ function network_to_name($s, $profile = "") {
 
 	$networkname = str_replace($search,$replace,$s);
 
-	if (($s == NETWORK_DIASPORA) AND ($profile != "") AND diaspora_is_redmatrix($profile))
-		$networkname = t("Redmatrix");
+	if (($s == NETWORK_DIASPORA) AND ($profile != "") AND diaspora::is_redmatrix($profile)) {
+		$networkname = t("Hubzilla/Redmatrix");
+
+		$r = q("SELECT `gserver`.`platform` FROM `gcontact`
+				INNER JOIN `gserver` ON `gserver`.`nurl` = `gcontact`.`server_url`
+				WHERE `gcontact`.`nurl` = '%s' AND `platform` != ''",
+				dbesc(normalise_link($profile)));
+		if ($r)
+			$networkname = $r[0]["platform"];
+	}
 
 	return $networkname;
 }

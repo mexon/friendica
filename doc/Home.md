@@ -28,7 +28,7 @@ Friendica Documentation and Resources
 **Admin Manual**
 
 * [Install](help/Install)
-* [Settings](help/Settings)
+* [Settings & Admin Panel](help/Settings)
 * [Installing Connectors (Twitter/GNU Social)](help/Installing-Connectors)
 * [Install an ejabberd server (XMPP chat) with synchronized credentials](help/install-ejabberd)
 * [Message Flow](help/Message-Flow)
@@ -47,7 +47,9 @@ Friendica Documentation and Resources
 * [Theme Development](help/themes)
 * [Smarty 3 Templates](help/smarty3-templates)
 * [Database schema documantation](help/database)
+* [Class Autoloading](help/autoloader)
 * [Code - Reference(Doxygen generated - sets cookies)](doc/html/)
+
 
 **External Resources**
 

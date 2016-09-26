@@ -1,5 +1,7 @@
 <?php
 
+require_once('include/group.php');
+require_once('include/socgraph.php');
 
 function get_theme_config_file($theme){
 	$a = get_app();
@@ -39,7 +41,7 @@ function settings_init(&$a) {
 	$tabs = array(
 		array(
 			'label'	=> t('Account'),
-			'url' 	=> $a->get_baseurl(true).'/settings',
+			'url' 	=> 'settings',
 			'selected'	=>  (($a->argc == 1) && ($a->argv[0] === 'settings')?'active':''),
 			'accesskey' => 'o',
 		),
@@ -48,7 +50,7 @@ function settings_init(&$a) {
 	if(get_features()) {
 		$tabs[] =	array(
 					'label'	=> t('Additional features'),
-					'url' 	=> $a->get_baseurl(true).'/settings/features',
+					'url' 	=> 'settings/features',
 					'selected'	=> (($a->argc > 1) && ($a->argv[1] === 'features') ? 'active' : ''),
 					'accesskey' => 't',
 				);
@@ -56,49 +58,49 @@ function settings_init(&$a) {
 
 	$tabs[] =	array(
 		'label'	=> t('Display'),
-		'url' 	=> $a->get_baseurl(true).'/settings/display',
+		'url' 	=> 'settings/display',
 		'selected'	=> (($a->argc > 1) && ($a->argv[1] === 'display')?'active':''),
 		'accesskey' => 'i',
 	);
 
 	$tabs[] =	array(
 		'label'	=> t('Social Networks'),
-		'url' 	=> $a->get_baseurl(true).'/settings/connectors',
+		'url' 	=> 'settings/connectors',
 		'selected'	=> (($a->argc > 1) && ($a->argv[1] === 'connectors')?'active':''),
 		'accesskey' => 'w',
 	);
 
 	$tabs[] =	array(
 		'label'	=> t('Plugins'),
-		'url' 	=> $a->get_baseurl(true).'/settings/addon',
+		'url' 	=> 'settings/addon',
 		'selected'	=> (($a->argc > 1) && ($a->argv[1] === 'addon')?'active':''),
 		'accesskey' => 'l',
 	);
 
 	$tabs[] =	array(
 		'label'	=> t('Delegations'),
-		'url' 	=> $a->get_baseurl(true).'/delegate',
+		'url' 	=> 'delegate',
 		'selected'	=> (($a->argc == 1) && ($a->argv[0] === 'delegate')?'active':''),
 		'accesskey' => 'd',
 	);
 
 	$tabs[] =	array(
 		'label' => t('Connected apps'),
-		'url' => $a->get_baseurl(true) . '/settings/oauth',
+		'url' => 'settings/oauth',
 		'selected' => (($a->argc > 1) && ($a->argv[1] === 'oauth')?'active':''),
 		'accesskey' => 'b',
 	);
 
 	$tabs[] =	array(
 		'label' => t('Export personal data'),
-		'url' => $a->get_baseurl(true) . '/uexport',
+		'url' => 'uexport',
 		'selected' => (($a->argc == 1) && ($a->argv[0] === 'uexport')?'active':''),
 		'accesskey' => 'e',
 	);
 
 	$tabs[] =	array(
 		'label' => t('Remove account'),
-		'url' => $a->get_baseurl(true) . '/removeme',
+		'url' => 'removeme',
 		'selected' => (($a->argc == 1) && ($a->argv[0] === 'removeme')?'active':''),
 		'accesskey' => 'r',
 	);
@@ -199,6 +201,7 @@ function settings_post(&$a) {
 		if(x($_POST, 'general-submit')) {
 			set_pconfig(local_user(), 'system', 'no_intelligent_shortening', intval($_POST['no_intelligent_shortening']));
 			set_pconfig(local_user(), 'system', 'ostatus_autofriend', intval($_POST['snautofollow']));
+			set_pconfig(local_user(), 'ostatus', 'default_group', $_POST['group-selection']);
 			set_pconfig(local_user(), 'ostatus', 'legacy_contact', $_POST['legacy_contact']);
 		} elseif(x($_POST, 'imap-submit')) {
 
@@ -342,16 +345,16 @@ function settings_post(&$a) {
 		);
 
 		call_hooks('display_settings_post', $_POST);
-		goaway($a->get_baseurl(true) . '/settings/display' );
+		goaway('settings/display' );
 		return; // NOTREACHED
 	}
 
 	check_form_security_token_redirectOnErr('/settings', 'settings');
 
 	if (x($_POST,'resend_relocate')) {
-		proc_run('php', 'include/notifier.php', 'relocate', local_user());
+		proc_run(PRIORITY_HIGH, 'include/notifier.php', 'relocate', local_user());
 		info(t("Relocate message has been send to your contacts"));
-		goaway($a->get_baseurl(true) . '/settings');
+		goaway('settings');
 	}
 
 	call_hooks('settings_post', $_POST);
@@ -600,7 +603,7 @@ function settings_post(&$a) {
 
 
 	if($name_change) {
-		q("UPDATE `contact` SET `name` = '%s', `name-date` = '%s' WHERE `uid` = %d AND `self` = 1",
+		q("UPDATE `contact` SET `name` = '%s', `name-date` = '%s' WHERE `uid` = %d AND `self`",
 			dbesc($username),
 			dbesc(datetime_convert()),
 			intval(local_user())
@@ -611,13 +614,14 @@ function settings_post(&$a) {
 		// Update global directory in background
 		$url = $_SESSION['my_url'];
 		if($url && strlen(get_config('system','directory')))
-			proc_run('php',"include/directory.php","$url");
-
+			proc_run(PRIORITY_LOW, "include/directory.php", $url);
 	}
-
 
 	require_once('include/profile_update.php');
 	profile_change();
+
+	// Update the global contact for the user
+	update_gcontact_for_user(local_user());
 
 	//$_SESSION['theme'] = $theme;
 	if($email_changed && $a->config['register_policy'] == REGISTER_VERIFY) {
@@ -627,7 +631,7 @@ function settings_post(&$a) {
 
 	}
 
-	goaway($a->get_baseurl(true) . '/settings' );
+	goaway('settings');
 	return; // NOTREACHED
 }
 
@@ -797,7 +801,10 @@ function settings_content(&$a) {
 		$settings_connectors .= '<span class="field_help">'.t('If you receive a message from an unknown OStatus user, this option decides what to do. If it is checked, a new contact will be created for every unknown user.').'</span>';
 		$settings_connectors .= '</div>';
 
+		$default_group = get_pconfig(local_user(), 'ostatus', 'default_group');
 		$legacy_contact = get_pconfig(local_user(), 'ostatus', 'legacy_contact');
+
+		$settings_connectors .= mini_group_select(local_user(), $default_group, t("Default group for OStatus contacts"));
 
 		if ($legacy_contact != "")
 			$a->page['htmlhead'] = '<meta http-equiv="refresh" content="0; URL='.$a->get_baseurl().'/ostatus_subscribe?url='.urlencode($legacy_contact).'">';
@@ -982,6 +989,9 @@ function settings_content(&$a) {
 			'$infinite_scroll'	=> array('infinite_scroll', t("Infinite scroll"), $infinite_scroll, ''),
 			'$no_auto_update'	=> array('no_auto_update', t("Automatic updates only at the top of the network page"), $no_auto_update, 'When disabled, the network page is updated all the time, which could be confusing while reading.'),
 
+			'$d_tset' => t('General Theme Settings'),
+			'$d_ctset' => t('Custom Theme Settings'),
+			'$d_cset' => t('Content Settings'),
 			'stitle' => t('Theme settings'),
 			'$theme_config' => $theme_config,
 		));
@@ -1152,7 +1162,7 @@ function settings_content(&$a) {
 		info( t('Profile is <strong>not published</strong>.') . EOL );
 
 
-	//$subdir = ((strlen($a->get_path())) ? '<br />' . t('or') . ' ' . $a->get_baseurl(true) . '/profile/' . $nickname : '');
+	//$subdir = ((strlen($a->get_path())) ? '<br />' . t('or') . ' ' . 'profile/' . $nickname : '');
 
 	$tpl_addr = get_markup_template("settings_nick_set.tpl");
 
@@ -1274,7 +1284,7 @@ function settings_content(&$a) {
 		'$notify7'  => array('notify7', t('You are tagged in a post'), ($notify & NOTIFY_TAGSELF), NOTIFY_TAGSELF, ''),
 		'$notify8'  => array('notify8', t('You are poked/prodded/etc. in a post'), ($notify & NOTIFY_POKE), NOTIFY_POKE, ''),
 
-        '$desktop_notifications' => array('desktop_notifications', t('Activate desktop notifications') , false, t('Show desktop popup on new notifications')),
+		'$desktop_notifications' => array('desktop_notifications', t('Activate desktop notifications') , false, t('Show desktop popup on new notifications')),
 
 		'$email_textonly' => array('email_textonly', t('Text-only notification emails'),
 									get_pconfig(local_user(),'system','email_textonly'),

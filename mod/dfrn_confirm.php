@@ -15,6 +15,8 @@
  */
 
 require_once('include/enotify.php');
+require_once('include/group.php');
+require_once('include/Probe.php');
 
 function dfrn_confirm_post(&$a,$handsfree = null) {
 
@@ -315,7 +317,7 @@ function dfrn_confirm_post(&$a,$handsfree = null) {
 
 		require_once('include/Photo.php');
 
-		$photos = import_profile_photo($contact['photo'],$uid,$contact_id);
+		update_contact_avatar($contact['photo'],$uid,$contact_id);
 
 		logger('dfrn_confirm: confirm - imported photos');
 
@@ -328,25 +330,16 @@ function dfrn_confirm_post(&$a,$handsfree = null) {
 			if(($relation == CONTACT_IS_SHARING) && ($duplex))
 				$duplex = 0;
 
-			$r = q("UPDATE `contact` SET
-				`photo` = '%s',
-				`thumb` = '%s',
-				`micro` = '%s',
-				`rel` = %d,
+			$r = q("UPDATE `contact` SET `rel` = %d,
 				`name-date` = '%s',
 				`uri-date` = '%s',
-				`avatar-date` = '%s',
 				`blocked` = 0,
 				`pending` = 0,
 				`duplex` = %d,
 				`hidden` = %d,
 				`network` = '%s' WHERE `id` = %d
 			",
-				dbesc($photos[0]),
-				dbesc($photos[1]),
-				dbesc($photos[2]),
 				intval($new_relation),
-				dbesc(datetime_convert()),
 				dbesc(datetime_convert()),
 				dbesc(datetime_convert()),
 				intval($duplex),
@@ -364,7 +357,7 @@ function dfrn_confirm_post(&$a,$handsfree = null) {
 			$poll   = (($contact['poll']) ? $contact['poll'] : '');
 
 			if((! $contact['notify']) || (! $contact['poll'])) {
-				$arr = lrdd($contact['url']);
+				$arr = Probe::lrdd($contact['url']);
 				if(count($arr)) {
 					foreach($arr as $link) {
 						if($link['@attributes']['rel'] === 'salmon')
@@ -394,12 +387,8 @@ function dfrn_confirm_post(&$a,$handsfree = null) {
 			);
 
 
-			$r = q("UPDATE `contact` SET `photo` = '%s',
-				`thumb` = '%s',
-				`micro` = '%s',
-				`name-date` = '%s',
+			$r = q("UPDATE `contact` SET `name-date` = '%s',
 				`uri-date` = '%s',
-				`avatar-date` = '%s',
 				`notify` = '%s',
 				`poll` = '%s',
 				`blocked` = 0,
@@ -410,10 +399,6 @@ function dfrn_confirm_post(&$a,$handsfree = null) {
 				`rel` = %d
 				WHERE `id` = %d
 			",
-				dbesc($photos[0]),
-				dbesc($photos[1]),
-				dbesc($photos[2]),
-				dbesc(datetime_convert()),
 				dbesc(datetime_convert()),
 				dbesc(datetime_convert()),
 				dbesc($notify),
@@ -444,8 +429,8 @@ function dfrn_confirm_post(&$a,$handsfree = null) {
 
 			if(($contact) && ($contact['network'] === NETWORK_DIASPORA)) {
 				require_once('include/diaspora.php');
-				$ret = diaspora_share($user[0],$r[0]);
-				logger('mod_follow: diaspora_share returns: ' . $ret);
+				$ret = diaspora::send_share($user[0],$r[0]);
+				logger('share returns: ' . $ret);
 			}
 
 			// Send a new friend post if we are allowed to...
@@ -465,6 +450,7 @@ function dfrn_confirm_post(&$a,$handsfree = null) {
 				if(count($self)) {
 
 					$arr = array();
+					$arr['guid'] = get_guid(32);
 					$arr['uri'] = $arr['parent-uri'] = item_new_uri($a->get_hostname(), $uid);
 					$arr['uid'] = $uid;
 					$arr['contact-id'] = $self[0]['id'];
@@ -483,7 +469,7 @@ function dfrn_confirm_post(&$a,$handsfree = null) {
 					$BPhoto = '[url=' . $contact['url'] . ']' . '[img]' . $contact['thumb'] . '[/img][/url]';
 
 					$arr['verb'] = ACTIVITY_FRIEND;
-				    $arr['object-type'] = ACTIVITY_OBJ_PERSON;
+					$arr['object-type'] = ACTIVITY_OBJ_PERSON;
 					$arr['body'] =  sprintf( t('%1$s is now friends with %2$s'), $A, $B)."\n\n\n".$BPhoto;
 
 					$arr['object'] = '<object><type>' . ACTIVITY_OBJ_PERSON . '</type><title>' . $contact['name'] . '</title>'
@@ -501,19 +487,14 @@ function dfrn_confirm_post(&$a,$handsfree = null) {
 
 					$i = item_store($arr);
 					if($i)
-				    	proc_run('php',"include/notifier.php","activity","$i");
+						proc_run(PRIORITY_HIGH, "include/notifier.php", "activity", $i);
 				}
 			}
 		}
 
-
-		$g = q("select def_gid from user where uid = %d limit 1",
-			intval($uid)
-		);
-		if($contact && $g && intval($g[0]['def_gid'])) {
-			require_once('include/group.php');
-			group_add_member($uid,'',$contact['id'],$g[0]['def_gid']);
-		}
+		$def_gid = get_default_group($uid, $contact["network"]);
+		if($contact && intval($def_gid))
+			group_add_member($uid, '', $contact['id'], $def_gid);
 
 		// Let's send our user to the contact editor in case they want to
 		// do anything special with this new friend.
@@ -683,7 +664,7 @@ function dfrn_confirm_post(&$a,$handsfree = null) {
 
 		require_once("include/Photo.php");
 
-		$photos = import_profile_photo($photo,$local_uid,$dfrn_record);
+		update_contact_avatar($photo,$local_uid,$dfrn_record);
 
 		logger('dfrn_confirm: request - photos imported');
 
@@ -695,13 +676,9 @@ function dfrn_confirm_post(&$a,$handsfree = null) {
 			$duplex = 0;
 
 		$r = q("UPDATE `contact` SET
-			`photo` = '%s',
-			`thumb` = '%s',
-			`micro` = '%s',
 			`rel` = %d,
 			`name-date` = '%s',
 			`uri-date` = '%s',
-			`avatar-date` = '%s',
 			`blocked` = 0,
 			`pending` = 0,
 			`duplex` = %d,
@@ -709,11 +686,7 @@ function dfrn_confirm_post(&$a,$handsfree = null) {
 			`prv` = %d,
 			`network` = '%s' WHERE `id` = %d
 		",
-			dbesc($photos[0]),
-			dbesc($photos[1]),
-			dbesc($photos[2]),
 			intval($new_relation),
-			dbesc(datetime_convert()),
 			dbesc(datetime_convert()),
 			dbesc(datetime_convert()),
 			intval($duplex),
@@ -811,7 +784,7 @@ function dfrn_confirm_post(&$a,$handsfree = null) {
 
 					$i = item_store($arr);
 					if($i)
-				    	proc_run('php',"include/notifier.php","activity","$i");
+						proc_run(PRIORITY_HIGH, "include/notifier.php", "activity", $i);
 
 				}
 			}

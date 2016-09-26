@@ -1,9 +1,7 @@
 <?php
-
-
-
 require_once('include/items.php');
 require_once('include/auth.php');
+require_once('include/dfrn.php');
 
 
 function dfrn_poll_init(&$a) {
@@ -27,6 +25,8 @@ function dfrn_poll_init(&$a) {
 		$dfrn_id   = substr($dfrn_id,2);
 	}
 
+	$hidewall = false;
+
 	if(($dfrn_id === '') && (! x($_POST,'dfrn_id'))) {
 		if((get_config('system','block_public')) && (! local_user()) && (! remote_user())) {
 			http_status_exit(403);
@@ -37,16 +37,17 @@ function dfrn_poll_init(&$a) {
 			$r = q("SELECT `hidewall`,`nickname` FROM `user` WHERE `user`.`nickname` = '%s' LIMIT 1",
 				dbesc($a->argv[1])
 			);
-			if(! $r)
+			if (!$r)
 				http_status_exit(404);
-			if(($r[0]['hidewall']) && (! local_user()))
-				http_status_exit(403);
+
+			$hidewall = ($r[0]['hidewall'] && !local_user());
+
 			$user = $r[0]['nickname'];
 		}
 
 		logger('dfrn_poll: public feed request from ' . $_SERVER['REMOTE_ADDR'] . ' for ' . $user);
 		header("Content-type: application/atom+xml");
-		echo get_feed_for($a, '', $user,$last_update);
+		echo dfrn::feed('', $user,$last_update, 0, $hidewall);
 		killme();
 	}
 
@@ -373,7 +374,7 @@ function dfrn_poll_post(&$a) {
 		}
 
 		header("Content-type: application/atom+xml");
-		$o = get_feed_for($a,$dfrn_id, $a->argv[1], $last_update, $direction);
+		$o = dfrn::feed($dfrn_id, $a->argv[1], $last_update, $direction);
 		echo $o;
 		killme();
 

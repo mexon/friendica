@@ -13,7 +13,6 @@
 		if($(listID).is(":visible")) {
 			$(listID).hide();
 			$(listID+"-wrapper").show();
-			alert($(listID+"-wrapper").attr("id"));
 		}
 		else {
 			$(listID).show();
@@ -389,7 +388,7 @@
 				$('body').css('cursor', 'auto');
 			}
 			/* autocomplete @nicknames */
-			$(".comment-edit-form  textarea").contact_autocomplete(baseurl+"/acl");
+			$(".comment-edit-form  textarea").editor_autocomplete(baseurl+"/acl");
 
 			// setup videos, since VideoJS won't take care of any loaded via AJAX
 			if(typeof videojs != 'undefined') videojs.autoSetup();

@@ -1,7 +1,9 @@
 <?php
 function add_thread($itemid, $onlyshadow = false) {
-	$items = q("SELECT `uid`, `created`, `edited`, `commented`, `received`, `changed`, `wall`, `private`, `pubmail`, `moderated`, `visible`, `spam`, `starred`, `bookmark`, `contact-id`, `gcontact-id`,
-			`deleted`, `origin`, `forum_mode`, `mention`, `network`  FROM `item` WHERE `id` = %d AND (`parent` = %d OR `parent` = 0) LIMIT 1", intval($itemid), intval($itemid));
+	$items = q("SELECT `uid`, `created`, `edited`, `commented`, `received`, `changed`, `wall`, `private`, `pubmail`,
+			`moderated`, `visible`, `spam`, `starred`, `bookmark`, `contact-id`, `gcontact-id`,
+			`deleted`, `origin`, `forum_mode`, `mention`, `network`, `author-id`, `owner-id`
+		FROM `item` WHERE `id` = %d AND (`parent` = %d OR `parent` = 0) LIMIT 1", intval($itemid), intval($itemid));
 
 	if (!$items)
 		return;
@@ -174,7 +176,7 @@ function delete_thread($itemid, $itemuri = "") {
 				intval($item["uid"])
 			);
 		if (!count($r)) {
-			$r = q("DELETE FROM `item` WHERE `uri` = '%s' AND `uid` = 0)",
+			$r = q("DELETE FROM `item` WHERE `uri` = '%s' AND `uid` = 0",
 				dbesc($itemuri)
 			);
 			logger("delete_thread: Deleted shadow for item ".$itemuri." - ".print_r($result, true), LOGGER_DEBUG);

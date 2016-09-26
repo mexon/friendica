@@ -70,9 +70,9 @@ $(document).ready(function() {
 		return false;
 	});*/
 
-	$('#event-share-checkbox').change(function() {
+	$('#id_share').change(function() {
 
-		if ($('#event-share-checkbox').is(':checked')) { 
+		if ($('#id_share').is(':checked')) { 
 			$('#acl-wrapper').show();
 		}
 		else {
@@ -149,7 +149,7 @@ $(document).ready(function() {
 
 	if(window.aclType == "event_head") {
 		$('#events-calendar').fullCalendar({
-			events: baseurl + '/events/json/',
+			events: baseurl + window.eventModuleUrl +'/json/',
 			header: {
 				left: 'prev,next today',
 				center: 'title',
@@ -202,10 +202,12 @@ $(document).ready(function() {
 		
 		// center on date
 		var args=location.href.replace(baseurl,"").split("/");
-		if (args.length>=4) {
+		if (args.length>=5 && window.eventModeParams == 2) {
+			$("#events-calendar").fullCalendar('gotoDate',args[3] , args[4]-1);
+		} else if (args.length>=4 && window.eventModeParams == 1) {
 			$("#events-calendar").fullCalendar('gotoDate',args[2] , args[3]-1);
-		} 
-		
+		}
+
 		// show event popup
 		var hash = location.hash.split("-")
 		if (hash.length==2 && hash[0]=="#link") showEvent(hash[1]);
@@ -214,25 +216,27 @@ $(document).ready(function() {
 
 	switch(window.autocompleteType) {
 		case 'msg-header':
-			var a = $("#recip").autocomplete({ 
-				serviceUrl: baseurl + '/acl',
-				minChars: 2,
-				width: 350,
-				onSelect: function(value,data) {
-					$("#recip-complete").val(data);
-				}			
+			$("#recip").name_autocomplete(baseurl + '/acl', '', false, function(data) {
+					$("#recip-complete").val(data.id);
 			});
 			break;
 		case 'contacts-head':
-			var a = $("#contacts-search").autocomplete({ 
-				serviceUrl: baseurl + '/acl',
-				minChars: 2,
-				width: 350,
+			$("#contacts-search").contact_autocomplete(baseurl + '/acl', 'a', true);
+
+
+			$("#contacts-search").keyup(function(event){
+				if(event.keyCode == 13){
+					$("#contacts-search").click();
+				}
 			});
-			a.setOptions({ params: { type: 'a' }});
+			$(".autocomplete-w1 .selected").keyup(function(event){
+				if(event.keyCode == 13){
+					$("#contacts-search").click();
+				}
+			});
 			break;
 		case 'display-head':
-			$(".comment-wwedit-wrapper textarea").contact_autocomplete(baseurl+"/acl");
+			$(".comment-wwedit-wrapper textarea").editor_autocomplete(baseurl+"/acl");
 			break;
 		default:
 			break;
@@ -350,7 +354,7 @@ if(typeof window.photoEdit != 'undefined') {
 
 function showEvent(eventid) {
 	$.get(
-		baseurl + '/events/?id='+eventid,
+		baseurl + window.eventModuleUrl + '/?id=' + eventid,
 		function(data){
 			$.colorbox({html:data});
 			$.colorbox.resize();
@@ -587,7 +591,7 @@ function initEditor(cb){
 			plaintextFn : function() {
 				$("#profile-jot-text-loading").hide();
 				$("#profile-jot-text").css({ 'height': 200, 'color': '#000' });
-				$("#profile-jot-text").contact_autocomplete(baseurl+"/acl");
+				$("#profile-jot-text").editor_autocomplete(baseurl+"/acl");
 				$(".jothidden").show();
 				if (typeof cb!="undefined") cb();
 			}
@@ -660,7 +664,7 @@ function msgInitEditor() {
 			});
 		},
 		plaintextFn : function() {
-			$("#prvmail-text").contact_autocomplete(baseurl+"/acl");
+			$("#prvmail-text").editor_autocomplete(baseurl+"/acl");
 		}
 	}
 	InitMCEEditor(editorData);

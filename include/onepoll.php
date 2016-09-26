@@ -24,15 +24,12 @@ function onepoll_run(&$argv, &$argc){
 		unset($db_host, $db_user, $db_pass, $db_data);
 	};
 
-
 	require_once('include/session.php');
 	require_once('include/datetime.php');
-	require_once('library/simplepie/simplepie.inc');
 	require_once('include/items.php');
 	require_once('include/Contact.php');
 	require_once('include/email.php');
 	require_once('include/socgraph.php');
-	require_once('include/pidfile.php');
 	require_once('include/queue_fn.php');
 
 	load_config('config');
@@ -61,18 +58,10 @@ function onepoll_run(&$argv, &$argc){
 		return;
 	}
 
-	$lockpath = get_lockpath();
-	if ($lockpath != '') {
-		$pidfile = new pidfile($lockpath, 'onepoll'.$contact_id);
-		if ($pidfile->is_already_running()) {
-			logger("onepoll: Already running for contact ".$contact_id);
-			if ($pidfile->running_time() > 9*60) {
-				$pidfile->kill();
-				logger("killed stale process");
-			}
-			exit;
-		}
-	}
+	// Don't check this stuff if the function is called by the poller
+	if (App::callstack() != "poller_run")
+		if (App::is_already_running('onepoll'.$contact_id, '', 540))
+			return;
 
 	$d = datetime_convert();
 

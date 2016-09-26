@@ -19,6 +19,10 @@ require_once('object/BaseObject.php');
 $a = new App;
 BaseObject::set_app($a);
 
+// We assume that the index.php is called by a frontend process
+// The value is set to "true" by default in boot.php
+$a->backend = false;
+
 /**
  *
  * Load the configuration file which contains our DB credentials.
@@ -44,7 +48,7 @@ require_once("include/dba.php");
 
 if(!$install) {
 	$db = new dba($db_host, $db_user, $db_pass, $db_data, $install);
-    	    unset($db_host, $db_user, $db_pass, $db_data);
+	    unset($db_host, $db_user, $db_pass, $db_data);
 
 	/**
 	 * Load configs from db. Overwrite configs from .htconfig.php
@@ -53,26 +57,19 @@ if(!$install) {
 	load_config('config');
 	load_config('system');
 
-	$maxsysload_frontend = intval(get_config('system','maxloadavg_frontend'));
-	if($maxsysload_frontend < 1)
-		$maxsysload_frontend = 50;
-
-	$load = current_load();
-	if($load) {
-		if($load > $maxsysload_frontend) {
-			logger('system: load ' . $load . ' too high. Service Temporarily Unavailable.');
-			header($_SERVER["SERVER_PROTOCOL"].' 503 Service Temporarily Unavailable');
-			header('Retry-After: 300');
-			die("System is currently unavailable. Please try again later");
-		}
+	if ($a->max_processes_reached() OR $a->maxload_reached()) {
+		header($_SERVER["SERVER_PROTOCOL"].' 503 Service Temporarily Unavailable');
+		header('Retry-After: 120');
+		header('Refresh: 120; url='.$a->get_baseurl()."/".$a->query_string);
+		die("System is currently unavailable. Please try again later");
 	}
-
 
 	if (get_config('system','force_ssl') AND ($a->get_scheme() == "http") AND
 		(intval(get_config('system','ssl_policy')) == SSL_POLICY_FULL) AND
 		(substr($a->get_baseurl(), 0, 8) == "https://")) {
 		header("HTTP/1.1 302 Moved Temporarily");
-		header("location: ".$a->get_baseurl()."/".$a->query_string);
+		header("Location: ".$a->get_baseurl()."/".$a->query_string);
+		exit();
 	}
 
 	require_once("include/session.php");
@@ -97,7 +94,12 @@ load_translation_table($lang);
  *
  */
 
-session_start();
+// Exclude the backend processes from the session management
+if (!$a->is_backend()) {
+	$stamp1 = microtime(true);
+	session_start();
+	$a->save_timestamp($stamp1, "parser");
+}
 
 /**
  * Language was set earlier, but we can over-ride it in the session.
@@ -107,7 +109,7 @@ if (x($_SESSION,'authenticated') && !x($_SESSION,'language')) {
 	// we didn't loaded user data yet, but we need user language
 	$r = q("SELECT language FROM user WHERE uid=%d", intval($_SESSION['uid']));
 	$_SESSION['language'] = $lang;
-	if (count($r)>0) $_SESSION['language'] = $r[0]['language'];
+	if (dbm::is_result($r)) $_SESSION['language'] = $r[0]['language'];
 }
 
 if((x($_SESSION,'language')) && ($_SESSION['language'] !== $lang)) {
@@ -116,9 +118,21 @@ if((x($_SESSION,'language')) && ($_SESSION['language'] !== $lang)) {
 }
 
 if((x($_GET,'zrl')) && (!$install && !$maintenance)) {
-	$_SESSION['my_url'] = $_GET['zrl'];
-	$a->query_string = preg_replace('/[\?&]zrl=(.*?)([\?&]|$)/is','',$a->query_string);
-	zrl_init($a);
+	// Only continue when the given profile link seems valid
+	// Valid profile links contain a path with "/profile/" and no query parameters
+	if ((parse_url($_GET['zrl'], PHP_URL_QUERY) == "") AND
+		strstr(parse_url($_GET['zrl'], PHP_URL_PATH), "/profile/")) {
+		$_SESSION['my_url'] = $_GET['zrl'];
+		$a->query_string = preg_replace('/[\?&]zrl=(.*?)([\?&]|$)/is','',$a->query_string);
+		zrl_init($a);
+	} else {
+		// Someone came with an invalid parameter, maybe as a DDoS attempt
+		// We simply stop processing here
+		logger("Invalid ZRL parameter ".$_GET['zrl'], LOGGER_DEBUG);
+		header('HTTP/1.1 403 Forbidden');
+		echo "<h1>403 Forbidden</h1>";
+		killme();
+	}
 }
 
 /**
@@ -134,7 +148,7 @@ if((x($_GET,'zrl')) && (!$install && !$maintenance)) {
 
 // header('Link: <' . $a->get_baseurl() . '/amcd>; rel="acct-mgmt";');
 
-if((x($_SESSION,'authenticated')) || (x($_POST,'auth-params')) || ($a->module === 'login'))
+if(x($_COOKIE["Friendica"]) || (x($_SESSION,'authenticated')) || (x($_POST,'auth-params')) || ($a->module === 'login'))
 	require("include/auth.php");
 
 if(! x($_SESSION,'authenticated'))
@@ -371,7 +385,7 @@ $a->init_page_end();
 if(x($_SESSION,'visitor_home'))
 	$homebase = $_SESSION['visitor_home'];
 elseif(local_user())
-	$homebase = $a->get_baseurl() . '/profile/' . $a->user['nickname'];
+	$homebase = 'profile/' . $a->user['nickname'];
 
 if(isset($homebase))
 	$a->page['content'] .= '<script>var homebase="' . $homebase . '" ; </script>';
@@ -409,15 +423,6 @@ call_hooks('page_end', $a->page['content']);
 
 /**
  *
- * Add a place for the pause/resume Ajax indicator
- *
- */
-
-$a->page['content'] .=  '<div id="pause"></div>';
-
-
-/**
- *
  * Add the navigation (menu) template
  *
  */
@@ -432,15 +437,15 @@ if($a->module != 'install' && $a->module != 'maintenance') {
 
 if($a->is_mobile || $a->is_tablet) {
 	if(isset($_SESSION['show-mobile']) && !$_SESSION['show-mobile']) {
-		$link = $a->get_baseurl() . '/toggle_mobile?address=' . curPageURL();
+		$link = 'toggle_mobile?address=' . curPageURL();
 	}
 	else {
-		$link = $a->get_baseurl() . '/toggle_mobile?off=1&address=' . curPageURL();
+		$link = 'toggle_mobile?off=1&address=' . curPageURL();
 	}
 	$a->page['footer'] = replace_macros(get_markup_template("toggle_mobile_footer.tpl"), array(
-	                     	'$toggle_link' => $link,
-	                     	'$toggle_text' => t('toggle mobile')
-    	                 ));
+				'$toggle_link' => $link,
+				'$toggle_text' => t('toggle mobile')
+			 ));
 }
 
 /**
@@ -484,72 +489,9 @@ if (isset($_GET["mode"]) AND ($_GET["mode"] == "raw")) {
 
 	echo substr($target->saveHTML(), 6, -8);
 
-	session_write_close();
+	if (!$a->is_backend())
+		session_write_close();
 	exit;
-
-} elseif (get_pconfig(local_user(),'system','infinite_scroll')
-          AND ($a->module == "network") AND ($_GET["mode"] != "minimal")) {
-	if (is_string($_GET["page"]))
-		$pageno = $_GET["page"];
-	else
-		$pageno = 1;
-
-	$reload_uri = "";
-
-	foreach ($_GET AS $param => $value)
-		if (($param != "page") AND ($param != "q"))
-			$reload_uri .= "&".$param."=".urlencode($value);
-
-	if (($a->page_offset != "") AND !strstr($reload_uri, "&offset="))
-		$reload_uri .= "&offset=".urlencode($a->page_offset);
-
-
-$a->page['htmlhead'] .= <<< EOT
-<script type="text/javascript">
-
-$(document).ready(function() {
-    num = $pageno;
-});
-
-function loadcontent() {
-	if (lockLoadContent) return;
-	lockLoadContent = true;
-
-	$("#scroll-loader").fadeIn('normal');
-
-	num+=1;
-
-	console.log('Loading page ' + num);
-
-	$.get('/network?mode=raw$reload_uri&page=' + num, function(data) {
-		$("#scroll-loader").hide();
-		if ($(data).length > 0) {
-			$(data).insertBefore('#conversation-end');
-			lockLoadContent = false;
-		} else {
-			$("#scroll-end").fadeIn('normal');
-		}
-	});
-}
-
-var num = $pageno;
-var lockLoadContent = false;
-
-$(window).scroll(function(e){
-
-	if ($(document).height() != $(window).height()) {
-		// First method that is expected to work - but has problems with Chrome
-		if ($(window).scrollTop() > ($(document).height() - $(window).height() * 1.5))
-			loadcontent();
-	} else {
-		// This method works with Chrome - but seems to be much slower in Firefox
-		if ($(window).scrollTop() > (($("section").height() + $("header").height() + $("footer").height()) - $(window).height() * 1.5))
-			loadcontent();
-	}
-});
-</script>
-
-EOT;
 
 }
 
@@ -559,21 +501,20 @@ $profile = $a->profile;
 header("X-Friendica-Version: ".FRIENDICA_VERSION);
 header("Content-type: text/html; charset=utf-8");
 
-
-if (isset($_GET["mode"]) AND ($_GET["mode"] == "minimal")) {
-	//$page['content'] = substr($target->saveHTML(), 6, -8)."\n\n".
-	//			'<div id="conversation-end"></div>'."\n\n";
-
-	require "view/minimal.php";
-} else {
-	$template = 'view/theme/' . current_theme() . '/'
-		. ((x($a->page,'template')) ? $a->page['template'] : 'default' ) . '.php';
-
-	if(file_exists($template))
-		require_once($template);
-	else
-		require_once(str_replace('theme/' . current_theme() . '/', '', $template));
+// We use $_GET["mode"] for special page templates. So we will check if we have 
+// to load another page template than the default one
+// The page templates are located in /view/php/ or in the theme directory
+if (isset($_GET["mode"])) {
+		$template = theme_include($_GET["mode"].'.php');
 }
 
-session_write_close();
+// If there is no page template use the default page template
+if(!$template) {
+	$template = theme_include("default.php");
+}
+
+require_once($template);
+
+if (!$a->is_backend())
+	session_write_close();
 exit;

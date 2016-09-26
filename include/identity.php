@@ -3,7 +3,7 @@
  * @file include/identity.php
  */
 
-require_once('include/forums.php');
+require_once('include/ForumManager.php');
 require_once('include/bbcode.php');
 require_once("mod/proxy.php");
 
@@ -71,8 +71,8 @@ function profile_load(&$a, $nickname, $profile = 0, $profiledata = array()) {
 
 	$a->page['title'] = $a->profile['name'] . " @ " . $a->config['sitename'];
 
-//		if (!$profiledata)
-//			$_SESSION['theme'] = $a->profile['theme'];
+		if (!$profiledata  && !get_pconfig(local_user(),'system','always_my_theme'))
+			$_SESSION['theme'] = $a->profile['theme'];
 
 	$_SESSION['mobile-theme'] = $a->profile['mobile-theme'];
 
@@ -237,6 +237,7 @@ function profile_sidebar($profile, $block = 0) {
 	if ($connect AND ($profile['network'] != NETWORK_DFRN) AND !isset($profile['remoteconnect']))
 		$connect = false;
 
+	$remoteconnect = NULL;
 	if (isset($profile['remoteconnect']))
 		$remoteconnect = $profile['remoteconnect'];
 
@@ -245,10 +246,30 @@ function profile_sidebar($profile, $block = 0) {
 	else
 		$subscribe_feed = false;
 
-	if(get_my_url() && $profile['unkmail'] && ($profile['uid'] != local_user()))
+	if (remote_user() OR (get_my_url() && $profile['unkmail'] && ($profile['uid'] != local_user()))) {
 		$wallmessage = t('Message');
-	else
+		$wallmessage_link = "wallmessage/".$profile["nickname"];
+
+		if (remote_user()) {
+			$r = q("SELECT `url` FROM `contact` WHERE `uid` = %d AND `id` = '%s' AND `rel` = %d",
+				intval($profile['uid']),
+				intval(remote_user()),
+				intval(CONTACT_IS_FRIEND));
+		} else {
+			$r = q("SELECT `url` FROM `contact` WHERE `uid` = %d AND `nurl` = '%s' AND `rel` = %d",
+				intval($profile['uid']),
+				dbesc(normalise_link(get_my_url())),
+				intval(CONTACT_IS_FRIEND));
+		}
+		if ($r) {
+			$remote_url = $r[0]["url"];
+			$message_path = preg_replace("=(.*)/profile/(.*)=ism", "$1/message/new/", $remote_url);
+			$wallmessage_link = $message_path.base64_encode($profile["addr"]);
+		}
+	} else {
 		$wallmessage = false;
+		$wallmessage_link = false;
+	}
 
 	// show edit profile to yourself
 	if ($profile['uid'] == local_user() && feature_enabled(local_user(),'multi_profiles')) {
@@ -292,9 +313,9 @@ function profile_sidebar($profile, $block = 0) {
 	// check if profile is a forum
 	if((intval($profile['page-flags']) == PAGE_COMMUNITY)
 			|| (intval($profile['page-flags']) == PAGE_PRVGROUP)
-			|| (intval($profile['forum']))
-			|| (intval($profile['prv']))
-			|| (intval($profile['community'])))
+			|| (isset($profile['forum']) && intval($profile['forum']))
+			|| (isset($profile['prv']) && intval($profile['prv']))
+			|| (isset($profile['community']) && intval($profile['community'])))
 		$account_type = t('Forum');
 	else
 		$account_type = "";
@@ -324,18 +345,21 @@ function profile_sidebar($profile, $block = 0) {
 			? trim(substr($profile['name'],0,strpos($profile['name'],' '))) : $profile['name']);
 	$lastname = (($firstname === $profile['name']) ? '' : trim(substr($profile['name'],strlen($firstname))));
 
-	$diaspora = array(
-		'guid' => $profile['guid'],
-		'podloc' => $a->get_baseurl(),
-		'searchable' => (($profile['publish'] && $profile['net-publish']) ? 'true' : 'false' ),
-		'nickname' => $profile['nickname'],
-		'fullname' => $profile['name'],
-		'firstname' => $firstname,
-		'lastname' => $lastname,
-		'photo300' => $a->get_cached_avatar_image($a->get_baseurl() . '/photo/custom/300/' . $profile['uid'] . '.jpg'),
-		'photo100' => $a->get_cached_avatar_image($a->get_baseurl() . '/photo/custom/100/' . $profile['uid'] . '.jpg'),
-		'photo50' => $a->get_cached_avatar_image($a->get_baseurl() . '/photo/custom/50/'  . $profile['uid'] . '.jpg'),
-	);
+	if ($profile['guid'] != "")
+		$diaspora = array(
+			'guid' => $profile['guid'],
+			'podloc' => $a->get_baseurl(),
+			'searchable' => (($profile['publish'] && $profile['net-publish']) ? 'true' : 'false' ),
+			'nickname' => $profile['nickname'],
+			'fullname' => $profile['name'],
+			'firstname' => $firstname,
+			'lastname' => $lastname,
+			'photo300' => $a->get_baseurl() . '/photo/custom/300/' . $profile['uid'] . '.jpg',
+			'photo100' => $a->get_baseurl() . '/photo/custom/100/' . $profile['uid'] . '.jpg',
+			'photo50' => $a->get_baseurl() . '/photo/custom/50/'  . $profile['uid'] . '.jpg',
+		);
+	else
+		$diaspora = false;
 
 	if (!$block){
 		$contact_block = contact_block();
@@ -385,6 +409,7 @@ function profile_sidebar($profile, $block = 0) {
 		'$remoteconnect'  => $remoteconnect,
 		'$subscribe_feed' => $subscribe_feed,
 		'$wallmessage' => $wallmessage,
+		'$wallmessage_link' => $wallmessage_link,
 		'$account_type' => $account_type,
 		'$location' => $location,
 		'$gender'   => $gender,
@@ -398,7 +423,6 @@ function profile_sidebar($profile, $block = 0) {
 		'$diaspora' => $diaspora,
 		'$contact_block' => $contact_block,
 	));
-
 
 	$arr = array('profile' => &$profile, 'entry' => &$o);
 
@@ -655,7 +679,7 @@ function advanced_profile(&$a) {
 	
 		//show subcribed forum if it is enabled in the usersettings
 		if (feature_enabled($uid,'forumlist_profile')) {
-			$profile['forumlist'] = array( t('Forums:'), forumlist_profile_advanced($uid));
+			$profile['forumlist'] = array( t('Forums:'), ForumManager::profile_advanced($uid));
 		}
 
 		if ($a->profile['uid'] == local_user())
@@ -663,6 +687,8 @@ function advanced_profile(&$a) {
 
 		return replace_macros($tpl, array(
 			'$title' => t('Profile'),
+			'$basic' => t('Basic'),
+			'$advanced' => t('Advanced'),
 			'$profile' => $profile
 		));
 	}
@@ -716,8 +742,8 @@ function profile_tabs($a, $is_owner=False, $nickname=Null){
 		),
 	);
 
-	if ($is_owner){
-		if ($a->theme_events_in_profile)
+	// the calendar link for the full featured events calendar
+	if ($is_owner && $a->theme_events_in_profile) {
 			$tabs[] = array(
 				'label' => t('Events'),
 				'url'	=> $a->get_baseurl() . '/events',
@@ -726,6 +752,20 @@ function profile_tabs($a, $is_owner=False, $nickname=Null){
 				'id' => 'events-tab',
 				'accesskey' => 'e',
 			);
+	// if the user is not the owner of the calendar we only show a calendar
+	// with the public events of the calendar owner
+	} elseif (! $is_owner) {
+		$tabs[] = array(
+				'label' => t('Events'),
+				'url'	=> $a->get_baseurl() . '/cal/' . $nickname,
+				'sel' 	=>((!isset($tab)&&$a->argv[0]=='cal')?'active':''),
+				'title' => t('Events and Calendar'),
+				'id' => 'events-tab',
+				'accesskey' => 'e',
+			);
+	}
+
+	if ($is_owner){
 		$tabs[] = array(
 			'label' => t('Personal Notes'),
 			'url'	=> $a->get_baseurl() . '/notes',
@@ -778,7 +818,7 @@ function zrl_init(&$a) {
 			}
 		}
 
-		proc_run('php','include/gprobe.php',bin2hex($tmp_str));
+		proc_run(PRIORITY_LOW, 'include/gprobe.php',bin2hex($tmp_str));
 		$arr = array('zrl' => $tmp_str, 'url' => $a->cmd);
 		call_hooks('zrl_init',$arr);
 	}

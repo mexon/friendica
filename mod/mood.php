@@ -62,7 +62,7 @@ function mood_init(&$a) {
 	$action = sprintf( t('%1$s is currently %2$s'), '[url=' . $poster['url'] . ']' . $poster['name'] . '[/url]' , $verbs[$verb]); 
 
 	$arr = array();
-
+	$arr['guid']          = get_guid(32);
 	$arr['uid']           = $uid;
 	$arr['uri']           = $uri;
 	$arr['parent-uri']    = (($parent_uri) ? $parent_uri : $uri);
@@ -95,13 +95,13 @@ function mood_init(&$a) {
 			intval($uid),
 			intval($item_id)
 		);
-		proc_run('php',"include/notifier.php","tag","$item_id");
+		proc_run(PRIORITY_HIGH, "include/notifier.php", "tag", $item_id);
 	}
 
 
 	call_hooks('post_local_end', $arr);
 
-	proc_run('php',"include/notifier.php","like","$post_id");
+	proc_run(PRIORITY_HIGH, "include/notifier.php", "like", $post_id);
 
 	return;
 }

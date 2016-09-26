@@ -50,7 +50,7 @@ class Item extends BaseObject {
 		$this->writable = ($this->get_data_value('writable') || $this->get_data_value('self'));
 
 		$ssl_state = ((local_user()) ? true : false);
-		$this->redirect_url = $a->get_baseurl($ssl_state) . '/redir/' . $this->get_data_value('cid') ;
+		$this->redirect_url = 'redir/' . $this->get_data_value('cid') ;
 
 		if(get_config('system','thread_allow') && $a->theme_thread_allow && !$this->is_toplevel())
 			$this->threaded = true;
@@ -89,14 +89,14 @@ class Item extends BaseObject {
 		$a = $this->get_app();
 
 		$item = $this->get_data();
-                $edited = false;
-                if (strcmp($item['created'], $item['edited'])<>0) {
-                      $edited = array(
-                          'label' => t('This entry was edited'),
-                          'date' => datetime_convert('UTC', date_default_timezone_get(), $item['edited'], 'r'),
-                          'relative' => relative_date($item['edited'])
-                      );
-                }
+		$edited = false;
+		if (strcmp($item['created'], $item['edited'])<>0) {
+		      $edited = array(
+			  'label' => t('This entry was edited'),
+			  'date' => datetime_convert('UTC', date_default_timezone_get(), $item['edited'], 'r'),
+			  'relative' => relative_date($item['edited'])
+		      );
+		}
 		$commentww = '';
 		$sparkle = '';
 		$buttons = '';
@@ -119,9 +119,9 @@ class Item extends BaseObject {
 		$shareable = ((($conv->get_profile_owner() == local_user()) && ($item['private'] != 1)) ? true : false);
 		if(local_user() && link_compare($a->contact['url'],$item['author-link'])) {
 			if ($item["event-id"] != 0)
-				$edpost = array($a->get_baseurl($ssl_state)."/events/event/".$item['event-id'], t("Edit"));
+				$edpost = array("events/event/".$item['event-id'], t("Edit"));
 			else
-				$edpost = array($a->get_baseurl($ssl_state)."/editpost/".$item['id'], t("Edit"));
+				$edpost = array("editpost/".$item['id'], t("Edit"));
 		} else
 			$edpost = false;
 		if(($this->get_data_value('uid') == local_user()) || $this->is_visiting())
@@ -150,17 +150,27 @@ class Item extends BaseObject {
 		else
 			$profile_link = zrl($profile_link);
 
-		$normalised = normalise_link((strlen($item['author-link'])) ? $item['author-link'] : $item['url']);
-		if(($normalised != 'mailbox') && (x($a->contacts,$normalised)))
-			$profile_avatar = $a->contacts[$normalised]['thumb'];
-		else
-			$profile_avatar = (((strlen($item['author-avatar'])) && $diff_author) ? $item['author-avatar'] : $a->get_cached_avatar_image($this->get_data_value('thumb')));
+		if (!isset($item['author-thumb']) OR ($item['author-thumb'] == "")) {
+			$author_contact = get_contact_details_by_url($item['author-link'], $conv->get_profile_owner());
+			if ($author_contact["thumb"])
+				$item['author-thumb'] = $author_contact["thumb"];
+			else
+				$item['author-thumb'] = $item['author-avatar'];
+		}
+
+		if (!isset($item['owner-thumb']) OR ($item['owner-thumb'] == "")) {
+			$owner_contact = get_contact_details_by_url($item['owner-link'], $conv->get_profile_owner());
+			if ($owner_contact["thumb"])
+				$item['owner-thumb'] = $owner_contact["thumb"];
+			else
+				$item['owner-thumb'] = $item['owner-avatar'];
+		}
 
 		$locate = array('location' => $item['location'], 'coord' => $item['coord'], 'html' => '');
 		call_hooks('render_location',$locate);
 		$location = ((strlen($locate['html'])) ? $locate['html'] : render_location_dummy($locate));
 
-		$searchpath = $a->get_baseurl()."/search?tag=";
+		$searchpath = "search?tag=";
 		$tags=array();
 		$hashtags = array();
 		$mentions = array();
@@ -324,7 +334,7 @@ class Item extends BaseObject {
 
 		// Diaspora isn't able to do likes on comments - but red does
 		if (($item["item_network"] == NETWORK_DIASPORA) AND ($indent == 'comment') AND
-			!diaspora_is_redmatrix($item["owner-link"]) AND isset($buttons["like"]))
+			!diaspora::is_redmatrix($item["owner-link"]) AND isset($buttons["like"]))
 			unset($buttons["like"]);
 
 		// Diaspora doesn't has multithreaded comments
@@ -363,7 +373,7 @@ class Item extends BaseObject {
 			'profile_url' => $profile_link,
 			'item_photo_menu' => item_photo_menu($item),
 			'name' => $name_e,
-			'thumb' => proxy_url($profile_avatar, false, PROXY_SIZE_THUMB),
+			'thumb' => $a->remove_baseurl(proxy_url($item['author-thumb'], false, PROXY_SIZE_THUMB)),
 			'osparkle' => $osparkle,
 			'sparkle' => $sparkle,
 			'title' => $title_e,
@@ -376,7 +386,7 @@ class Item extends BaseObject {
 			'indent' => $indent,
 			'shiny' => $shiny,
 			'owner_url' => $this->get_owner_url(),
-			'owner_photo' => proxy_url($this->get_owner_photo(), false, PROXY_SIZE_THUMB),
+			'owner_photo' => $a->remove_baseurl(proxy_url($item['owner-thumb'], false, PROXY_SIZE_THUMB)),
 			'owner_name' => htmlentities($owner_name_e),
 			'plink' => get_plink($item),
 			'edpost'    => ((feature_enabled($conv->get_profile_owner(),'edit_posts')) ? $edpost : ''),
@@ -429,10 +439,10 @@ class Item extends BaseObject {
 			}
 		}
 
-        if ($this->is_toplevel()) {
-            $result['total_comments_num'] = "$total_children";
-            $result['total_comments_text'] = tt('comment', 'comments', $total_children);
-        }
+	if ($this->is_toplevel()) {
+	    $result['total_comments_num'] = "$total_children";
+	    $result['total_comments_text'] = tt('comment', 'comments', $total_children);
+	}
 
 		$result['private'] = $item['private'];
 		$result['toplevel'] = ($this->is_toplevel() ? 'toplevel_item' : '');
@@ -703,9 +713,9 @@ class Item extends BaseObject {
 				'$parent' => $this->get_id(),
 				'$qcomment' => $qcomment,
 				'$profile_uid' =>  $conv->get_profile_owner(),
-				'$mylink' => $a->contact['url'],
+				'$mylink' => $a->remove_baseurl($a->contact['url']),
 				'$mytitle' => t('This is you'),
-				'$myphoto' => $a->contact['thumb'],
+				'$myphoto' => $a->remove_baseurl($a->contact['thumb']),
 				'$comment' => t('Comment'),
 				'$submit' => t('Submit'),
 				'$edbold' => t('Bold'),

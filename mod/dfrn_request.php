@@ -11,6 +11,8 @@
 
 require_once('include/enotify.php');
 require_once('include/Scrape.php');
+require_once('include/Probe.php');
+require_once('include/group.php');
 
 if(! function_exists('dfrn_request_init')) {
 function dfrn_request_init(&$a) {
@@ -42,8 +44,10 @@ function dfrn_request_init(&$a) {
 if(! function_exists('dfrn_request_post')) {
 function dfrn_request_post(&$a) {
 
-	if(($a->argc != 2) || (! count($a->profile)))
+	if(($a->argc != 2) || (! count($a->profile))) {
+		logger('Wrong count of argc or profiles: argc=' . $a->argc . ',profile()=' . count($a->profile));
 		return;
+	}
 
 
 	if(x($_POST, 'cancel')) {
@@ -113,7 +117,7 @@ function dfrn_request_post(&$a) {
 					 * Scrape the other site's profile page to pick up the dfrn links, key, fn, and photo
 					 */
 
-					$parms = scrape_dfrn($dfrn_url);
+					$parms = Probe::profile($dfrn_url);
 
 					if(! count($parms)) {
 						notice( t('Profile location is not valid or does not contain profile information.') . EOL );
@@ -124,7 +128,7 @@ function dfrn_request_post(&$a) {
 							notice( t('Warning: profile location has no identifiable owner name.') . EOL );
 						if(! x($parms,'photo'))
 							notice( t('Warning: profile location has no profile photo.') . EOL );
-						$invalid = validate_dfrn($parms);
+						$invalid = Probe::valid_dfrn($parms);
 						if($invalid) {
 							notice( sprintf( tt("%d required parameter was not found at the given location",
 												"%d required parameters were not found at the given location",
@@ -134,6 +138,8 @@ function dfrn_request_post(&$a) {
 					}
 
 					$dfrn_request = $parms['dfrn-request'];
+
+					$photo = $parms["photo"];
 
 					/********* Escape the entire array ********/
 
@@ -172,19 +178,19 @@ function dfrn_request_post(&$a) {
 					info( t("Introduction complete.") . EOL);
 				}
 
-				$r = q("select id from contact where uid = %d and url = '%s' and `site-pubkey` = '%s' limit 1",
+				$r = q("SELECT `id`, `network` FROM `contact` WHERE `uid` = %d AND `url` = '%s' AND `site-pubkey` = '%s' LIMIT 1",
 					intval(local_user()),
 					dbesc($dfrn_url),
 					$parms['key'] // this was already escaped
 				);
 				if(count($r)) {
-					$g = q("select def_gid from user where uid = %d limit 1",
-						intval(local_user())
-					);
-					if($g && intval($g[0]['def_gid'])) {
-						require_once('include/group.php');
-						group_add_member(local_user(),'',$r[0]['id'],$g[0]['def_gid']);
-					}
+					$def_gid = get_default_group(local_user(), $r[0]["network"]);
+					if(intval($def_gid))
+						group_add_member(local_user(), '', $r[0]['id'], $def_gid);
+
+					if (isset($photo))
+						update_contact_avatar($photo, local_user(), $r[0]["id"], true);
+
 					$forwardurl = $a->get_baseurl()."/contacts/".$r[0]['id'];
 				} else
 					$forwardurl = $a->get_baseurl()."/contacts";
@@ -386,20 +392,16 @@ function dfrn_request_post(&$a) {
 				intval($rel)
 			);
 
-			$r = q("select id from contact where poll = '%s' and uid = %d limit 1",
+			$r = q("SELECT `id`, `network` FROM `contact` WHERE `poll` = '%s' AND `uid` = %d LIMIT 1",
 				dbesc($poll),
 				intval($uid)
 			);
 			if(count($r)) {
 				$contact_id = $r[0]['id'];
 
-				$g = q("select def_gid from user where uid = %d limit 1",
-					intval($uid)
-				);
-				if($g && intval($g[0]['def_gid'])) {
-					require_once('include/group.php');
-					group_add_member($uid,'',$contact_id,$g[0]['def_gid']);
-				}
+				$def_gid = get_default_group($uid, $r[0]["network"]);
+				if (intval($def_gid))
+					group_add_member($uid, '', $contact_id, $def_gid);
 
 				$photo = avatar_img($addr);
 
@@ -446,7 +448,7 @@ function dfrn_request_post(&$a) {
 			$network = $data["network"];
 
 			// Canonicalise email-style profile locator
-			$url = webfinger_dfrn($url,$hcard);
+			$url = Probe::webfinger_dfrn($url,$hcard);
 
 			if (substr($url,0,5) === 'stat:') {
 
@@ -461,7 +463,7 @@ function dfrn_request_post(&$a) {
 				$network = NETWORK_DFRN;
 		}
 
-		logger('dfrn_request: url: ' . $url);
+		logger('dfrn_request: url: ' . $url . ',network=' . $network, LOGGER_DEBUG);
 
 		if($network === NETWORK_DFRN) {
 			$ret = q("SELECT * FROM `contact` WHERE `uid` = %d AND `url` = '%s' AND `self` = 0 LIMIT 1",
@@ -510,7 +512,7 @@ function dfrn_request_post(&$a) {
 
 				require_once('include/Scrape.php');
 
-				$parms = scrape_dfrn(($hcard) ? $hcard : $url);
+				$parms = Probe::profile(($hcard) ? $hcard : $url);
 
 				if(! count($parms)) {
 					notice( t('Profile location is not valid or does not contain profile information.') . EOL );
@@ -521,7 +523,7 @@ function dfrn_request_post(&$a) {
 						notice( t('Warning: profile location has no identifiable owner name.') . EOL );
 					if(! x($parms,'photo'))
 						notice( t('Warning: profile location has no profile photo.') . EOL );
-					$invalid = validate_dfrn($parms);
+					$invalid = Probe::valid_dfrn($parms);
 					if($invalid) {
 						notice( sprintf( tt("%d required parameter was not found at the given location",
 											"%d required parameters were not found at the given location",
@@ -534,7 +536,7 @@ function dfrn_request_post(&$a) {
 
 				$parms['url'] = $url;
 				$parms['issued-id'] = $issued_id;
-
+				$photo = $parms["photo"];
 
 				dbesc_array($parms);
 				$r = q("INSERT INTO `contact` ( `uid`, `created`, `url`, `nurl`, `addr`, `name`, `nick`, `issued-id`, `photo`, `site-pubkey`,
@@ -543,7 +545,7 @@ function dfrn_request_post(&$a) {
 					intval($uid),
 					dbesc(datetime_convert()),
 					$parms['url'],
-					dbesc(normalise_link($parms['url'])),
+					dbesc(normalise_link($url)),
 					$parms['addr'],
 					$parms['fn'],
 					$parms['nick'],
@@ -566,8 +568,10 @@ function dfrn_request_post(&$a) {
 						$parms['url'],
 						$parms['issued-id']
 					);
-					if(count($r))
+					if(count($r)) {
 						$contact_record = $r[0];
+						update_contact_avatar($photo, $uid, $contact_record["id"], true);
+					}
 				}
 
 			}
@@ -825,7 +829,7 @@ function dfrn_request_content(&$a) {
 		else
 			$tpl = get_markup_template('auto_request.tpl');
 
-		$page_desc .= t("Please enter your 'Identity Address' from one of the following supported communications networks:");
+		$page_desc = t("Please enter your 'Identity Address' from one of the following supported communications networks:");
 
 		// see if we are allowed to have NETWORK_MAIL2 contacts
 
@@ -850,7 +854,7 @@ function dfrn_request_content(&$a) {
 			get_server()
 		);
 
-		$o .= replace_macros($tpl,array(
+		$o = replace_macros($tpl,array(
 			'$header' => t('Friend/Connection Request'),
 			'$desc' => t('Examples: jojo@demo.friendica.com, http://demo.friendica.com/profile/jojo, testuser@identi.ca'),
 			'$pls_answer' => t('Please answer the following:'),

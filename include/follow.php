@@ -1,5 +1,7 @@
 <?php
 require_once("include/Scrape.php");
+require_once("include/socgraph.php");
+require_once('include/group.php');
 
 function update_contact($id) {
 	/*
@@ -42,6 +44,9 @@ function update_contact($id) {
 		dbesc($ret['poco']),
 		intval($id)
 	);
+
+	// Update the corresponding gcontact entry
+	poco_last_updated($ret["url"]);
 
 	return true;
 }
@@ -254,38 +259,18 @@ function new_contact($uid,$url,$interactive = false) {
 	$contact_id  = $r[0]['id'];
 	$result['cid'] = $contact_id;
 
-	$g = q("select def_gid from user where uid = %d limit 1",
-		intval($uid)
-	);
-	if($g && intval($g[0]['def_gid'])) {
-		require_once('include/group.php');
-		group_add_member($uid,'',$contact_id,$g[0]['def_gid']);
-	}
+	$def_gid = get_default_group($uid, $contact["network"]);
+	if (intval($def_gid))
+		group_add_member($uid, '', $contact_id, $def_gid);
 
 	require_once("include/Photo.php");
 
-	$photos = import_profile_photo($ret['photo'],$uid,$contact_id);
-
-	$r = q("UPDATE `contact` SET `photo` = '%s',
-			`thumb` = '%s',
-			`micro` = '%s',
-			`name-date` = '%s',
-			`uri-date` = '%s',
-			`avatar-date` = '%s'
-			WHERE `id` = %d",
-			dbesc($photos[0]),
-			dbesc($photos[1]),
-			dbesc($photos[2]),
-			dbesc(datetime_convert()),
-			dbesc(datetime_convert()),
-			dbesc(datetime_convert()),
-			intval($contact_id)
-		);
-
+	// Update the avatar
+	update_contact_avatar($ret['photo'],$uid,$contact_id);
 
 	// pull feed and consume it, which should subscribe to the hub.
 
-	proc_run('php',"include/onepoll.php","$contact_id", "force");
+	proc_run(PRIORITY_MEDIUM, "include/onepoll.php", $contact_id, "force");
 
 	// create a follow slap
 
@@ -317,8 +302,8 @@ function new_contact($uid,$url,$interactive = false) {
 		}
 		if($contact['network'] == NETWORK_DIASPORA) {
 			require_once('include/diaspora.php');
-			$ret = diaspora_share($a->user,$contact);
-			logger('mod_follow: diaspora_share returns: ' . $ret);
+			$ret = diaspora::send_share($a->user,$contact);
+			logger('share returns: '.$ret);
 		}
 	}
 

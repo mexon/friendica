@@ -40,7 +40,7 @@ function common_content(&$a) {
 		$vcard_widget .= replace_macros(get_markup_template("vcard-widget.tpl"),array(
 			'$name' => htmlentities($c[0]['name']),
 			'$photo' => $c[0]['photo'],
-			'url' => z_root() . '/contacts/' . $cid
+			'url' => 'contacts/' . $cid
 		));
 
 		if(! x($a->page,'aside'))
@@ -109,14 +109,14 @@ function common_content(&$a) {
 		$rr[id] = $rr[cid];
 
 		$photo_menu = '';
-		$photo_menu = contact_photo_menu ($rr);
+		$photo_menu = contact_photo_menu($rr);
 
 		$entry = array(
 			'url'		=> $rr['url'],
 			'itemurl'	=> (($contact_details['addr'] != "") ? $contact_details['addr'] : $rr['url']),
-			'name'		=> $rr['name'],
-			'thumb'		=> proxy_url($rr['photo'], false, PROXY_SIZE_THUMB),
-			'img_hover'	=> htmlentities($rr['name']),
+			'name'		=> $contact_details['name'],
+			'thumb'		=> proxy_url($contact_details['thumb'], false, PROXY_SIZE_THUMB),
+			'img_hover'	=> htmlentities($contact_details['name']),
 			'details'	=> $contact_details['location'],
 			'tags'		=> $contact_details['keywords'],
 			'about'		=> $contact_details['about'],
