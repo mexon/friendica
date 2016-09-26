@@ -113,7 +113,7 @@ function html2bbcode($message)
 	$doc = new DOMDocument();
 	$doc->preserveWhiteSpace = false;
 
-	$message = mb_convert_encoding($message, 'HTML-ENTITIES', "UTF-8");
+	//$message = mb_convert_encoding($message, 'HTML-ENTITIES', "UTF-8");
 
 	@$doc->loadHTML($message);
 

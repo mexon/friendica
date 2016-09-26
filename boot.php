@@ -17,6 +17,11 @@
  * easily as email does today.
  */
 
+function mb_convert_encoding($stuff)
+{
+return $stuff;
+}
+
 require_once('include/config.php');
 require_once('include/network.php');
 require_once('include/plugin.php');
@@ -1030,7 +1035,7 @@ class App {
 		$this->performance["marktime"] += (float)$duration;
 
 		// Trace the different functions with their timestamps
-		$trace = debug_backtrace(DEBUG_BACKTRACE_IGNORE_ARGS, 5);
+		$trace = debug_backtrace(DEBUG_BACKTRACE_IGNORE_ARGS);
 
 		array_shift($trace);
 

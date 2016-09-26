@@ -647,14 +647,16 @@ class Photo {
 	}
 	else {
 	    $r = q("INSERT INTO `photo`
-		( `uid`, `contact-id`, `guid`, `resource-id`, `created`, `edited`, `filename`, type, `album`, `height`, `width`, `datasize`, `data`, `scale`, `profile`, `allow_cid`, `allow_gid`, `deny_cid`, `deny_gid` )
-		VALUES ( %d, %d, '%s', '%s', '%s', '%s', '%s', '%s', '%s', %d, %d, %d, '%s', %d, %d, '%s', '%s', '%s', '%s' )",
+		( `uid`, `contact-id`, `guid`, `resource-id`, `created`, `edited`, `title`, `desc`, `filename`, type, `album`, `height`, `width`, `datasize`, `data`, `scale`, `profile`, `allow_cid`, `allow_gid`, `deny_cid`, `deny_gid` )
+		VALUES ( %d, %d, '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', %d, %d, %d, '%s', %d, %d, '%s', '%s', '%s', '%s' )",
 		intval($uid),
 		intval($cid),
 		dbesc($guid),
 		dbesc($rid),
 		dbesc(datetime_convert()),
 		dbesc(datetime_convert()),
+                '',
+                '',
 		dbesc(basename($filename)),
 		dbesc($this->getType()),
 		dbesc($album),

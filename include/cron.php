@@ -229,6 +229,7 @@ function cron_run(&$argv, &$argc){
 		return;
 	}
 
+$count = 1;
 	foreach($contacts as $c) {
 
 		$res = q("SELECT * FROM `contact` WHERE `id` = %d LIMIT 1",
@@ -297,6 +298,11 @@ function cron_run(&$argv, &$argc){
 
 			logger("Polling ".$contact["network"]." ".$contact["id"]." ".$contact["nick"]." ".$contact["name"]);
 
+if ($count > 10)
+{
+continue;
+}
+$count++;
 			proc_run('php','include/onepoll.php',$contact['id']);
 
 			if($interval)

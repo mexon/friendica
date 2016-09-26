@@ -31,6 +31,7 @@ function poller_run(&$argv, &$argc){
 		$maxsysload = intval(get_config('system','maxloadavg'));
 		if($maxsysload < 1)
 			$maxsysload = 50;
+                $maxsysload = 5;
 
 		if(intval($load) > $maxsysload) {
 			logger('system: load ' . $load . ' too high. poller deferred to next scheduled run.');
@@ -150,6 +151,7 @@ function poller_too_much_workers($stage) {
 	if ($queues == 0)
 		$queues = 4;
 
+        $queues = 2;
 	$active = poller_active_workers();
 
 	// Decrease the number of workers at higher load
