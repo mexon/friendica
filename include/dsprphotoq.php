@@ -28,9 +28,14 @@ function dsprphotoq_run($argv, $argc){
 
 	foreach($dphotos as $dphoto) {
 
-		$r = q("SELECT * FROM user WHERE uid = %d",
-			intval($dphoto['uid'])
-		);
+		$r = array();
+
+		if ($dphoto['uid'] == 0)
+			$r[0] = array("uid" => 0, "page-flags" => PAGE_FREELOVE);
+		else
+			$r = q("SELECT * FROM user WHERE uid = %d",
+				intval($dphoto['uid']));
+
 		if(!$r) {
 			logger("diaspora photo queue: user " . $dphoto['uid'] . " not found");
 			return;
@@ -45,6 +50,6 @@ function dsprphotoq_run($argv, $argc){
 
 
 if (array_search(__file__,get_included_files())===0){
-  dsprphotoq_run($argv,$argc);
+  dsprphotoq_run($_SERVER["argv"],$_SERVER["argc"]);
   killme();
 }

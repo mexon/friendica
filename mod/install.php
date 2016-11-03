@@ -1,4 +1,5 @@
 <?php
+require_once "include/Photo.php";
 
 $install_wizard_pass=1;
 
@@ -10,6 +11,14 @@ function install_init(&$a){
 		echo "ok";
 		killme();
 	}
+	
+	// We overwrite current theme css, because during install we could not have a working mod_rewrite
+	// so we could not have a css at all. Here we set a static css file for the install procedure pages
+	$a->config['system']['theme'] = "../install";
+	$a->theme['stylesheet'] = $a->get_baseurl()."/view/install/style.css";
+	
+	
+	
 	global $install_wizard_pass;
 	if (x($_POST,'pass'))
 		$install_wizard_pass = intval($_POST['pass']);
@@ -73,7 +82,7 @@ function install_post(&$a) {
 			// connect to db
 			$db = new dba($dbhost, $dbuser, $dbpass, $dbdata, true);
 
-			$tpl = get_intltext_template('htconfig.tpl');
+			$tpl = get_markup_template('htconfig.tpl');
 			$txt = replace_macros($tpl,array(
 				'$dbhost' => $dbhost,
 				'$dbuser' => $dbuser,
@@ -85,12 +94,14 @@ function install_post(&$a) {
 				'$adminmail' => $adminmail
 			));
 
+
 			$result = file_put_contents('.htconfig.php', $txt);
 			if(! $result) {
 				$a->data['txt'] = $txt;
 			}
 
 			$errors = load_database($db);
+
 
 			if($errors)
 				$a->data['db_failed'] = $errors;
@@ -148,7 +159,7 @@ function install_content(&$a) {
 			return replace_macros($tpl, array(
 				'$title' => $install_title,
 				'$pass' => '',
-				'$status' => t('Permission denied.'),
+				'$status' => t('Database already in use.'),
 				'$text' => '',
 			));
 		}
@@ -174,6 +185,8 @@ function install_content(&$a) {
 			$checks = array();
 
 			check_funcs($checks);
+
+			check_imagik($checks);
 
 			check_htconfig($checks);
 
@@ -231,11 +244,11 @@ function install_content(&$a) {
 
 				'$status' => $wizard_status,
 
-				'$dbhost' => array('dbhost', t('Database Server Name'), $dbhost, ''),
-				'$dbuser' => array('dbuser', t('Database Login Name'), $dbuser, ''),
-				'$dbpass' => array('dbpass', t('Database Login Password'), $dbpass, ''),
-				'$dbdata' => array('dbdata', t('Database Name'), $dbdata, ''),
-				'$adminmail' => array('adminmail', t('Site administrator email address'), $adminmail, t('Your account email address must match this in order to use the web admin panel.')),
+				'$dbhost' => array('dbhost', t('Database Server Name'), $dbhost, '', 'required'),
+				'$dbuser' => array('dbuser', t('Database Login Name'), $dbuser, '', 'required', 'autofocus'),
+				'$dbpass' => array('dbpass', t('Database Login Password'), $dbpass, '', 'required'),
+				'$dbdata' => array('dbdata', t('Database Name'), $dbdata, '', 'required'),
+				'$adminmail' => array('adminmail', t('Site administrator email address'), $adminmail, t('Your account email address must match this in order to use the web admin panel.'), 'required', 'autofocus', 'email'),
 
 
 
@@ -274,7 +287,7 @@ function install_content(&$a) {
 				'$dbdata' => $dbdata,
 				'$phpath' => $phpath,
 
-				'$adminmail' => array('adminmail', t('Site administrator email address'), $adminmail, t('Your account email address must match this in order to use the web admin panel.')),
+				'$adminmail' => array('adminmail', t('Site administrator email address'), $adminmail, t('Your account email address must match this in order to use the web admin panel.'), 'required', 'autofocus', 'email'),
 
 
 				'$timezone' => field_timezone('timezone', t('Please select a default timezone for your website'), $timezone, ''),
@@ -319,7 +332,7 @@ function check_php(&$phpath, &$checks) {
 	$help = "";
 	if(!$passed) {
 		$help .= t('Could not find a command line version of PHP in the web server PATH.'). EOL;
-		$help .= t("If you don't have a command line version of PHP installed on server, you will not be able to run background polling via cron. See <a href='http://friendica.com/node/27'>'Activating scheduled tasks'</a>") . EOL ;
+		$help .= t("If you don't have a command line version of PHP installed on server, you will not be able to run background polling via cron. See <a href='https://github.com/friendica/friendica/blob/master/doc/Install.md#set-up-the-poller'>'Setup the poller'</a>") . EOL ;
 		$help .= EOL . EOL ;
 		$tpl = get_markup_template('field_input.tpl');
 		$help .= replace_macros($tpl, array(
@@ -390,6 +403,7 @@ function check_funcs(&$checks) {
 	check_add($ck_funcs, t('OpenSSL PHP module'), true, true, "");
 	check_add($ck_funcs, t('mysqli PHP module'), true, true, "");
 	check_add($ck_funcs, t('mb_string PHP module'), true, true, "");
+	check_add($ck_funcs, t('mcrypt PHP module'), true, true, "");
 
 
 	if(function_exists('apache_get_modules')){
@@ -420,8 +434,25 @@ function check_funcs(&$checks) {
 		$ck_funcs[4]['status']= false;
 		$ck_funcs[4]['help']= t('Error: mb_string PHP module required but not installed.');
 	}
+	if(! function_exists('mcrypt_create_iv')){
+		$ck_funcs[5]['status']= false;
+		$ck_funcs[5]['help']= t('Error: mcrypt PHP module required but not installed.');
+	}
 
 	$checks = array_merge($checks, $ck_funcs);
+
+	// check for 'mcrypt_create_iv()', needed for RINO2
+	if ($ck_funcs[5]['status']) {
+		if (function_exists('mcrypt_create_iv')) {
+			$__status = true;
+			$__help = "If you are using php_cli, please make sure that mcrypt module is enabled in its config file";
+		} else {
+			$__status = false;
+			$__help = t('Function mcrypt_create_iv() is not defined. This is needed to enable RINO2 encryption layer.');
+		}
+		check_add($checks, t('mcrypt_create_iv() function'), $__status, false, $__help);
+	}
+
 
 	/*if((x($_SESSION,'sysmsg')) && is_array($_SESSION['sysmsg']) && count($_SESSION['sysmsg']))
 		notice( t('Please see the file "INSTALL.txt".') . EOL);*/
@@ -466,17 +497,38 @@ function check_htaccess(&$checks) {
 	$status = true;
 	$help = "";
 	if (function_exists('curl_init')){
-        $test = fetch_url($a->get_baseurl()."/install/testrewrite");
-        if ($test!="ok") {
-            $status = false;
-            $help = t('Url rewrite in .htaccess is not working. Check your server configuration.');
-        }
-        check_add($checks, t('Url rewrite is working'), $status, true, $help);
-    } else {
-        // cannot check modrewrite if libcurl is not installed
-    }
+		$test = fetch_url($a->get_baseurl()."/install/testrewrite");
 
+		if ($test!="ok")
+			$test = fetch_url(normalise_link($a->get_baseurl()."/install/testrewrite"));
+
+		if ($test!="ok") {
+			$status = false;
+			$help = t('Url rewrite in .htaccess is not working. Check your server configuration.');
+		}
+		check_add($checks, t('Url rewrite is working'), $status, true, $help);
+	} else {
+		// cannot check modrewrite if libcurl is not installed
+	}
 }
+
+function check_imagik(&$checks) {
+	$imagick = false;
+	$gif = false;
+
+	if (class_exists('Imagick')) {
+		$imagick = true;
+		$supported = Photo::supportedTypes();
+		if (array_key_exists('image/gif', $supported)) {
+			$gif = true;
+		}
+	}
+	check_add($checks, t('ImageMagick PHP extension is installed'), $imagick, false, "");
+	if ($imagick) {
+		check_add($checks, t('ImageMagick supports GIF'), $gif, false, "");
+	}
+}
+
 
 
 function manual_config(&$a) {

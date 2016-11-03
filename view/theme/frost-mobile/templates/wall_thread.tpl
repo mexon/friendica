@@ -42,7 +42,9 @@
 		</div>
 		{{*<!--<div class="wall-item-author">-->*}}
 				<a href="{{$item.profile_url}}" target="redir" title="{{$item.linktitle}}" class="wall-item-name-link"><span class="wall-item-name{{$item.sparkle}}" id="wall-item-name-{{$item.id}}" >{{$item.name}}</span></a>{{if $item.owner_url}} {{$item.to}} <a href="{{$item.owner_url}}" target="redir" title="{{$item.olinktitle}}" class="wall-item-name-link"><span class="wall-item-name{{$item.osparkle}}" id="wall-item-ownername-{{$item.id}}">{{$item.owner_name}}</span></a> {{$item.vwall}}{{/if}}<br />
-				<div class="wall-item-ago"  id="wall-item-ago-{{$item.id}}">{{$item.ago}}</div>				
+				<div class="wall-item-ago"  id="wall-item-ago-{{$item.id}}">
+				{{if $item.plink}}<a title="{{$item.plink.title}}" href="{{$item.plink.href}}" style="color: #999">{{$item.ago}}</a>{{else}} {{$item.ago}} {{/if}}
+				</div>
 		{{*<!--</div>-->*}}
 		<div class="wall-item-content" id="wall-item-content-{{$item.id}}" >
 			<div class="wall-item-title" id="wall-item-title-{{$item.id}}">{{$item.title}}</div>
@@ -92,6 +94,12 @@
 			<a href="#" id="filer-{{$item.id}}" onclick="itemFiler({{$item.id}}); return false;" class="filer-item filer-icon" title="{{$item.filer}}"></a>
 			{{/if}}			
 			
+			{{if $item.isevent}}
+				<a href="#" id="attendyes-{{$item.id}}" title="{{$item.attend.0}}" onclick="dolike({{$item.id}},'attendyes'); return false;" class="event-item event-icon event-attend-icon"></a>
+				<a href="#" id="attendno-{{$item.id}}" title="{{$item.attend.1}}" onclick="dolike({{$item.id}},'attendno'); return false;"  class="event-item event-icon event-dontattend-icon"></a>
+				<a href="#" id="attendmaybe-{{$item.id}}" title="{{$item.attend.2}}" onclick="dolike({{$item.id}},'attendmaybe'); return false;"  class="event-item event-icon event-maybeattend-icon"></a>
+			{{/if}}
+			
 			{{*<!--<div class="wall-item-delete-wrapper" id="wall-item-delete-wrapper-{{$item.id}}" >-->*}}
 				{{if $item.drop.dropping}}<a href="item/drop/{{$item.id}}" onclick="return confirmDelete();" class="wall-item-delete-wrapper icon drophide" title="{{$item.drop.delete}}" id="wall-item-delete-wrapper-{{$item.id}}" {{*onmouseover="imgbright(this);" onmouseout="imgdull(this);" *}}></a>{{/if}}
 			{{*<!--</div>-->*}}
@@ -100,8 +108,12 @@
 		</div>
 	</div>	
 	{{*<!--<div class="wall-item-wrapper-end"></div>-->*}}
-	<div class="wall-item-like {{$item.indent}}" id="wall-item-like-{{$item.id}}">{{$item.like}}</div>
-	<div class="wall-item-dislike {{$item.indent}}" id="wall-item-dislike-{{$item.id}}">{{$item.dislike}}</div>
+	{{if $item.responses}}
+		{{foreach $item.responses as $verb=>$response}}
+			<div class="wall-item-response {{$item.indent}}" id="wall-item-{{$verb}}-{{$item.id}}">{{$response.output}}</div>
+		{{/foreach}}
+	{{/if}}
+
 
 	{{if $item.threaded}}
 	{{if $item.comment}}

@@ -4,7 +4,7 @@ require_once('library/HTML5/Parser.php');
 require_once('include/crypto.php');
 
 if(! function_exists('scrape_dfrn')) {
-function scrape_dfrn($url) {
+function scrape_dfrn($url, $dont_probe = false) {
 
 	$a = get_app();
 
@@ -16,6 +16,13 @@ function scrape_dfrn($url) {
 
 	if(! $s)
 		return $ret;
+
+	if (!$dont_probe) {
+		$probe = probe_url($url);
+
+		if (isset($probe["addr"]))
+			$ret["addr"] = $probe["addr"];
+	}
 
 	$headers = $a->get_curl_headers();
 	logger('scrape_dfrn: headers=' . $headers, LOGGER_DEBUG);
@@ -251,7 +258,7 @@ function scrape_feed($url) {
 					$ret['feed_atom'] = $url;
 					return $ret;
 				}
- 				if(stristr($line,'application/rss+xml') || stristr($s,'<rss')) {
+				if(stristr($line,'application/rss+xml') || stristr($s,'<rss')) {
 					$ret['feed_rss'] = $url;
 					return $ret;
 				}
@@ -264,47 +271,40 @@ function scrape_feed($url) {
 		}
 	}
 
-	try {
-		$dom = HTML5_Parser::parse($s);
-	} catch (DOMException $e) {
-		logger('scrape_feed: parse error: ' . $e);
+	$basename = implode('/', array_slice(explode('/',$url),0,3)) . '/';
+
+	$doc = new DOMDocument();
+	@$doc->loadHTML($s);
+	$xpath = new DomXPath($doc);
+
+	$base = $xpath->query("//base");
+	foreach ($base as $node) {
+		$attr = array();
+
+		if ($node->attributes->length)
+			foreach ($node->attributes as $attribute)
+				$attr[$attribute->name] = $attribute->value;
+
+		if ($attr["href"] != "")
+			$basename = $attr["href"] ;
 	}
 
-	if(! $dom) {
-		logger('scrape_feed: failed to parse.');
-		return $ret;
+	$list = $xpath->query("//link");
+	foreach ($list as $node) {
+		$attr = array();
+
+		if ($node->attributes->length)
+			foreach ($node->attributes as $attribute)
+				$attr[$attribute->name] = $attribute->value;
+
+		if (($attr["rel"] == "alternate") AND ($attr["type"] == "application/atom+xml"))
+			$ret["feed_atom"] = $attr["href"];
+
+		if (($attr["rel"] == "alternate") AND ($attr["type"] == "application/rss+xml"))
+			$ret["feed_rss"] = $attr["href"];
 	}
 
-
-	$head = $dom->getElementsByTagName('base');
-	if($head) {
-		foreach($head as $head0) {
-			$basename = $head0->getAttribute('href');
-			break;
-		}
-	}
-	if(! $basename)
-		$basename = implode('/', array_slice(explode('/',$url),0,3)) . '/';
-
-	$items = $dom->getElementsByTagName('link');
-
-	// get Atom/RSS link elements, take the first one of either.
-
-	if($items) {
-		foreach($items as $item) {
-			$x = $item->getAttribute('rel');
-			if(($x === 'alternate') && ($item->getAttribute('type') === 'application/atom+xml')) {
-				if(! x($ret,'feed_atom'))
-					$ret['feed_atom'] = $item->getAttribute('href');
-			}
-			if(($x === 'alternate') && ($item->getAttribute('type') === 'application/rss+xml')) {
-				if(! x($ret,'feed_rss'))
-					$ret['feed_rss'] = $item->getAttribute('href');
-			}
-		}
-	}
-
-	// Drupal and perhaps others only provide relative URL's. Turn them into absolute.
+	// Drupal and perhaps others only provide relative URLs. Turn them into absolute.
 
 	if(x($ret,'feed_atom') && (! strstr($ret['feed_atom'],'://')))
 		$ret['feed_atom'] = $basename . $ret['feed_atom'];
@@ -329,7 +329,7 @@ function scrape_feed($url) {
  * PROBE_DIASPORA has a bias towards returning Diaspora information
  * while PROBE_NORMAL has a bias towards dfrn/zot - in the case where
  * an address (such as a Friendica address) supports more than one type
- * of network. 
+ * of network.
  *
  */
 
@@ -337,13 +337,19 @@ function scrape_feed($url) {
 define ( 'PROBE_NORMAL',   0);
 define ( 'PROBE_DIASPORA', 1);
 
-function probe_url($url, $mode = PROBE_NORMAL) {
+function probe_url($url, $mode = PROBE_NORMAL, $level = 1) {
 	require_once('include/email.php');
 
 	$result = array();
 
 	if(! $url)
 		return $result;
+
+	$result = Cache::get("probe_url:".$mode.":".$url);
+	if (!is_null($result)) {
+		$result = unserialize($result);
+		return $result;
+	}
 
 	$network = null;
 	$diaspora = false;
@@ -352,6 +358,13 @@ function probe_url($url, $mode = PROBE_NORMAL) {
 	$diaspora_key = '';
 	$has_lrdd = false;
 	$email_conversant = false;
+	$connectornetworks = false;
+	$appnet = false;
+
+	if (strpos($url,'twitter.com')) {
+		$connectornetworks = true;
+		$network = NETWORK_TWITTER;
+	}
 
 	// Twitter is deactivated since twitter closed its old API
 	//$twitter = ((strpos($url,'twitter.com') !== false) ? true : false);
@@ -359,7 +372,7 @@ function probe_url($url, $mode = PROBE_NORMAL) {
 
 	$at_addr = ((strpos($url,'@') !== false) ? true : false);
 
-	if((! $twitter) && (! $lastfm)) {
+	if((!$appnet) && (!$lastfm) && !$connectornetworks) {
 
 		if(strpos($url,'mailto:') !== false && $at_addr) {
 			$url = str_replace('mailto:','',$url);
@@ -403,13 +416,16 @@ function probe_url($url, $mode = PROBE_NORMAL) {
 						$pubkey = $diaspora_key;
 					$diaspora = true;
 				}
+				if(($link['@attributes']['rel'] === 'http://ostatus.org/schema/1.0/subscribe') AND ($mode == PROBE_NORMAL)) {
+					$diaspora = false;
+				}
 			}
 
 			// Status.Net can have more than one profile URL. We need to match the profile URL
 			// to a contact on incoming messages to prevent spam, and we won't know which one
 			// to match. So in case of two, one of them is stored as an alias. Only store URL's
 			// and not webfinger user@host aliases. If they've got more than two non-email style
-			// aliases, let's hope we're lucky and get one that matches the feed author-uri because 
+			// aliases, let's hope we're lucky and get one that matches the feed author-uri because
 			// otherwise we're screwed.
 
 			foreach($links as $link) {
@@ -424,6 +440,10 @@ function probe_url($url, $mode = PROBE_NORMAL) {
 					}
 				}
 			}
+
+			// If the profile is different from the url then the url is abviously an alias
+			if (($alias == "") AND ($profile != "") AND !$at_addr AND (normalise_link($profile) != normalise_link($url)))
+				$alias = $url;
 		}
 		elseif($mode == PROBE_NORMAL) {
 
@@ -491,6 +511,7 @@ function probe_url($url, $mode = PROBE_NORMAL) {
 	}
 
 	if($mode == PROBE_NORMAL) {
+
 		if(strlen($zot)) {
 			$s = fetch_url($zot);
 			if($s) {
@@ -498,8 +519,8 @@ function probe_url($url, $mode = PROBE_NORMAL) {
 				if($j) {
 					$network = NETWORK_ZOT;
 					$vcard   = array(
-						'fn'    => $j->fullname, 
-						'nick'  => $j->nickname, 
+						'fn'    => $j->fullname,
+						'nick'  => $j->nickname,
 						'photo' => $j->photo
 					);
 					$profile  = $j->url;
@@ -510,8 +531,9 @@ function probe_url($url, $mode = PROBE_NORMAL) {
 			}
 		}
 
+
 		if(strlen($dfrn)) {
-			$ret = scrape_dfrn(($hcard) ? $hcard : $dfrn);
+			$ret = scrape_dfrn(($hcard) ? $hcard : $dfrn, true);
 			if(is_array($ret) && x($ret,'dfrn-request')) {
 				$network = NETWORK_DFRN;
 				$request = $ret['dfrn-request'];
@@ -539,8 +561,12 @@ function probe_url($url, $mode = PROBE_NORMAL) {
 	if($network !== NETWORK_ZOT && $network !== NETWORK_DFRN && $network !== NETWORK_MAIL) {
 		if($diaspora)
 			$network = NETWORK_DIASPORA;
-		elseif($has_lrdd)
+		elseif($has_lrdd AND ($notify))
 			$network  = NETWORK_OSTATUS;
+
+		if(strpos($url,'@'))
+			$addr = str_replace('acct:', '', $url);
+
 		$priority = 0;
 
 		if($hcard && ! $vcard) {
@@ -599,16 +625,20 @@ function probe_url($url, $mode = PROBE_NORMAL) {
 			// Will leave it to others to figure out how to grab the avatar, which is on the $url page in the open graph meta links
 		}
 
-		if($twitter || ! $poll)
+		if($appnet || ! $poll)
 			$check_feed = true;
 		if((! isset($vcard)) || (! x($vcard,'fn')) || (! $profile))
 			$check_feed = true;
 		if(($at_addr) && (! count($links)))
 			$check_feed = false;
 
+		if ($connectornetworks)
+			$check_feed = false;
+
 		if($check_feed) {
 
 			$feedret = scrape_feed(($poll) ? $poll : $url);
+
 			logger('probe_url: scrape_feed ' . (($poll)? $poll : $url) . ' returns: ' . print_r($feedret,true), LOGGER_DATA);
 			if(count($feedret) && ($feedret['feed_atom'] || $feedret['feed_rss'])) {
 				$poll = ((x($feedret,'feed_atom')) ? unamp($feedret['feed_atom']) : unamp($feedret['feed_rss']));
@@ -630,12 +660,13 @@ function probe_url($url, $mode = PROBE_NORMAL) {
 			logger('probe_url: scrape_feed: headers: ' . $a->get_curl_headers(), LOGGER_DATA);
 
 			// Don't try and parse an empty string
-   			$feed->set_raw_data(($xml) ? $xml : '<?xml version="1.0" encoding="utf-8" ?><xml></xml>');
+			$feed->set_raw_data(($xml) ? $xml : '<?xml version="1.0" encoding="utf-8" ?><xml></xml>');
 
 			$feed->init();
-			if($feed->error())
+			if($feed->error()) {
 				logger('probe_url: scrape_feed: Error parsing XML: ' . $feed->error());
-
+				$network = NETWORK_PHANTOM;
+			}
 
 			if(! x($vcard,'photo'))
 				$vcard['photo'] = $feed->get_image_url();
@@ -647,6 +678,7 @@ function probe_url($url, $mode = PROBE_NORMAL) {
 					$vcard['fn'] = trim(unxmlify($author->get_email()));
 				if(strpos($vcard['fn'],'@') !== false)
 					$vcard['fn'] = substr($vcard['fn'],0,strpos($vcard['fn'],'@'));
+
 				$email = unxmlify($author->get_email());
 				if(! $profile && $author->get_link())
 					$profile = trim(unxmlify($author->get_link()));
@@ -657,6 +689,15 @@ function probe_url($url, $mode = PROBE_NORMAL) {
 						if((x($elems,'link')) && ($elems['link'][0]['attribs']['']['rel'] === 'photo'))
 							$vcard['photo'] = $elems['link'][0]['attribs']['']['href'];
 					}
+				}
+				// Fetch fullname via poco:displayName
+				$pocotags = $feed->get_feed_tags(SIMPLEPIE_NAMESPACE_ATOM_10, 'author');
+				if ($pocotags) {
+					$elems = $pocotags[0]['child']['http://portablecontacts.net/spec/1.0'];
+					if (isset($elems["displayName"]))
+						$vcard['fn'] = $elems["displayName"][0]["data"];
+					if (isset($elems["preferredUsername"]))
+						$vcard['nick'] = $elems["preferredUsername"][0]["data"];
 				}
 			}
 			else {
@@ -686,6 +727,45 @@ function probe_url($url, $mode = PROBE_NORMAL) {
 								$vcard['photo'] = $elems['link'][0]['attribs']['']['href'];
 						}
 					}
+				}
+			}
+
+			// Workaround for misconfigured Friendica servers
+			if (($network == "") AND (strstr($url, "/profile/"))) {
+				$noscrape = str_replace("/profile/", "/noscrape/", $url);
+				$noscrapejson = fetch_url($noscrape);
+				if ($noscrapejson) {
+
+					$network = NETWORK_DFRN;
+
+					$poco = str_replace("/profile/", "/poco/", $url);
+
+					$noscrapedata = json_decode($noscrapejson, true);
+
+					if (isset($noscrapedata["addr"]))
+						$addr = $noscrapedata["addr"];
+
+					if (isset($noscrapedata["fn"]))
+						$vcard["fn"] = $noscrapedata["fn"];
+
+					if (isset($noscrapedata["key"]))
+						$pubkey = $noscrapedata["key"];
+
+					if (isset($noscrapedata["photo"]))
+						$vcard["photo"] = $noscrapedata["photo"];
+
+					if (isset($noscrapedata["dfrn-request"]))
+						$request = $noscrapedata["dfrn-request"];
+
+					if (isset($noscrapedata["dfrn-confirm"]))
+						$confirm = $noscrapedata["dfrn-confirm"];
+
+					if (isset($noscrapedata["dfrn-notify"]))
+						$notify = $noscrapedata["dfrn-notify"];
+
+					if (isset($noscrapedata["dfrn-poll"]))
+						$poll = $noscrapedata["dfrn-poll"];
+
 				}
 			}
 
@@ -733,6 +813,25 @@ function probe_url($url, $mode = PROBE_NORMAL) {
 	if(($network === NETWORK_FEED) && ($poll) && (! x($vcard,'fn')))
 		$vcard['fn'] = $url;
 
+	if (($notify != "") AND ($poll != "")) {
+		$baseurl = matching(normalise_link($notify), normalise_link($poll));
+
+		$baseurl2 = matching($baseurl, normalise_link($profile));
+		if ($baseurl2 != "")
+			$baseurl = $baseurl2;
+	}
+
+	if (($baseurl == "") AND ($notify != ""))
+		$baseurl = matching(normalise_link($profile), normalise_link($notify));
+
+	if (($baseurl == "") AND ($poll != ""))
+		$baseurl = matching(normalise_link($profile), normalise_link($poll));
+
+	$baseurl = rtrim($baseurl, "/");
+
+	if(strpos($url,'@') AND ($addr == "") AND ($network == NETWORK_DFRN))
+		$addr = str_replace('acct:', '', $url);
+
 	$vcard['fn'] = notags($vcard['fn']);
 	$vcard['nick'] = str_replace(' ','',notags($vcard['nick']));
 
@@ -751,8 +850,49 @@ function probe_url($url, $mode = PROBE_NORMAL) {
 	$result['network'] = $network;
 	$result['alias'] = $alias;
 	$result['pubkey'] = $pubkey;
+	$result['baseurl'] = $baseurl;
 
 	logger('probe_url: ' . print_r($result,true), LOGGER_DEBUG);
 
+	if ($level == 1) {
+		// Trying if it maybe a diaspora account
+		if (($result['network'] == NETWORK_FEED) OR ($result['addr'] == "")) {
+			require_once('include/bbcode.php');
+			$address = GetProfileUsername($url, "", true);
+			$result2 = probe_url($address, $mode, ++$level);
+			if ($result2['network'] != "")
+				$result = $result2;
+		}
+
+		// Maybe it's some non standard GNU Social installation (Single user, subfolder or no uri rewrite)
+		if (($result['network'] == NETWORK_FEED) AND ($result['baseurl'] != "") AND ($result['nick'] != "")) {
+			$addr = $result['nick'].'@'.str_replace("http://", "", $result['baseurl']);
+			$result2 = probe_url($addr, $mode, ++$level);
+			if (($result2['network'] != "") AND ($result2['network'] != NETWORK_FEED))
+				$result = $result2;
+		}
+	}
+
+	// Only store into the cache if the value seems to be valid
+	if ($result['network'] != NETWORK_PHANTOM)
+		Cache::set("probe_url:".$mode.":".$url,serialize($result), CACHE_DAY);
+
 	return $result;
+}
+
+function matching($part1, $part2) {
+	$len = min(strlen($part1), strlen($part2));
+
+	$match = "";
+	$matching = true;
+	$i = 0;
+	while (($i <= $len) AND $matching) {
+		if (substr($part1, $i, 1) == substr($part2, $i, 1))
+			$match .= substr($part1, $i, 1);
+		else
+			$matching = false;
+
+		$i++;
+	}
+	return($match);
 }

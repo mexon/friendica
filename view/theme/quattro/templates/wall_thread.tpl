@@ -94,6 +94,10 @@
 				<a href="#" id="star-{{$item.id}}" onclick="dostar({{$item.id}}); return false;"  class="{{$item.star.classdo}}"  title="{{$item.star.do}}">{{$item.star.do}}</a>
 				<a href="#" id="unstar-{{$item.id}}" onclick="dostar({{$item.id}}); return false;"  class="{{$item.star.classundo}}"  title="{{$item.star.undo}}">{{$item.star.undo}}</a>
 			{{/if}}
+			{{if $item.ignore}}
+			    <a href="#" id="ignore-{{$item.id}}" onclick="doignore({{$item.id}}); return false;" class="{{$item.ignore.classdo}}" title="{{$item.ignore.do}}">{{$item.ignore.do}}</a>
+			    <a href="#" id="unignore-{{$item.id}}" onclick="doignore({{$item.id}}); return false;" class="{{$item.ignore.classundo}}" title="{{$item.ignore.undo}}">{{$item.ignore.undo}}</a>
+			{{/if}}
 			{{if $item.tagger}}
 				<a href="#" id="tagger-{{$item.id}}" onclick="itemTag({{$item.id}}); return false;" class="{{$item.tagger.class}}" title="{{$item.tagger.add}}">{{$item.tagger.add}}</a>
 			{{/if}}
@@ -109,6 +113,14 @@
 			    {{if $item.vote.share}}
 				    <a href="#" id="share-{{$item.id}}" title="{{$item.vote.share.0}}" onclick="jotShare({{$item.id}}); return false">{{$item.vote.share.1}}</a>
 			    {{/if}}			
+			{{/if}}
+			{{if $item.isevent}}
+			<div class="clear"></div>
+			<div class="wall-item-actions-isevent">
+				<a href="#" id="attendyes-{{$item.id}}" title="{{$item.attend.0}}" onclick="dolike({{$item.id}},'attendyes'); return false;">{{$item.attend.0}}</a>
+				<a href="#" id="attendno-{{$item.id}}" title="{{$item.attend.1}}" onclick="dolike({{$item.id}},'attendno'); return false;">{{$item.attend.1}}</a>
+				<a href="#" id="attendmaybe-{{$item.id}}" title="{{$item.attend.2}}" onclick="dolike({{$item.id}},'attendmaybe'); return false;">{{$item.attend.2}}</a>
+			</div>
 			{{/if}}
 						
 			</div>
@@ -130,8 +142,11 @@
 	</div>
 	<div class="wall-item-bottom">
 		<div class="wall-item-links"></div>
-		<div class="wall-item-like" id="wall-item-like-{{$item.id}}">{{$item.like}}</div>
-		<div class="wall-item-dislike" id="wall-item-dislike-{{$item.id}}">{{$item.dislike}}</div>	
+		{{if $item.responses}}
+			{{foreach $item.responses as $verb=>$response}}
+				<div class="wall-item-{{$verb}}" id="wall-item-{{$verb}}-{{$item.id}}">{{$response.output}}</div>
+			{{/foreach}}
+		{{/if}}
 	</div>
 	
 	{{if $item.threaded}}{{if $item.comment}}{{if $item.indent==comment}}

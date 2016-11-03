@@ -43,18 +43,18 @@ function select_timezone($current = 'America/Los_Angeles') {
 			if($continent != t('Miscellaneous')) {
 				$o .= '</optgroup>';
 				$continent = t('Miscellaneous');
-				$o .= '<optgroup label="' . t($continent) . '">';	
+				$o .= '<optgroup label="' . t($continent) . '">';
 			}
 		}
 		$city = str_replace('_', ' ',  t($city));
 		$selected = (($value == $current) ? " selected=\"selected\" " : "");
 		$o .= "<option value=\"$value\" $selected >$city</option>";
-	}    
+	}
 	$o .= '</optgroup></select>';
 	return $o;
 }}
 
-// return a select using 'field_select_raw' template, with timezones 
+// return a select using 'field_select_raw' template, with timezones
 // groupped (primarily) by continent
 // arguments follow convetion as other field_* template array:
 // 'name', 'label', $value, 'help'
@@ -63,12 +63,12 @@ function field_timezone($name='timezone', $label='', $current = 'America/Los_Ang
 	$options = select_timezone($current);
 	$options = str_replace('<select id="timezone_select" name="timezone">','', $options);
 	$options = str_replace('</select>','', $options);
-	
+
 	$tpl = get_markup_template('field_select_raw.tpl');
 	return replace_macros($tpl, array(
 		'$field' => array($name, $label, $current, $help, $options),
 	));
-	
+
 }}
 
 // General purpose date parse/convert function.
@@ -92,8 +92,8 @@ function datetime_convert($from = 'UTC', $to = 'UTC', $s = 'now', $fmt = "Y-m-d 
 
 	// Slight hackish adjustment so that 'zero' datetime actually returns what is intended
 	// otherwise we end up with -0001-11-30 ...
-	// add 32 days so that we at least get year 00, and then hack around the fact that 
-	// months and days always start with 1. 
+	// add 32 days so that we at least get year 00, and then hack around the fact that
+	// months and days always start with 1.
 
 	if(substr($s,0,10) == '0000-00-00') {
 		$d = new DateTime($s . ' + 32 days', new DateTimeZone('UTC'));
@@ -131,134 +131,129 @@ function datetime_convert($from = 'UTC', $to = 'UTC', $s = 'now', $fmt = "Y-m-d 
 
 function dob($dob) {
 	list($year,$month,$day) = sscanf($dob,'%4d-%2d-%2d');
-	$y = datetime_convert('UTC',date_default_timezone_get(),'now','Y');
 	$f = get_config('system','birthday_input_format');
 	if(! $f)
 		$f = 'ymd';
-	$o = datesel($f,'',1920,$y,true,$year,$month,$day);
+	if($dob === '0000-00-00')
+		$value = '';
+	else
+		$value = (($year) ? datetime_convert('UTC','UTC',$dob,'Y-m-d') : datetime_convert('UTC','UTC',$dob,'m-d'));
+	$o = '<input type="text" name="dob" value="' . $value . '" placeholder="' . t('YYYY-MM-DD or MM-DD') . '" />';
+//	if ($dob && $dob != '0000-00-00')
+//		$o = datesel($f,mktime(0,0,0,0,0,1900),mktime(),mktime(0,0,0,$month,$day,$year),'dob');
+//	else
+//		$o = datesel($f,mktime(0,0,0,0,0,1900),mktime(),false,'dob');
 	return $o;
 }
 
-
-function datesel_format($f) {
-
-	$o = '';
-
-	if(strlen($f)) {
-		for($x = 0; $x < strlen($f); $x ++) {
-			switch($f[$x]) {
-				case 'y':
-					if(strlen($o))
-						$o .= '-';
-					$o .= t('year');					
-					break;
-				case 'm':
-					if(strlen($o))
-						$o .= '-';
-					$o .= t('month');					
-					break;
-				case 'd':
-					if(strlen($o))
-						$o .= '-';
-					$o .= t('day');
-					break;
-				default:
-					break;
-			}
-		}
-	}
-	return $o;
-}
-
-
-// returns a date selector.
-// $f           = format string, e.g. 'ymd' or 'mdy'
-// $pre         = prefix (if needed) for HTML name and class fields
-// $ymin        = first year shown in selector dropdown
-// $ymax        = last year shown in selector dropdown
-// $allow_blank = allow an empty response on any field
-// $y           = already selected year
-// $m           = already selected month
-// $d           = already selected day
-
+/**
+ * returns a date selector
+ * @param $format
+ *  format string, e.g. 'ymd' or 'mdy'. Not currently supported
+ * @param $min
+ *  unix timestamp of minimum date
+ * @param $max
+ *  unix timestap of maximum date
+ * @param $default
+ *  unix timestamp of default date
+ * @param $id
+ *  id and name of datetimepicker (defaults to "datetimepicker")
+ */
 if(! function_exists('datesel')) {
-function datesel($f,$pre,$ymin,$ymax,$allow_blank,$y,$m,$d) {
-
-	$o = '';
-
-	if(strlen($f)) {
-		for($z = 0; $z < strlen($f); $z ++) {
-			if($f[$z] === 'y') {
-
-				$o .= "<select name=\"{$pre}year\" class=\"{$pre}year\" size=\"1\">";
-				if($allow_blank) {
-					$sel = (($y == '0000') ? " selected=\"selected\" " : "");
-					$o .= "<option value=\"0000\" $sel ></option>";
-				}
-
-				if($ymax > $ymin) {
-					for($x = $ymax; $x >= $ymin; $x --) {
-						$sel = (($x == $y) ? " selected=\"selected\" " : "");
-						$o .= "<option value=\"$x\" $sel>$x</option>";
-					}
-				}
-				else {
-					for($x = $ymax; $x <= $ymin; $x ++) {
-						$sel = (($x == $y) ? " selected=\"selected\" " : "");
-						$o .= "<option value=\"$x\" $sel>$x</option>";
-					}
-				}
-			}
-			elseif($f[$z] == 'm') {
-  
-				$o .= "</select> <select name=\"{$pre}month\" class=\"{$pre}month\" size=\"1\">";
-				for($x = (($allow_blank) ? 0 : 1); $x <= 12; $x ++) {
-					$sel = (($x == $m) ? " selected=\"selected\" " : "");
-					$y = (($x) ? $x : '');
-					$o .= "<option value=\"$x\" $sel>$y</option>";
-				}
-			}
-			elseif($f[$z] == 'd') {
-
-				$o .= "</select> <select name=\"{$pre}day\" class=\"{$pre}day\" size=\"1\">";
-				for($x = (($allow_blank) ? 0 : 1); $x <= 31; $x ++) {
-					$sel = (($x == $d) ? " selected=\"selected\" " : "");
-					$y = (($x) ? $x : '');
-					$o .= "<option value=\"$x\" $sel>$y</option>";
-				}
-			}
-		}
-	}
-
-	$o .= "</select>";
-	return $o;
+function datesel($format, $min, $max, $default, $id = 'datepicker') {
+	return datetimesel($format,$min,$max,$default,$id,true,false, '','');
 }}
 
+/**
+ * returns a time selector
+ * @param $format
+ *  format string, e.g. 'ymd' or 'mdy'. Not currently supported
+ * @param $h
+ *  already selected hour
+ * @param $m
+ *  already selected minute
+ * @param $id
+ *  id and name of datetimepicker (defaults to "timepicker")
+ */
 if(! function_exists('timesel')) {
-function timesel($pre,$h,$m) {
-
-	$o = '';
-	$o .= "<select name=\"{$pre}hour\" class=\"{$pre}hour\" size=\"1\">";
-	for($x = 0; $x < 24; $x ++) {
-		$sel = (($x == $h) ? " selected=\"selected\" " : "");
-		$o .= "<option value=\"$x\" $sel>$x</option>";
-	}
-	$o .= "</select> : <select name=\"{$pre}minute\" class=\"{$pre}minute\" size=\"1\">";
-	for($x = 0; $x < 60; $x ++) {
-		$sel = (($x == $m) ? " selected=\"selected\" " : "");
-		$o .= "<option value=\"$x\" $sel>$x</option>";
-	}
-
-	$o .= "</select>";
-	return $o;
+function timesel($format, $h, $m, $id='timepicker') {
+	return datetimesel($format,new DateTime(),new DateTime(),new DateTime("$h:$m"),$id,false,true);
 }}
 
+/**
+ * @brief Returns a datetime selector.
+ *
+ * @param $format
+ *  format string, e.g. 'ymd' or 'mdy'. Not currently supported
+ * @param $min
+ *  unix timestamp of minimum date
+ * @param $max
+ *  unix timestap of maximum date
+ * @param $default
+ *  unix timestamp of default date
+ * @param string $id
+ *  id and name of datetimepicker (defaults to "datetimepicker")
+ * @param boolean $pickdate
+ *  true to show date picker (default)
+ * @param boolean $picktime
+ *  true to show time picker (default)
+ * @param $minfrom
+ *  set minimum date from picker with id $minfrom (none by default)
+ * @param $maxfrom
+ *  set maximum date from picker with id $maxfrom (none by default)
+ * @param boolean $required default false
+ * @return string Parsed HTML output.
+ *
+ * @todo Once browser support is better this could probably be replaced with
+ * native HTML5 date picker.
+ */
+if(! function_exists('datetimesel')) {
+function datetimesel($format, $min, $max, $default, $id = 'datetimepicker', $pickdate = true, $picktime = true, $minfrom = '', $maxfrom = '', $required = false) {
 
+	$a = get_app();
 
+	// First day of the week (0 = Sunday)
+	$firstDay = get_pconfig(local_user(),'system','first_day_of_week');
+	if ($firstDay === false) $firstDay=0;
 
+	$lang = substr(get_browser_language(), 0, 2);
 
+	// Check if the detected language is supported by the picker
+	if (!in_array($lang, array("ar", "ro", "id", "bg", "fa", "ru", "uk", "en", "el", "de", "nl", "tr", "fr", "es", "th", "pl", "pt", "ch", "se", "kr", "it", "da", "no", "ja", "vi", "sl", "cs", "hu")))
+		$lang = ((isset($a->config['system']['language'])) ? $a->config['system']['language'] : 'en');
 
+	$o = '';
+	$dateformat = '';
+	if($pickdate) $dateformat .= 'Y-m-d';
+	if($pickdate && $picktime) $dateformat .= ' ';
+	if($picktime) $dateformat .= 'H:i';
+	$minjs = $min ? ",minDate: new Date({$min->getTimestamp()}*1000), yearStart: " . $min->format('Y') : '';
+	$maxjs = $max ? ",maxDate: new Date({$max->getTimestamp()}*1000), yearEnd: " . $max->format('Y') : '';
 
+	$input_text = $default ? 'value="' . date($dateformat, $default->getTimestamp()) . '"' : '';
+	$defaultdatejs = $default ? ",defaultDate: new Date({$default->getTimestamp()}*1000)" : '';
+	$pickers = '';
+	if(!$pickdate) $pickers .= ',datepicker: false';
+	if(!$picktime) $pickers .= ',timepicker: false';
+	$extra_js = '';
+	$pickers .= ",dayOfWeekStart: ".$firstDay.",lang:'".$lang."'";
+	if($minfrom != '')
+		$extra_js .= "\$('#$minfrom').data('xdsoft_datetimepicker').setOptions({onChangeDateTime: function (currentDateTime) { \$('#$id').data('xdsoft_datetimepicker').setOptions({minDate: currentDateTime})}})";
+	if($maxfrom != '')
+		$extra_js .= "\$('#$maxfrom').data('xdsoft_datetimepicker').setOptions({onChangeDateTime: function (currentDateTime) { \$('#$id').data('xdsoft_datetimepicker').setOptions({maxDate: currentDateTime})}})";
+	$readable_format = $dateformat;
+	$readable_format = str_replace('Y','yyyy',$readable_format);
+	$readable_format = str_replace('m','mm',$readable_format);
+	$readable_format = str_replace('d','dd',$readable_format);
+	$readable_format = str_replace('H','HH',$readable_format);
+	$readable_format = str_replace('i','MM',$readable_format);
+	$o .= "<div class='date'><input type='text' placeholder='$readable_format' name='$id' id='$id' $input_text />";
+	$o .= '</div>';
+	$o .= "<script type='text/javascript'>";
+	$o .= "\$(function () {var picker = \$('#$id').datetimepicker({step:5,format:'$dateformat' $minjs $maxjs $pickers $defaultdatejs}); $extra_js})";
+	$o .= "</script>";
+	return $o;
+}}
 
 // implements "3 seconds ago" etc.
 // based on $posted_date, (UTC).
@@ -268,20 +263,27 @@ function timesel($pre,$h,$m) {
 if(! function_exists('relative_date')) {
 function relative_date($posted_date,$format = null) {
 
-	$localtime = datetime_convert('UTC',date_default_timezone_get(),$posted_date); 
+	$localtime = datetime_convert('UTC',date_default_timezone_get(),$posted_date);
 
 	$abs = strtotime($localtime);
-    
-    if (is_null($posted_date) || $posted_date === '0000-00-00 00:00:00' || $abs === False) {
+
+	if (is_null($posted_date) || $posted_date === '0000-00-00 00:00:00' || $abs === False) {
 		 return t('never');
 	}
 
 	$etime = time() - $abs;
-    
+
 	if ($etime < 1) {
 		return t('less than a second ago');
 	}
-    
+
+	/*
+	$time_append = '';
+	if ($etime >= 86400) {
+		$time_append = ' ('.$localtime.')';
+	}
+	*/
+
 	$a = array( 12 * 30 * 24 * 60 * 60  =>  array( t('year'),   t('years')),
 				30 * 24 * 60 * 60       =>  array( t('month'),  t('months')),
 				7  * 24 * 60 * 60       =>  array( t('week'),   t('weeks')),
@@ -290,7 +292,7 @@ function relative_date($posted_date,$format = null) {
 				60                      =>  array( t('minute'), t('minutes')),
 				1                       =>  array( t('second'), t('seconds'))
 	);
-    
+
 	foreach ($a as $secs => $str) {
 		$d = $etime / $secs;
 		if ($d >= 1) {
@@ -308,13 +310,13 @@ function relative_date($posted_date,$format = null) {
 // Returns age in years, given a date of birth,
 // the timezone of the person whose date of birth is provided,
 // and the timezone of the person viewing the result.
-// Why? Bear with me. Let's say I live in Mittagong, Australia, and my 
+// Why? Bear with me. Let's say I live in Mittagong, Australia, and my
 // birthday is on New Year's. You live in San Bruno, California.
 // When exactly are you going to see my age increase?
-// A: 5:00 AM Dec 31 San Bruno time. That's precisely when I start 
-// celebrating and become a year older. If you wish me happy birthday 
-// on January 1 (San Bruno time), you'll be a day late. 
-   
+// A: 5:00 AM Dec 31 San Bruno time. That's precisely when I start
+// celebrating and become a year older. If you wish me happy birthday
+// on January 1 (San Bruno time), you'll be a day late.
+
 function age($dob,$owner_tz = '',$viewer_tz = '') {
 	if(! intval($dob))
 		return 0;
@@ -370,7 +372,7 @@ function get_first_dim($y,$m) {
 
 // output a calendar for the given month, year.
 // if $links are provided (array), e.g. $links[12] => 'http://mylink' , 
-// date 12 will be linked appropriately. Today's date is also noted by 
+// date 12 will be linked appropriately. Today's date is also noted by
 // altering td class.
 // Months count from 1.
 
@@ -389,7 +391,7 @@ function cal($y = 0,$m = 0, $links = false, $class='') {
 	  'April','May','June',
 	  'July','August','September',
 	  'October','November','December'
-	); 
+	);
 
 	$thisyear = datetime_convert('UTC',date_default_timezone_get(),'now','Y');
 	$thismonth = datetime_convert('UTC',date_default_timezone_get(),'now','m');
@@ -440,8 +442,8 @@ function cal($y = 0,$m = 0, $links = false, $class='') {
   if($dow)
     for($a = $dow; $a < 7; $a ++)
        $o .= '<td>&nbsp;</td>';
-  $o .= '</tr></table>'."\r\n";  
-  
+  $o .= '</tr></table>'."\r\n";
+
   return $o;
 }}
 
@@ -465,10 +467,10 @@ function update_contact_birthdays() {
 			 *
 			 * $bdtext is just a readable placeholder in case the event is shared
 			 * with others. We will replace it during presentation to our $importer
-			 * to contain a sparkle link and perhaps a photo. 
+			 * to contain a sparkle link and perhaps a photo.
 			 *
 			 */
-			 
+
 			$bdtext = sprintf( t('%s\'s birthday'), $rr['name']);
 			$bdtext2 = sprintf( t('Happy Birthday %s'), ' [url=' . $rr['url'] . ']' . $rr['name'] . '[/url]') ;
 

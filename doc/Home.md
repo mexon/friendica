@@ -1,7 +1,7 @@
 Friendica Documentation and Resources
 =====================================
 
-**Contents**
+**User Manual**
 
 * General functions - first steps
 	* [Account Basics](help/Account-Basics)
@@ -10,7 +10,9 @@ Friendica Documentation and Resources
         * [BBCode tag reference](help/BBCode)
 	* [Comment, sort and delete posts](help/Text_comment)
 	* [Profiles](help/Profiles)
-* You and other user
+	* [Accesskey reference](help/Accesskeys)
+    * [Events](help/events)
+* You and other users
 	* [Connectors](help/Connectors)
 	* [Making Friends](help/Making-Friends)
 	* [Groups and Privacy](help/Groups-and-Privacy)
@@ -19,22 +21,32 @@ Friendica Documentation and Resources
 	* [Chats](help/Chats)
 * Further information
 	* [Improve Performance](help/Improve-Performance)
-	* [Move Account](help/Move-Account)
-	* [Remove Account](help/Remove-Account)
-	* [Bugs and Issues](help/Bugs-and-Issues)
+	* [Move your account](help/Move-Account)
+	* [Delete your account](help/Remove-Account)
 	* [Frequently asked questions (FAQ)](help/FAQ)
 
-**Technical Documentation**
+**Admin Manual**
 
 * [Install](help/Install)
 * [Settings](help/Settings)
-* [Plugins](help/Plugins)
-* [Installing Connectors (Facebook/Twitter/StatusNet)](help/Installing-Connectors)
+* [Installing Connectors (Twitter/GNU Social)](help/Installing-Connectors)
+* [Install an ejabberd server (XMPP chat) with synchronized credentials](help/install-ejabberd)
 * [Message Flow](help/Message-Flow)
 * [Using SSL with Friendica](help/SSL)
-* [Developers](help/Developers)
-* [Twitter/StatusNet API Functions](help/api)
+* [Twitter/GNU Social API Functions](help/api)
+* [Config values that can only be set in .htconfig.php](help/htconfig)
 
+**Developer Manual**
+
+* [Where to get started?](help/Developers-Intro)
+* [Help on Github](help/Github)
+* [Help on Vagrant](help/Vagrant)
+* [How to translate Friendica](help/translations)
+* [Bugs and Issues](help/Bugs-and-Issues)
+* [Plugin Development](help/Plugins)
+* [Theme Development](help/themes)
+* [Smarty 3 Templates](help/smarty3-templates)
+* [Code - Reference(Doxygen generated - sets cookies)](doc/html/)
 
 **External Resources**
 
@@ -44,4 +56,5 @@ Friendica Documentation and Resources
 **About**
 
 * [Site/Version Info](friendica)
+* [Friendica Credits](credits)
 

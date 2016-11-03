@@ -15,7 +15,7 @@ function nogroup_init(&$a) {
 	if(! x($a->page,'aside'))
 		$a->page['aside'] = '';
 
-	$a->page['aside'] .= group_side('contacts','group',false,0,$contact_id);
+	$a->page['aside'] .= group_side('contacts','group','extended',0,$contact_id);
 }
 
 
@@ -35,6 +35,7 @@ function nogroup_content(&$a) {
 	if(count($r)) {
 		foreach($r as $rr) {
 
+			$contact_details = get_contact_details_by_url($rr['url'], local_user());
 
 			$contacts[] = array(
 				'img_hover' => sprintf( t('Visit %s\'s profile [%s]'),$rr['name'],$rr['url']),
@@ -43,13 +44,16 @@ function nogroup_content(&$a) {
 				'id' => $rr['id'],
 				'alt_text' => $alt_text,
 				'dir_icon' => $dir_icon,
-				'thumb' => $rr['thumb'], 
+				'thumb' => $rr['thumb'],
 				'name' => $rr['name'],
 				'username' => $rr['name'],
+				'details'       => $contact_details['location'],
+				'tags'          => $contact_details['keywords'],
+				'about'         => $contact_details['about'],
 				'sparkle' => $sparkle,
-				'itemurl' => $rr['url'],
+				'itemurl' => (($contact_details['addr'] != "") ? $contact_details['addr'] : $rr['url']),
 				'url' => $url,
-				'network' => network_to_name($rr['network']),
+				'network' => network_to_name($rr['network'], $url),
 			);
 		}
 	}
@@ -59,8 +63,8 @@ function nogroup_content(&$a) {
 		'$header' => t('Contacts who are not members of a group'),
 		'$contacts' => $contacts,
 		'$paginate' => paginate($a),
-	)); 
-	
+	));
+
 	return $o;
 
 }

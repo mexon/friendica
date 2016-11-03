@@ -3,6 +3,7 @@
 
 body {
   background-color: #eeeeee !important;
+  font-family: "Lucida Sans Unicode","Lucida Sans", sans-serif;
 }
 
 header #banner #logo-text {
@@ -119,5 +120,9 @@ div.pager, ul.tabs {
 }
 
 .mail-list-wrapper {
+  border-radius: 5px;
+}
+
+#viewcontact_wrapper-network {
   border-radius: 5px;
 }

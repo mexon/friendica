@@ -136,7 +136,7 @@ function dfrn_request_post(&$a) {
 
 					$dfrn_request = $parms['dfrn-request'];
 
-                    /********* Escape the entire array ********/
+					/********* Escape the entire array ********/
 
 					dbesc_array($parms);
 
@@ -146,13 +146,14 @@ function dfrn_request_post(&$a) {
 					 * Create a contact record on our site for the other person
 					 */
 
-					$r = q("INSERT INTO `contact` ( `uid`, `created`,`url`, `nurl`, `name`, `nick`, `photo`, `site-pubkey`,
+					$r = q("INSERT INTO `contact` ( `uid`, `created`,`url`, `nurl`, `addr`, `name`, `nick`, `photo`, `site-pubkey`,
 						`request`, `confirm`, `notify`, `poll`, `poco`, `network`, `aes_allow`, `hidden`)
-						VALUES ( %d, '%s', '%s', '%s', '%s' , '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', %d, %d)",
+						VALUES ( %d, '%s', '%s', '%s', '%s', '%s' , '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', %d, %d)",
 						intval(local_user()),
 						datetime_convert(),
 						dbesc($dfrn_url),
 						dbesc(normalise_link($dfrn_url)),
+						$parms['addr'],
 						$parms['fn'],
 						$parms['nick'],
 						$parms['photo'],
@@ -539,13 +540,14 @@ function dfrn_request_post(&$a) {
 
 
 				dbesc_array($parms);
-				$r = q("INSERT INTO `contact` ( `uid`, `created`, `url`, `nurl`,`name`, `nick`, `issued-id`, `photo`, `site-pubkey`,
+				$r = q("INSERT INTO `contact` ( `uid`, `created`, `url`, `nurl`, `addr`, `name`, `nick`, `issued-id`, `photo`, `site-pubkey`,
 					`request`, `confirm`, `notify`, `poll`, `poco`, `network` )
-					VALUES ( %d, '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s' )",
+					VALUES ( %d, '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s' )",
 					intval($uid),
 					dbesc(datetime_convert()),
 					$parms['url'],
 					dbesc(normalise_link($parms['url'])),
+					$parms['addr'],
 					$parms['fn'],
 					$parms['nick'],
 					$parms['issued-id'],
@@ -648,12 +650,8 @@ function dfrn_request_content(&$a) {
 
 		if(! local_user()) {
 			info( t("Please login to confirm introduction.") . EOL );
-
 			/* setup the return URL to come back to this page if they use openid */
-
-			$stripped = str_replace('q=','',$a->query_string);
-			$_SESSION['return_url'] = trim($stripped,'/');
-
+			$_SESSION['return_url'] = $a->query_string;
 			return login();
 		}
 
@@ -668,6 +666,21 @@ function dfrn_request_content(&$a) {
 		$dfrn_url = notags(trim(hex2bin($_GET['dfrn_url'])));
 		$aes_allow = (((x($_GET,'aes_allow')) && ($_GET['aes_allow'] == 1)) ? 1 : 0);
 		$confirm_key = (x($_GET,'confirm_key') ? $_GET['confirm_key'] : "");
+
+		// Checking fastlane for validity
+		if (x($_SESSION, "fastlane") AND (normalise_link($_SESSION["fastlane"]) == normalise_link($dfrn_url))) {
+			$_POST["dfrn_url"] = $dfrn_url;
+			$_POST["confirm_key"] = $confirm_key;
+			$_POST["localconfirm"] = 1;
+			$_POST["hidden-contact"] = 0;
+			$_POST["submit"] = t('Confirm');
+
+			dfrn_request_post($a);
+
+			killme();
+			return; // NOTREACHED
+		}
+
 		$tpl = get_markup_template("dfrn_req_confirm.tpl");
 		$o  = replace_macros($tpl,array(
 			'$dfrn_url' => $dfrn_url,
@@ -825,7 +838,10 @@ function dfrn_request_content(&$a) {
 		//$emailnet = (($mail_disabled) ? '' : t("<strike>Connect as an email follower</strike> \x28Coming soon\x29"));
 		$emailnet = "";
 
-		$invite_desc = t('If you are not yet a member of the free social web, <a href="http://dir.friendica.com/siteinfo">follow this link to find a public Friendica site and join us today</a>.');
+		$invite_desc = sprintf(
+			t('If you are not yet a member of the free social web, <a href="%s/siteinfo">follow this link to find a public Friendica site and join us today</a>.'),
+			get_server()
+		);
 
 		$o .= replace_macros($tpl,array(
 			'$header' => t('Friend/Connection Request'),

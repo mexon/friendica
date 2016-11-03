@@ -36,12 +36,14 @@ function editpost_content(&$a) {
 		$plaintext = false;
 
 
-	$o .= '<h2>' . t('Edit post') . '</h2>';
+	$o .= replace_macros(get_markup_template("section_title.tpl"),array(
+		'$title' => t('Edit post')
+	));
 
 	$tpl = get_markup_template('jot-header.tpl');
 	$a->page['htmlhead'] .= replace_macros($tpl, array(
 		'$baseurl' => $a->get_baseurl(),
-		'$editselect' =>  (($plaintext) ? 'none' : '/(profile-jot-text|prvmail-text)/'),
+		'$editselect' => (($plaintext) ? 'none' : '/(profile-jot-text|prvmail-text)/'),
 		'$ispublic' => '&nbsp;', // t('Visible to <strong>everybody</strong>'),
 		'$geotag' => $geotag,
 		'$nickname' => $a->user['nickname']
@@ -58,13 +60,11 @@ function editpost_content(&$a) {
 
 
 	$tpl = get_markup_template("jot.tpl");
-		
+
 	if(($group) || (is_array($a->user) && ((strlen($a->user['allow_cid'])) || (strlen($a->user['allow_gid'])) || (strlen($a->user['deny_cid'])) || (strlen($a->user['deny_gid'])))))
 		$lockstate = 'lock';
 	else
 		$lockstate = 'unlock';
-
-	$celeb = ((($a->user['page-flags'] == PAGE_SOAPBOX) || ($a->user['page-flags'] == PAGE_COMMUNITY)) ? true : false);
 
 	$jotplugins = '';
 	$jotnets = '';
@@ -93,17 +93,17 @@ function editpost_content(&$a) {
 		$jotnets .= '<div class="profile-jot-net"><input type="checkbox" name="pubmail_enable"' . $selected . ' value="1" /> '
           	. t("Post to Email") . '</div>';
 	}*/
-					
+
 
 
 	call_hooks('jot_tool', $jotplugins);
 	//call_hooks('jot_networks', $jotnets);
 
-	
-	//$tpl = replace_macros($tpl,array('$jotplugins' => $jotplugins));	
-	
+
+	//$tpl = replace_macros($tpl,array('$jotplugins' => $jotplugins));
 
 	$o .= replace_macros($tpl,array(
+		'$is_edit' => true,
 		'$return_path' => $_SESSION['return_url'],
 		'$action' => 'item',
 		'$share' => t('Save'),
@@ -139,7 +139,7 @@ function editpost_content(&$a) {
 		'$placeholdercategory' => (feature_enabled(local_user(),'categories') ? t('Categories (comma-separated list)') : ''),
 		'$emtitle' => t('Example: bob@example.com, mary@example.com'),
 		'$lockstate' => $lockstate,
-		'$acl' => '', // populate_acl((($group) ? $group_acl : $a->user), $celeb),
+		'$acl' => '', // populate_acl((($group) ? $group_acl : $a->user)),
 		'$bang' => (($group) ? '!' : ''),
 		'$profile_uid' => $_SESSION['uid'],
 		'$preview' => t('Preview'),

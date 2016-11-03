@@ -4,7 +4,7 @@
 
 	<dl>
 		<dt>{{$queues.label}}</dt>
-		<dd>{{$queues.deliverq}} - {{$queues.queue}}</dd>
+		<dd>{{$queues.deliverq}} - <a href="{{$baseurl}}/admin/queue">{{$queues.queue}}</a></dd>
 	</dl>
 	<dl>
 		<dt>{{$pending.0}}</dt>
@@ -27,7 +27,7 @@
 		<dt>{{$plugins.0}}</dt>
 		
 		{{foreach $plugins.1 as $p}}
-			<dd>{{$p}}</dd>
+			<dd><a href="/admin/plugins/{{$p}}/">{{$p}}</a></dd>
 		{{/foreach}}
 		
 	</dl>

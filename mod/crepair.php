@@ -1,4 +1,6 @@
 <?php
+require_once("include/contact_selectors.php");
+require_once("mod/contacts.php");
 
 function crepair_init(&$a) {
 	if(! local_user())
@@ -21,13 +23,9 @@ function crepair_init(&$a) {
 		$a->page['aside'] = '';
 
 	if($contact_id) {
-			$a->data['contact'] = $r[0];
-			$o .= '<div class="vcard">';
-			$o .= '<div class="fn">' . $a->data['contact']['name'] . '</div>';
-			$o .= '<div id="profile-photo-wrapper"><img class="photo" style="width: 175px; height: 175px;" src="' . $a->data['contact']['photo'] . '" alt="' . $a->data['contact']['name'] . '" /></div>';
-			$o .= '</div>';
-			$a->page['aside'] .= $o;
-
+		$a->data['contact'] = $r[0];
+                $contact = $r[0];
+		profile_load($a, "", 0, get_contact_details_by_url($contact["url"]));
 	}
 }
 
@@ -136,27 +134,39 @@ function crepair_content(&$a) {
 
 	$contact = $r[0];
 
-	$msg1 = t('Repair Contact Settings');
+	$warning = t('<strong>WARNING: This is highly advanced</strong> and if you enter incorrect information your communications with this contact may stop working.');
+	$info = t('Please use your browser \'Back\' button <strong>now</strong> if you are uncertain what to do on this page.');
 
-	$msg2 = t('<strong>WARNING: This is highly advanced</strong> and if you enter incorrect information your communications with this contact may stop working.');
-	$msg3 = t('Please use your browser \'Back\' button <strong>now</strong> if you are uncertain what to do on this page.');
-
-	$o .= '<h2>' . $msg1 . '</h2>';
-
-	$o .= '<div class="error-message">' . $msg2 . EOL . EOL. $msg3 . '</div>';
-
-	$o .= EOL . '<a href="contacts/' . $cid . '">' . t('Return to contact editor') . '</a>' . EOL;
+	$returnaddr = "contacts/$cid";
 
 	$allow_remote_self = get_config('system','allow_users_remote_self');
 
 	// Disable remote self for everything except feeds.
 	// There is an issue when you repeat an item from maybe twitter and you got comments from friendica and twitter
 	// Problem is, you couldn't reply to both networks.
-	if ($contact['network'] != NETWORK_FEED)
+	if (!in_array($contact['network'], array(NETWORK_FEED, NETWORK_DFRN, NETWORK_DIASPORA)))
 		$allow_remote_self = false;
+
+	if ($contact['network'] == NETWORK_FEED)
+		$remote_self_options = array('0'=>t('No mirroring'), '1'=>t('Mirror as forwarded posting'), '2'=>t('Mirror as my own posting'));
+	else
+		$remote_self_options = array('0'=>t('No mirroring'), '2'=>t('Mirror as my own posting'));
+
+	$update_profile = in_array($contact['network'], array(NETWORK_DFRN, NETWORK_DSPR, NETWORK_OSTATUS));
+
+	$tab_str = contacts_tab($a, $contact['id'], 5);
+
 
 	$tpl = get_markup_template('crepair.tpl');
 	$o .= replace_macros($tpl, array(
+		//'$title'	=> t('Repair Contact Settings'),
+		'$tab_str'	=> $tab_str,
+		'$warning'	=> $warning,
+		'$info'		=> $info,
+		'$returnaddr'	=> $returnaddr,
+		'$return'	=> t('Return to contact editor'),
+		'$update_profile' => update_profile,
+		'$udprofilenow' => t('Refetch contact data'),
 		'$label_name' => t('Name'),
 		'$label_nick' => t('Account Nickname'),
 		'$label_attag' => t('@Tagname - overrides Name/Nickname'),
@@ -168,9 +178,14 @@ function crepair_content(&$a) {
 		'$label_photo' => t('New photo from this URL'),
 		'$label_remote_self' => t('Remote Self'),
 		'$allow_remote_self' => $allow_remote_self,
-		'$remote_self' => array('remote_self', t('Mirror postings from this contact'), $contact['remote_self'], t('Mark this contact as remote_self, this will cause friendica to repost new entries from this contact.'), array('0'=>t('No mirroring'), '1'=>t('Mirror as forwarded posting'), '2'=>t('Mirror as my own posting'))),
-		'$contact_name' => $contact['name'],
-		'$contact_nick' => $contact['nick'],
+		'$remote_self' => array('remote_self',
+					t('Mirror postings from this contact'),
+					$contact['remote_self'],
+					t('Mark this contact as remote_self, this will cause friendica to repost new entries from this contact.'),
+					$remote_self_options
+				),
+		'$contact_name' => htmlentities($contact['name']),
+		'$contact_nick' => htmlentities($contact['nick']),
 		'$contact_id'   => $contact['id'],
 		'$contact_url'  => $contact['url'],
 		'$request'      => $contact['request'],
@@ -179,7 +194,7 @@ function crepair_content(&$a) {
 		'$poll'         => $contact['poll'],
 		'$contact_attag'  => $contact['attag'],
 		'$lbl_submit'   => t('Submit')
-	    ));
+	));
 
 	return $o;
 

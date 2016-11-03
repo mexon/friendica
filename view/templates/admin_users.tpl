@@ -43,7 +43,7 @@
 				</tbody>
 			</table>
 			<div class='selectall'><a href='#' onclick="return selectall('pending_ckbx');">{{$select_all}}</a></div>
-			<div class="submit"><input type="submit" name="page_users_deny" value="{{$deny}}"/> <input type="submit" name="page_users_approve" value="{{$approve}}" /></div>			
+			<div class="submit"><input type="submit" name="page_users_deny" value="{{$deny|escape:'html'}}"/> <input type="submit" name="page_users_approve" value="{{$approve|escape:'html'}}" /></div>			
 		{{else}}
 			<p>{{$no_pending}}</p>
 		{{/if}}
@@ -70,25 +70,25 @@
 						<td class='lastitem_date'>{{$u.lastitem_date}}</td>
 						<td class='login_date'>{{$u.page_flags}} {{if $u.is_admin}}({{$siteadmin}}){{/if}} {{if $u.account_expired}}({{$accountexpired}}){{/if}}</td>
 						<td class="checkbox"> 
-                                    {{if $u.is_admin}}
-                                        &nbsp;
-                                    {{else}}
-                                        <input type="checkbox" class="users_ckbx" id="id_user_{{$u.uid}}" name="user[]" value="{{$u.uid}}"/></td>
-                                    {{/if}}
+						{{if $u.is_deletable}}
+							<input type="checkbox" class="users_ckbx" id="id_user_{{$u.uid}}" name="user[]" value="{{$u.uid}}"/></td>
+						{{else}}
+							&nbsp;
+						{{/if}}
 						<td class="tools">
-                                    {{if $u.is_admin}}
-                                        &nbsp;
-                                    {{else}}
-                                        <a href="{{$baseurl}}/admin/users/block/{{$u.uid}}?t={{$form_security_token}}" title='{{if $u.blocked}}{{$unblock}}{{else}}{{$block}}{{/if}}'><span class='icon block {{if $u.blocked==0}}dim{{/if}}'></span></a>
-                                        <a href="{{$baseurl}}/admin/users/delete/{{$u.uid}}?t={{$form_security_token}}" title='{{$delete}}' onclick="return confirm_delete('{{$u.name}}')"><span class='icon drop'></span></a>
-                                    {{/if}}
+						{{if $u.is_deletable}}
+							<a href="{{$baseurl}}/admin/users/block/{{$u.uid}}?t={{$form_security_token}}" title='{{if $u.blocked}}{{$unblock}}{{else}}{{$block}}{{/if}}'><span class='icon block {{if $u.blocked==0}}dim{{/if}}'></span></a>
+							<a href="{{$baseurl}}/admin/users/delete/{{$u.uid}}?t={{$form_security_token}}" title='{{$delete}}' onclick="return confirm_delete('{{$u.name}}')"><span class='icon drop'></span></a>
+						{{else}}
+							&nbsp;
+						{{/if}}
 						</td>
 					</tr>
 				{{/foreach}}
 				</tbody>
 			</table>
 			<div class='selectall'><a href='#' onclick="return selectall('users_ckbx');">{{$select_all}}</a></div>
-			<div class="submit"><input type="submit" name="page_users_block" value="{{$block}}/{{$unblock}}" /> <input type="submit" name="page_users_delete" value="{{$delete}}" onclick="return confirm_delete_multi()" /></div>						
+			<div class="submit"><input type="submit" name="page_users_block" value="{{$block|escape:'html'}}/{{$unblock|escape:'html'}}" /> <input type="submit" name="page_users_delete" value="{{$delete|escape:'html'}}" onclick="return confirm_delete_multi()" /></div>						
 		{{else}}
 			NO USERS?!?
 		{{/if}}
@@ -133,6 +133,6 @@
     </tr> 
       </tbody> 
   </table> 
-  <div class="submit"><input type="submit" name="add_new_user_submit" value="{{$submit}}" /></div>             
+  <div class="submit"><input type="submit" name="add_new_user_submit" value="{{$submit|escape:'html'}}" /></div>             
   </form>
 </div>

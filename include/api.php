@@ -7,6 +7,17 @@
 	require_once("include/conversation.php");
 	require_once("include/oauth.php");
 	require_once("include/html2plain.php");
+	require_once("mod/share.php");
+	require_once("include/Photo.php");
+	require_once("mod/item.php");
+	require_once('include/security.php');
+	require_once('include/contact_selectors.php');
+	require_once('include/html2bbcode.php');
+	require_once('mod/wall_upload.php');
+	require_once("mod/proxy.php");
+	require_once("include/message.php");
+
+
 	/*
 	 * Twitter-Like API
 	 *
@@ -96,31 +107,58 @@
 		}
 
 		$user = $_SERVER['PHP_AUTH_USER'];
-		$encrypted = hash('whirlpool',trim($_SERVER['PHP_AUTH_PW']));
+		$password = $_SERVER['PHP_AUTH_PW'];
+		$encrypted = hash('whirlpool',trim($password));
 
+		// allow "user@server" login (but ignore 'server' part)
+		$at=strstr($user, "@", true);
+		if ( $at ) $user=$at;
 
 		/**
 		 *  next code from mod/auth.php. needs better solution
 		 */
+		$record = null;
 
-		// process normal login request
-
-		$r = q("SELECT * FROM `user` WHERE ( `email` = '%s' OR `nickname` = '%s' )
-			AND `password` = '%s' AND `blocked` = 0 AND `account_expired` = 0 AND `account_removed` = 0 AND `verified` = 1 LIMIT 1",
-			dbesc(trim($user)),
-			dbesc(trim($user)),
-			dbesc($encrypted)
+		$addon_auth = array(
+			'username' => trim($user),
+			'password' => trim($password),
+			'authenticated' => 0,
+			'user_record' => null
 		);
-		if(count($r)){
-			$record = $r[0];
-		} else {
+
+		/**
+		 *
+		 * A plugin indicates successful login by setting 'authenticated' to non-zero value and returning a user record
+		 * Plugins should never set 'authenticated' except to indicate success - as hooks may be chained
+		 * and later plugins should not interfere with an earlier one that succeeded.
+		 *
+		 */
+
+		call_hooks('authenticate', $addon_auth);
+
+		if(($addon_auth['authenticated']) && (count($addon_auth['user_record']))) {
+			$record = $addon_auth['user_record'];
+		}
+		else {
+			// process normal login request
+
+			$r = q("SELECT * FROM `user` WHERE ( `email` = '%s' OR `nickname` = '%s' )
+				AND `password` = '%s' AND `blocked` = 0 AND `account_expired` = 0 AND `account_removed` = 0 AND `verified` = 1 LIMIT 1",
+				dbesc(trim($user)),
+				dbesc(trim($user)),
+				dbesc($encrypted)
+			);
+			if(count($r))
+				$record = $r[0];
+		}
+
+		if((! $record) || (! count($record))) {
 			logger('API_login failure: ' . print_r($_SERVER,true), LOGGER_DEBUG);
 			header('WWW-Authenticate: Basic realm="Friendica"');
 			header('HTTP/1.0 401 Unauthorized');
 			die('This api requires login');
 		}
 
-		require_once('include/security.php');
 		authenticate_success($record); $_SESSION["allow_api"] = true;
 
 		call_hooks('logged_in', $a->user);
@@ -154,7 +192,11 @@
 				if (strpos($a->query_string, ".atom")>0) $type="atom";
 				if (strpos($a->query_string, ".as")>0) $type="as";
 
+				$stamp =  microtime(true);
 				$r = call_user_func($info['func'], $a, $type);
+				$duration = (float)(microtime(true)-$stamp);
+				logger("API call duration: ".round($duration, 2)."\t".$a->query_string, LOGGER_DEBUG);
+
 				if ($r===false) return;
 
 				switch($type){
@@ -166,7 +208,10 @@
 					case "json":
 						header ("Content-Type: application/json");
 						foreach($r as $rr)
-							return json_encode($rr);
+							$json = json_encode($rr);
+							if ($_GET['callback'])
+								$json = $_GET['callback']."(".$json.")";
+							return $json;
 						break;
 					case "rss":
 						header ("Content-Type: application/rss+xml");
@@ -194,6 +239,7 @@
 	}
 
 	function api_error(&$a, $type, $error) {
+		# TODO:  https://dev.twitter.com/overview/api/response-codes
 		$r = "<status><error>".$error."</error><request>".$a->query_string."</request></status>";
 		switch($type){
 			case "xml":
@@ -239,7 +285,7 @@
 	 * Unique contact to contact url.
 	 */
 	function api_unique_id_to_url($id){
-		$r = q("SELECT url FROM unique_contacts WHERE id=%d LIMIT 1",
+		$r = q("SELECT `url` FROM `unique_contacts` WHERE `id`=%d LIMIT 1",
 			intval($id));
 		if ($r)
 			return ($r[0]["url"]);
@@ -344,9 +390,9 @@
 			$r = array();
 
 			if ($url != "")
-				$r = q("SELECT * FROM unique_contacts WHERE url='%s' LIMIT 1", $url);
+				$r = q("SELECT * FROM `unique_contacts` WHERE `url`='%s' LIMIT 1", $url);
 			elseif ($nick != "")
-				$r = q("SELECT * FROM unique_contacts WHERE nick='%s' LIMIT 1", $nick);
+				$r = q("SELECT * FROM `unique_contacts` WHERE `nick`='%s' LIMIT 1", $nick);
 
 			if ($r) {
 				// If no nick where given, extract it from the address
@@ -360,19 +406,27 @@
 					'screen_name' => (($r[0]['nick']) ? $r[0]['nick'] : $r[0]['name']),
 					'location' => NULL,
 					'description' => NULL,
-					'profile_image_url' => $r[0]["avatar"],
-					'profile_image_url_https' => $r[0]["avatar"],
 					'url' => $r[0]["url"],
 					'protected' => false,
 					'followers_count' => 0,
 					'friends_count' => 0,
+					'listed_count' => 0,
 					'created_at' => api_date(0),
 					'favourites_count' => 0,
 					'utc_offset' => 0,
 					'time_zone' => 'UTC',
-					'statuses_count' => 0,
-					'following' => false,
+					'geo_enabled' => false,
 					'verified' => false,
+					'statuses_count' => 0,
+					'lang' => '',
+					'contributors_enabled' => false,
+					'is_translator' => false,
+					'is_translation_enabled' => false,
+					'profile_image_url' => $r[0]["avatar"],
+					'profile_image_url_https' => $r[0]["avatar"],
+					'following' => false,
+					'follow_request_sent' => false,
+					'notifications' => false,
 					'statusnet_blocking' => false,
 					'notifications' => false,
 					'statusnet_profile_url' => $r[0]["url"],
@@ -451,18 +505,17 @@
 		}
 
 		// Fetching unique id
-		$r = q("SELECT id FROM unique_contacts WHERE url='%s' LIMIT 1", dbesc(normalise_link($uinfo[0]['url'])));
+		$r = q("SELECT id FROM `unique_contacts` WHERE `url`='%s' LIMIT 1", dbesc(normalise_link($uinfo[0]['url'])));
 
 		// If not there, then add it
 		if (count($r) == 0) {
-			q("INSERT INTO unique_contacts (url, name, nick, avatar) VALUES ('%s', '%s', '%s', '%s')",
+			q("INSERT INTO `unique_contacts` (`url`, `name`, `nick`, `avatar`) VALUES ('%s', '%s', '%s', '%s')",
 				dbesc(normalise_link($uinfo[0]['url'])), dbesc($uinfo[0]['name']),dbesc($uinfo[0]['nick']), dbesc($uinfo[0]['micro']));
 
-			$r = q("SELECT id FROM unique_contacts WHERE url='%s' LIMIT 1", dbesc(normalise_link($uinfo[0]['url'])));
+			$r = q("SELECT `id` FROM `unique_contacts` WHERE `url`='%s' LIMIT 1", dbesc(normalise_link($uinfo[0]['url'])));
 		}
 
-		require_once('include/contact_selectors.php');
-		$network_name = network_to_name($uinfo[0]['network']);
+		$network_name = network_to_name($uinfo[0]['network'], $uinfo[0]['url']);
 
 		$ret = Array(
 			'id' => intval($r[0]['id']),
@@ -486,7 +539,8 @@
 			'verified' => true,
 			'statusnet_blocking' => false,
 			'notifications' => false,
-			'statusnet_profile_url' => $a->get_baseurl()."/contacts/".$uinfo[0]['cid'],
+			//'statusnet_profile_url' => $a->get_baseurl()."/contacts/".$uinfo[0]['cid'],
+			'statusnet_profile_url' => $uinfo[0]['url'],
 			'uid' => intval($uinfo[0]['uid']),
 			'cid' => intval($uinfo[0]['cid']),
 			'self' => $uinfo[0]['self'],
@@ -499,32 +553,44 @@
 
 	function api_item_get_user(&$a, $item) {
 
-		$author = q("SELECT * FROM unique_contacts WHERE url='%s' LIMIT 1",
+		$author = q("SELECT * FROM `unique_contacts` WHERE `url`='%s' LIMIT 1",
 			dbesc(normalise_link($item['author-link'])));
 
 		if (count($author) == 0) {
-			q("INSERT INTO unique_contacts (url, name, avatar) VALUES ('%s', '%s', '%s')",
-			dbesc(normalise_link($item["author-link"])), dbesc($item["author-name"]), dbesc($item["author-avatar"]));
+			q("INSERT INTO `unique_contacts` (`url`, `name`, `avatar`) VALUES ('%s', '%s', '%s')",
+				dbesc(normalise_link($item["author-link"])), dbesc($item["author-name"]), dbesc($item["author-avatar"]));
 
-			$author = q("SELECT id FROM unique_contacts WHERE url='%s' LIMIT 1",
+			$author = q("SELECT `id` FROM `unique_contacts` WHERE `url`='%s' LIMIT 1",
 				dbesc(normalise_link($item['author-link'])));
 		} else if ($item["author-link"].$item["author-name"] != $author[0]["url"].$author[0]["name"]) {
-			q("UPDATE unique_contacts SET name = '%s', avatar = '%s' WHERE url = '%s'",
-			dbesc($item["author-name"]), dbesc($item["author-avatar"]), dbesc(normalise_link($item["author-link"])));
+			$r = q("SELECT `id` FROM `unique_contacts` WHERE `name` = '%s' AND `avatar` = '%s' AND url = '%s'",
+				dbesc($item["author-name"]), dbesc($item["author-avatar"]),
+				dbesc(normalise_link($item["author-link"])));
+
+			if (!$r)
+				q("UPDATE `unique_contacts` SET `name` = '%s', `avatar` = '%s' WHERE `url` = '%s'",
+					dbesc($item["author-name"]), dbesc($item["author-avatar"]),
+					dbesc(normalise_link($item["author-link"])));
 		}
 
-		$owner = q("SELECT id FROM unique_contacts WHERE url='%s' LIMIT 1",
+		$owner = q("SELECT `id` FROM `unique_contacts` WHERE `url`='%s' LIMIT 1",
 			dbesc(normalise_link($item['owner-link'])));
 
 		if (count($owner) == 0) {
-			q("INSERT INTO unique_contacts (url, name, avatar) VALUES ('%s', '%s', '%s')",
-			dbesc(normalise_link($item["owner-link"])), dbesc($item["owner-name"]), dbesc($item["owner-avatar"]));
+			q("INSERT INTO `unique_contacts` (`url`, `name`, `avatar`) VALUES ('%s', '%s', '%s')",
+				dbesc(normalise_link($item["owner-link"])), dbesc($item["owner-name"]), dbesc($item["owner-avatar"]));
 
-			$owner = q("SELECT id FROM unique_contacts WHERE url='%s' LIMIT 1",
+			$owner = q("SELECT `id` FROM `unique_contacts` WHERE `url`='%s' LIMIT 1",
 				dbesc(normalise_link($item['owner-link'])));
 		} else if ($item["owner-link"].$item["owner-name"] != $owner[0]["url"].$owner[0]["name"]) {
-			q("UPDATE unique_contacts SET name = '%s', avatar = '%s' WHERE url = '%s'",
-			dbesc($item["owner-name"]), dbesc($item["owner-avatar"]), dbesc(normalise_link($item["owner-link"])));
+			$r = q("SELECT `id` FROM `unique_contacts` WHERE `name` = '%s' AND `avatar` = '%s' AND url = '%s'",
+				dbesc($item["owner-name"]), dbesc($item["owner-avatar"]),
+				dbesc(normalise_link($item["owner-link"])));
+
+			if (!$r)
+				q("UPDATE `unique_contacts` SET `name` = '%s', `avatar` = '%s' WHERE `url` = '%s'",
+					dbesc($item["owner-name"]), dbesc($item["owner-avatar"]),
+					dbesc(normalise_link($item["owner-link"])));
 		}
 
 		// Comments in threads may appear as wall-to-wall postings.
@@ -643,10 +709,10 @@
 		$txt = requestdata('status');
 		//$txt = urldecode(requestdata('status'));
 
-		require_once('library/HTMLPurifier.auto.php');
-		require_once('include/html2bbcode.php');
-
 		if((strpos($txt,'<') !== false) || (strpos($txt,'>') !== false)) {
+
+			require_once('library/HTMLPurifier.auto.php');
+
 			$txt = html2bb_video($txt);
 			$config = HTMLPurifier_Config::createDefault();
 			$config->set('Cache.DefinitionImpl', null);
@@ -658,12 +724,10 @@
 		$a->argv[1]=$user_info['screen_name']; //should be set to username?
 
 		$_REQUEST['hush']='yeah'; //tell wall_upload function to return img info instead of echo
-		require_once('mod/wall_upload.php');
 		$bebop = wall_upload_post($a);
 
 		//now that we have the img url in bbcode we can add it to the status and insert the wall item.
 		$_REQUEST['body']=$txt."\n\n".$bebop;
-		require_once('mod/item.php');
 		item_post($a);
 
 		// this should output the last post (the one we just posted).
@@ -678,6 +742,7 @@
 			logger('api_statuses_update: no user');
 			return false;
 		}
+
 		$user_info = api_get_user($a);
 
 		// convert $_POST array items to the form we use for web posts.
@@ -685,17 +750,15 @@
 		// logger('api_post: ' . print_r($_POST,true));
 
 		if(requestdata('htmlstatus')) {
-			require_once('library/HTMLPurifier.auto.php');
-			require_once('include/html2bbcode.php');
-
 			$txt = requestdata('htmlstatus');
 			if((strpos($txt,'<') !== false) || (strpos($txt,'>') !== false)) {
+
+				require_once('library/HTMLPurifier.auto.php');
 
 				$txt = html2bb_video($txt);
 
 				$config = HTMLPurifier_Config::createDefault();
 				$config->set('Cache.DefinitionImpl', null);
-
 
 				$purifier = new HTMLPurifier($config);
 				$txt = $purifier->purify($txt);
@@ -703,13 +766,17 @@
 				$_REQUEST['body'] = html2bbcode($txt);
 			}
 
-		}
-		else
+		} else
 			$_REQUEST['body'] = requestdata('status');
 
 		$_REQUEST['title'] = requestdata('title');
 
 		$parent = requestdata('in_reply_to_status_id');
+
+		// Twidere sends "-1" if it is no reply ...
+		if ($parent == -1)
+			$parent = "";
+
 		if(ctype_digit($parent))
 			$_REQUEST['parent'] = $parent;
 		else
@@ -722,14 +789,84 @@
 		if($parent)
 			$_REQUEST['type'] = 'net-comment';
 		else {
+			// Check for throttling (maximum posts per day, week and month)
+			$throttle_day = get_config('system','throttle_limit_day');
+			if ($throttle_day > 0) {
+				$datefrom = date("Y-m-d H:i:s", time() - 24*60*60);
+
+				$r = q("SELECT COUNT(*) AS `posts_day` FROM `item` WHERE `uid`=%d AND `wall`
+					AND `created` > '%s' AND `id` = `parent`",
+					intval(api_user()), dbesc($datefrom));
+
+				if ($r)
+					$posts_day = $r[0]["posts_day"];
+				else
+					$posts_day = 0;
+
+				if ($posts_day > $throttle_day) {
+					logger('Daily posting limit reached for user '.api_user(), LOGGER_DEBUG);
+					die(api_error($a, $type, sprintf(t("Daily posting limit of %d posts reached. The post was rejected."), $throttle_day)));
+				}
+			}
+
+			$throttle_week = get_config('system','throttle_limit_week');
+			if ($throttle_week > 0) {
+				$datefrom = date("Y-m-d H:i:s", time() - 24*60*60*7);
+
+				$r = q("SELECT COUNT(*) AS `posts_week` FROM `item` WHERE `uid`=%d AND `wall`
+					AND `created` > '%s' AND `id` = `parent`",
+					intval(api_user()), dbesc($datefrom));
+
+				if ($r)
+					$posts_week = $r[0]["posts_week"];
+				else
+					$posts_week = 0;
+
+				if ($posts_week > $throttle_week) {
+					logger('Weekly posting limit reached for user '.api_user(), LOGGER_DEBUG);
+					die(api_error($a, $type, sprintf(t("Weekly posting limit of %d posts reached. The post was rejected."), $throttle_week)));
+				}
+			}
+
+			$throttle_month = get_config('system','throttle_limit_month');
+			if ($throttle_month > 0) {
+				$datefrom = date("Y-m-d H:i:s", time() - 24*60*60*30);
+
+				$r = q("SELECT COUNT(*) AS `posts_month` FROM `item` WHERE `uid`=%d AND `wall`
+					AND `created` > '%s' AND `id` = `parent`",
+					intval(api_user()), dbesc($datefrom));
+
+				if ($r)
+					$posts_month = $r[0]["posts_month"];
+				else
+					$posts_month = 0;
+
+				if ($posts_month > $throttle_month) {
+					logger('Monthly posting limit reached for user '.api_user(), LOGGER_DEBUG);
+					die(api_error($a, $type, sprintf(t("Monthly posting limit of %d posts reached. The post was rejected."), $throttle_month)));
+				}
+			}
+
 			$_REQUEST['type'] = 'wall';
-			if(x($_FILES,'media')) {
-				// upload the image if we have one
-				$_REQUEST['hush']='yeah'; //tell wall_upload function to return img info instead of echo
-				require_once('mod/wall_upload.php');
-				$media = wall_upload_post($a);
-				if(strlen($media)>0)
-					$_REQUEST['body'] .= "\n\n".$media;
+		}
+
+		if(x($_FILES,'media')) {
+			// upload the image if we have one
+			$_REQUEST['hush']='yeah'; //tell wall_upload function to return img info instead of echo
+			$media = wall_upload_post($a);
+			if(strlen($media)>0)
+				$_REQUEST['body'] .= "\n\n".$media;
+		}
+
+		// To-Do: Multiple IDs
+		if (requestdata('media_ids')) {
+			$r = q("SELECT `resource-id`, `scale`, `nickname`, `type` FROM `photo` INNER JOIN `user` ON `user`.`uid` = `photo`.`uid` WHERE `resource-id` IN (SELECT `resource-id` FROM `photo` WHERE `id` = %d) AND `scale` > 0 AND `photo`.`uid` = %d ORDER BY `photo`.`width` DESC LIMIT 1",
+				intval(requestdata('media_ids')), api_user());
+			if ($r) {
+				$phototypes = Photo::supportedTypes();
+				$ext = $phototypes[$r[0]['type']];
+				$_REQUEST['body'] .= "\n\n".'[url='.$a->get_baseurl().'/photos/'.$r[0]['nickname'].'/image/'.$r[0]['resource-id'].']';
+				$_REQUEST['body'] .= '[img]'.$a->get_baseurl()."/photo/".$r[0]['resource-id']."-".$r[0]['scale'].".".$ext."[/img][/url]";
 			}
 		}
 
@@ -742,7 +879,6 @@
 
 		// call out normal post function
 
-		require_once('mod/item.php');
 		item_post($a);
 
 		// this should output the last post (the one we just posted).
@@ -752,22 +888,61 @@
 	api_register_func('api/statuses/update_with_media','api_statuses_update', true);
 
 
+	function api_media_upload(&$a, $type) {
+		if (api_user()===false) {
+			logger('no user');
+			return false;
+		}
+
+		$user_info = api_get_user($a);
+
+		if(!x($_FILES,'media')) {
+			// Output error
+			return false;
+		}
+
+		$media = wall_upload_post($a, false);
+		if(!$media) {
+			// Output error
+			return false;
+		}
+
+		$returndata = array();
+		$returndata["media_id"] = $media["id"];
+		$returndata["media_id_string"] = (string)$media["id"];
+		$returndata["size"] = $media["size"];
+		$returndata["image"] = array("w" => $media["width"],
+						"h" => $media["height"],
+						"image_type" => $media["type"]);
+
+		logger("Media uploaded: ".print_r($returndata, true), LOGGER_DEBUG);
+
+		return array("media" => $returndata);
+	}
+
+	api_register_func('api/media/upload','api_media_upload', true);
+
 	function api_status_show(&$a, $type){
 		$user_info = api_get_user($a);
 
 		logger('api_status_show: user_info: '.print_r($user_info, true), LOGGER_DEBUG);
 
+		if ($type == "raw")
+			$privacy_sql = "AND `item`.`allow_cid`='' AND `item`.`allow_gid`='' AND `item`.`deny_cid`='' AND `item`.`deny_gid`=''";
+		else
+			$privacy_sql = "";
+
 		// get last public wall message
 		$lastwall = q("SELECT `item`.*, `i`.`contact-id` as `reply_uid`, `i`.`author-link` AS `item-author`
 				FROM `item`, `item` as `i`
-				WHERE `item`.`contact-id` = %d
+				WHERE `item`.`contact-id` = %d AND `item`.`uid` = %d
 					AND ((`item`.`author-link` IN ('%s', '%s')) OR (`item`.`owner-link` IN ('%s', '%s')))
 					AND `i`.`id` = `item`.`parent`
-					AND `item`.`type`!='activity'
-					AND `item`.`allow_cid`='' AND `item`.`allow_gid`='' AND `item`.`deny_cid`='' AND `item`.`deny_gid`=''
+					AND `item`.`type`!='activity' $privacy_sql
 				ORDER BY `item`.`created` DESC
 				LIMIT 1",
 				intval($user_info['cid']),
+				intval(api_user()),
 				dbesc($user_info['url']),
 				dbesc(normalise_link($user_info['url'])),
 				dbesc($user_info['url']),
@@ -786,7 +961,7 @@
 				$in_reply_to_status_id= intval($lastwall['parent']);
 				$in_reply_to_status_id_str = (string) intval($lastwall['parent']);
 
-				$r = q("SELECT * FROM unique_contacts WHERE `url` = '%s'", dbesc(normalise_link($lastwall['item-author'])));
+				$r = q("SELECT * FROM `unique_contacts` WHERE `url` = '%s'", dbesc(normalise_link($lastwall['item-author'])));
 				if ($r) {
 					if ($r[0]['nick'] == "")
 						$r[0]['nick'] = api_get_nick($r[0]["url"]);
@@ -809,42 +984,53 @@
 				$in_reply_to_screen_name = NULL;
 			}
 
+			$converted = api_convert_item($lastwall);
+
 			$status_info = array(
-				'text' => trim(html2plain(bbcode(api_clean_plain_items($lastwall['body']), false, false, 2, true), 0)),
-				'truncated' => false,
 				'created_at' => api_date($lastwall['created']),
-				'in_reply_to_status_id' => $in_reply_to_status_id,
-				'in_reply_to_status_id_str' => $in_reply_to_status_id_str,
-				'source' => (($lastwall['app']) ? $lastwall['app'] : 'web'),
 				'id' => intval($lastwall['id']),
 				'id_str' => (string) $lastwall['id'],
+				'text' => $converted["text"],
+				'source' => (($lastwall['app']) ? $lastwall['app'] : 'web'),
+				'truncated' => false,
+				'in_reply_to_status_id' => $in_reply_to_status_id,
+				'in_reply_to_status_id_str' => $in_reply_to_status_id_str,
 				'in_reply_to_user_id' => $in_reply_to_user_id,
 				'in_reply_to_user_id_str' => $in_reply_to_user_id_str,
 				'in_reply_to_screen_name' => $in_reply_to_screen_name,
-				'geo' => NULL,
-				'favorited' => false,
-				// attachments
 				'user' => $user_info,
-				'statusnet_html'		=> trim(bbcode($lastwall['body'], false, false)),
+				'geo' => NULL,
+				'coordinates' => "",
+				'place' => "",
+				'contributors' => "",
+				'is_quote_status' => false,
+				'retweet_count' => 0,
+				'favorite_count' => 0,
+				'favorited' => $lastwall['starred'] ? true : false,
+				'retweeted' => false,
+				'possibly_sensitive' => false,
+				'lang' => "",
+				'statusnet_html'		=> $converted["html"],
 				'statusnet_conversation_id'	=> $lastwall['parent'],
 			);
 
-			if ($lastwall['title'] != "")
-				$status_info['statusnet_html'] = "<h4>".bbcode($lastwall['title'])."</h4>\n".$status_info['statusnet_html'];
+			if (count($converted["attachments"]) > 0)
+				$status_info["attachments"] = $converted["attachments"];
 
-			$entities = api_get_entitities($status_info['text'], $lastwall['body']);
-			if (count($entities) > 0)
-				$status_info['entities'] = $entities;
+			if (count($converted["entities"]) > 0)
+				$status_info["entities"] = $converted["entities"];
 
 			if (($lastwall['item_network'] != "") AND ($status["source"] == 'web'))
-				$status_info["source"] = network_to_name($lastwall['item_network']);
-			elseif (($lastwall['item_network'] != "") AND (network_to_name($lastwall['item_network']) != $status_info["source"]))
-				$status_info["source"] = trim($status_info["source"].' ('.network_to_name($lastwall['item_network']).')');
+				$status_info["source"] = network_to_name($lastwall['item_network'], $user_info['url']);
+			elseif (($lastwall['item_network'] != "") AND (network_to_name($lastwall['item_network'], $user_info['url']) != $status_info["source"]))
+				$status_info["source"] = trim($status_info["source"].' ('.network_to_name($lastwall['item_network'], $user_info['url']).')');
 
 			// "uid" and "self" are only needed for some internal stuff, so remove it from here
 			unset($status_info["user"]["uid"]);
 			unset($status_info["user"]["self"]);
 		}
+
+		logger('status_info: '.print_r($status_info, true), LOGGER_DEBUG);
 
 		if ($type == "raw")
 			return($status_info);
@@ -897,7 +1083,7 @@
 					$in_reply_to_status_id = intval($lastwall['parent']);
 					$in_reply_to_status_id_str = (string) intval($lastwall['parent']);
 
-					$r = q("SELECT * FROM unique_contacts WHERE `url` = '%s'", dbesc(normalise_link($reply[0]['item-author'])));
+					$r = q("SELECT * FROM `unique_contacts` WHERE `url` = '%s'", dbesc(normalise_link($reply[0]['item-author'])));
 					if ($r) {
 						if ($r[0]['nick'] == "")
 							$r[0]['nick'] = api_get_nick($r[0]["url"]);
@@ -908,8 +1094,11 @@
 					}
 				}
 			}
+
+			$converted = api_convert_item($lastwall);
+
 			$user_info['status'] = array(
-				'text' => trim(html2plain(bbcode(api_clean_plain_items($lastwall['body']), false, false, 2, true), 0)),
+				'text' => $converted["text"],
 				'truncated' => false,
 				'created_at' => api_date($lastwall['created']),
 				'in_reply_to_status_id' => $in_reply_to_status_id,
@@ -921,22 +1110,21 @@
 				'in_reply_to_user_id_str' => $in_reply_to_user_id_str,
 				'in_reply_to_screen_name' => $in_reply_to_screen_name,
 				'geo' => NULL,
-				'favorited' => false,
-				'statusnet_html'		=> trim(bbcode($lastwall['body'], false, false)),
+				'favorited' => $lastwall['starred'] ? true : false,
+				'statusnet_html'		=> $converted["html"],
 				'statusnet_conversation_id'	=> $lastwall['parent'],
 			);
 
-			if ($lastwall['title'] != "")
-				$user_info['statusnet_html'] = "<h4>".bbcode($lastwall['title'])."</h4>\n".$user_info['statusnet_html'];
+			if (count($converted["attachments"]) > 0)
+				$user_info["status"]["attachments"] = $converted["attachments"];
 
-			$entities = api_get_entitities($user_info['text'], $lastwall['body']);
-			if (count($entities) > 0)
-				$user_info['entities'] = $entities;
+			if (count($converted["entities"]) > 0)
+				$user_info["status"]["entities"] = $converted["entities"];
 
 			if (($lastwall['item_network'] != "") AND ($user_info["status"]["source"] == 'web'))
-				$user_info["status"]["source"] = network_to_name($lastwall['item_network']);
-			if (($lastwall['item_network'] != "") AND (network_to_name($lastwall['item_network']) != $user_info["status"]["source"]))
-				$user_info["status"]["source"] = trim($user_info["status"]["source"].' ('.network_to_name($lastwall['item_network']).')');
+				$user_info["status"]["source"] = network_to_name($lastwall['item_network'], $user_info['url']);
+			if (($lastwall['item_network'] != "") AND (network_to_name($lastwall['item_network'], $user_info['url']) != $user_info["status"]["source"]))
+				$user_info["status"]["source"] = trim($user_info["status"]["source"].' ('.network_to_name($lastwall['item_network'], $user_info['url']).')');
 
 		}
 
@@ -956,9 +1144,9 @@
 		$userlist = array();
 
 		if (isset($_GET["q"])) {
-			$r = q("SELECT id FROM unique_contacts WHERE name='%s'", dbesc($_GET["q"]));
+			$r = q("SELECT id FROM `unique_contacts` WHERE `name`='%s'", dbesc($_GET["q"]));
 			if (!count($r))
-				$r = q("SELECT id FROM unique_contacts WHERE nick='%s'", dbesc($_GET["q"]));
+				$r = q("SELECT `id` FROM `unique_contacts` WHERE `nick`='%s'", dbesc($_GET["q"]));
 
 			if (count($r)) {
 				foreach ($r AS $user) {
@@ -1018,7 +1206,7 @@
 		if ($conversation_id > 0)
 			$sql_extra .= ' AND `item`.`parent` = '.intval($conversation_id);
 
-		$r = q("SELECT `item`.*, `item`.`id` AS `item_id`, `item`.`network` AS `item_network`,
+		$r = q("SELECT STRAIGHT_JOIN `item`.*, `item`.`id` AS `item_id`, `item`.`network` AS `item_network`,
 			`contact`.`name`, `contact`.`photo`, `contact`.`url`, `contact`.`rel`,
 			`contact`.`network`, `contact`.`thumb`, `contact`.`dfrn-id`, `contact`.`self`,
 			`contact`.`id` AS `cid`, `contact`.`uid` AS `contact-uid`
@@ -1038,15 +1226,15 @@
 
 		$ret = api_format_items($r,$user_info);
 
-		// We aren't going to try to figure out at the item, group, and page
-		// level which items you've seen and which you haven't. If you're looking
-		// at the network timeline just mark everything seen. 
+		// Set all posts from the query above to seen
+		$idarray = array();
+		foreach ($r AS $item)
+			$idarray[] = intval($item["id"]);
 
-		$r = q("UPDATE `item` SET `unseen` = 0 
-			WHERE `unseen` = 1 AND `uid` = %d",
-			//intval($user_info['uid'])
-			intval(api_user())
-		);
+		$idlist = implode(",", $idarray);
+
+		if ($idlist != "")
+			$r = q("UPDATE `item` SET `unseen` = 0 WHERE `unseen` AND `id` IN (%s)", $idlist);
 
 
 		$data = array('$statuses' => $ret);
@@ -1136,7 +1324,7 @@
 	api_register_func('api/statuses/public_timeline','api_statuses_public_timeline', true);
 
 	/**
-	 * 
+	 *
 	 */
 	function api_statuses_show(&$a, $type){
 		if (api_user()===false) return false;
@@ -1225,6 +1413,10 @@
 
 		logger('API: api_conversation_show: '.$id);
 
+		$r = q("SELECT `parent` FROM `item` WHERE `id` = %d", intval($id));
+		if ($r)
+			$id = $r[0]["parent"];
+
 		$sql_extra = '';
 
 		if ($max_id > 0)
@@ -1299,10 +1491,8 @@
 					$pos = strpos($r[0]['body'], "[share");
 					$post = substr($r[0]['body'], $pos);
 				} else {
-					$post = "[share author='".str_replace("'", "&#039;", $r[0]['author-name']).
-							"' profile='".$r[0]['author-link'].
-							"' avatar='".$r[0]['author-avatar'].
-							"' link='".$r[0]['plink']."']";
+					$post = share_header($r[0]['author-name'], $r[0]['author-link'], $r[0]['author-avatar'], $r[0]['guid'], $r[0]['created'], $r[0]['plink']);
+
 					$post .= $r[0]['body'];
 					$post .= "[/share]";
 				}
@@ -1317,7 +1507,6 @@
 			if (!x($_REQUEST, "source"))
 				$_REQUEST["source"] = api_source();
 
-			require_once('mod/item.php');
 			item_post($a);
 		}
 
@@ -1349,7 +1538,6 @@
 
 		$ret = api_statuses_show($a, $type);
 
-		require_once('include/items.php');
 		drop_item($id, false);
 
 		return($ret);
@@ -1357,9 +1545,9 @@
 	api_register_func('api/statuses/destroy','api_statuses_destroy', true);
 
 	/**
-	 * 
+	 *
 	 * http://developer.twitter.com/doc/get/statuses/mentions
-	 * 
+	 *
 	 */
 	function api_statuses_mentions(&$a, $type){
 		if (api_user()===false) return false;
@@ -1506,6 +1694,69 @@
 	api_register_func('api/statuses/user_timeline','api_statuses_user_timeline', true);
 
 
+	/**
+	 * Star/unstar an item
+	 * param: id : id of the item
+	 *
+	 * api v1 : https://web.archive.org/web/20131019055350/https://dev.twitter.com/docs/api/1/post/favorites/create/%3Aid
+	 */
+	function api_favorites_create_destroy(&$a, $type){
+		if (api_user()===false) return false;
+
+		# for versioned api.
+		# TODO: we need a better global soluton
+		$action_argv_id=2;
+		if ($a->argv[1]=="1.1") $action_argv_id=3;
+
+		if ($a->argc<=$action_argv_id) die(api_error($a, $type, t("Invalid request.")));
+		$action = str_replace(".".$type,"",$a->argv[$action_argv_id]);
+		if ($a->argc==$action_argv_id+2) {
+			$itemid = intval($a->argv[$action_argv_id+1]);
+		} else {
+			$itemid = intval($_REQUEST['id']);
+		}
+
+		$item = q("SELECT * FROM item WHERE id=%d AND uid=%d",
+				$itemid, api_user());
+
+		if ($item===false || count($item)==0) die(api_error($a, $type, t("Invalid item.")));
+
+		switch($action){
+			case "create":
+				$item[0]['starred']=1;
+				break;
+			case "destroy":
+				$item[0]['starred']=0;
+				break;
+			default:
+				die(api_error($a, $type, t("Invalid action. ".$action)));
+		}
+		$r = q("UPDATE item SET starred=%d WHERE id=%d AND uid=%d",
+				$item[0]['starred'], $itemid, api_user());
+
+		q("UPDATE thread SET starred=%d WHERE iid=%d AND uid=%d",
+			$item[0]['starred'], $itemid, api_user());
+
+		if ($r===false) die(api_error($a, $type, t("DB error")));
+
+
+		$user_info = api_get_user($a);
+		$rets = api_format_items($item,$user_info);
+		$ret = $rets[0];
+
+		$data = array('$status' => $ret);
+		switch($type){
+			case "atom":
+			case "rss":
+				$data = api_rss_extra($a, $data, $user_info);
+		}
+
+		return api_apply_template("status", $type, $data);
+	}
+
+	api_register_func('api/favorites/create', 'api_favorites_create_destroy', true);
+	api_register_func('api/favorites/destroy', 'api_favorites_create_destroy', true);
+
 	function api_favorites(&$a, $type){
 		global $called_api;
 
@@ -1541,7 +1792,7 @@
 				`contact`.`network`, `contact`.`thumb`, `contact`.`dfrn-id`, `contact`.`self`,
 				`contact`.`id` AS `cid`, `contact`.`uid` AS `contact-uid`
 				FROM `item`, `contact`
-				WHERE `item`.`uid` = %d AND `verb` = '%s'
+				WHERE `item`.`uid` = %d
 				AND `item`.`visible` = 1 and `item`.`moderated` = 0 AND `item`.`deleted` = 0
 				AND `item`.`starred` = 1
 				AND `contact`.`id` = `item`.`contact-id`
@@ -1550,7 +1801,6 @@
 				AND `item`.`id`>%d
 				ORDER BY `item`.`id` DESC LIMIT %d ,%d ",
 				intval(api_user()),
-				dbesc(ACTIVITY_POST),
 				intval($since_id),
 				intval($start),	intval($count)
 			);
@@ -1570,6 +1820,9 @@
 	}
 
 	api_register_func('api/favorites','api_favorites', true);
+
+
+
 
 	function api_format_as($a, $ret, $user_info) {
 
@@ -1678,6 +1931,65 @@
 		return $ret;
 	}
 
+	function api_convert_item($item) {
+
+		$body = $item['body'];
+		$attachments = api_get_attachments($body);
+
+		// Workaround for ostatus messages where the title is identically to the body
+		$html = bbcode(api_clean_plain_items($body), false, false, 2, true);
+		$statusbody = trim(html2plain($html, 0));
+
+		// handle data: images
+		$statusbody = api_format_items_embeded_images($item,$statusbody);
+
+		$statustitle = trim($item['title']);
+
+		if (($statustitle != '') and (strpos($statusbody, $statustitle) !== false))
+			$statustext = trim($statusbody);
+		else
+			$statustext = trim($statustitle."\n\n".$statusbody);
+
+		if (($item["network"] == NETWORK_FEED) and (strlen($statustext)> 1000))
+			$statustext = substr($statustext, 0, 1000)."... \n".$item["plink"];
+
+		$statushtml = trim(bbcode($body, false, false));
+
+		if ($item['title'] != "")
+			$statushtml = "<h4>".bbcode($item['title'])."</h4>\n".$statushtml;
+
+		$entities = api_get_entitities($statustext, $body);
+
+		return(array("text" => $statustext, "html" => $statushtml, "attachments" => $attachments, "entities" => $entities));
+	}
+
+	function api_get_attachments(&$body) {
+
+		$text = $body;
+		$text = preg_replace("/\[img\=([0-9]*)x([0-9]*)\](.*?)\[\/img\]/ism", '[img]$3[/img]', $text);
+
+		$URLSearchString = "^\[\]";
+		$ret = preg_match_all("/\[img\]([$URLSearchString]*)\[\/img\]/ism", $text, $images);
+
+		if (!$ret)
+			return false;
+
+		$attachments = array();
+
+		foreach ($images[1] AS $image) {
+			$imagedata = get_photo_info($image);
+
+			if ($imagedata)
+				$attachments[] = array("url" => $image, "mimetype" => $imagedata["mime"], "size" => $imagedata["size"]);
+		}
+
+		if (strstr($_SERVER['HTTP_USER_AGENT'], "AndStatus"))
+			foreach ($images[0] AS $orig)
+				$body = str_replace($orig, "", $body);
+
+		return $attachments;
+	}
+
 	function api_get_entitities(&$text, $bbcode) {
 		/*
 		To-Do:
@@ -1689,7 +2001,6 @@
 		$include_entities = strtolower(x($_REQUEST,'include_entities')?$_REQUEST['include_entities']:"false");
 
 		if ($include_entities != "true") {
-			require_once("mod/proxy.php");
 
 			preg_match_all("/\[img](.*?)\[\/img\]/ism", $bbcode, $images);
 
@@ -1787,13 +2098,11 @@
 
 			$start = iconv_strpos($text, $url, $offset, "UTF-8");
 			if (!($start === false)) {
-				require_once("include/Photo.php");
 				$image = get_photo_info($url);
 				if ($image) {
 					// If image cache is activated, then use the following sizes:
 					// thumb  (150), small (340), medium (600) and large (1024)
 					if (!get_config("system", "proxy_disabled")) {
-						require_once("mod/proxy.php");
 						$media_url = proxy_url($url);
 
 						$sizes = array();
@@ -1835,6 +2144,16 @@
 
 		return($entities);
 	}
+	function api_format_items_embeded_images($item, $text){
+		$a = get_app();
+		$text = preg_replace_callback(
+				"|data:image/([^;]+)[^=]+=*|m",
+				function($match) use ($a, $item) {
+					return $a->get_baseurl()."/display/".$item['guid'];
+				},
+				$text);
+		return $text;
+	}
 
 	function api_format_items($r,$user_info, $filter_user = false) {
 
@@ -1842,7 +2161,7 @@
 		$ret = Array();
 
 		foreach($r as $item) {
-			api_share_as_retweet($a, api_user(), $item);
+			api_share_as_retweet($item);
 
 			localize_item($item);
 			$status_user = api_item_get_user($a,$item);
@@ -1870,7 +2189,7 @@
 					intval(api_user()),
 					intval($in_reply_to_status_id));
 				if ($r) {
-					$r = q("SELECT * FROM unique_contacts WHERE `url` = '%s'", dbesc(normalise_link($r[0]['author-link'])));
+					$r = q("SELECT * FROM `unique_contacts` WHERE `url` = '%s'", dbesc(normalise_link($r[0]['author-link'])));
 
 					if ($r) {
 						if ($r[0]['nick'] == "")
@@ -1889,23 +2208,10 @@
 				$in_reply_to_status_id_str = NULL;
 			}
 
-			// Workaround for ostatus messages where the title is identically to the body
-			//$statusbody = trim(html2plain(bbcode(api_clean_plain_items($item['body']), false, false, 5, true), 0));
-			$html = bbcode(api_clean_plain_items($item['body']), false, false, 2, true);
-			$statusbody = trim(html2plain($html, 0));
-
-			$statustitle = trim($item['title']);
-
-			if (($statustitle != '') and (strpos($statusbody, $statustitle) !== false))
-				$statustext = trim($statusbody);
-			else
-				$statustext = trim($statustitle."\n\n".$statusbody);
-
-			if (($item["network"] == NETWORK_FEED) and (strlen($statustext)> 1000))
-				$statustext = substr($statustext, 0, 1000)."... \n".$item["plink"];
+			$converted = api_convert_item($item);
 
 			$status = array(
-				'text'		=> $statustext,
+				'text'		=> $converted["text"],
 				'truncated' => False,
 				'created_at'=> api_date($item['created']),
 				'in_reply_to_status_id' => $in_reply_to_status_id,
@@ -1918,24 +2224,22 @@
 				'in_reply_to_screen_name' => $in_reply_to_screen_name,
 				'geo' => NULL,
 				'favorited' => $item['starred'] ? true : false,
-				//'attachments' => array(),
 				'user' =>  $status_user ,
 				//'entities' => NULL,
-				'statusnet_html'		=> trim(bbcode($item['body'], false, false)),
+				'statusnet_html'		=> $converted["html"],
 				'statusnet_conversation_id'	=> $item['parent'],
 			);
 
-			if ($item['title'] != "")
-				$status['statusnet_html'] = "<h4>".bbcode($item['title'])."</h4>\n".$status['statusnet_html'];
+			if (count($converted["attachments"]) > 0)
+				$status["attachments"] = $converted["attachments"];
 
-			$entities = api_get_entitities($status['text'], $item['body']);
-			if (count($entities) > 0)
-				$status['entities'] = $entities;
+			if (count($converted["entities"]) > 0)
+				$status["entities"] = $converted["entities"];
 
 			if (($item['item_network'] != "") AND ($status["source"] == 'web'))
-				$status["source"] = network_to_name($item['item_network']);
-			else if (($item['item_network'] != "") AND (network_to_name($item['item_network']) != $status["source"]))
-				$status["source"] = trim($status["source"].' ('.network_to_name($item['item_network']).')');
+				$status["source"] = network_to_name($item['item_network'], $user_info['url']);
+			else if (($item['item_network'] != "") AND (network_to_name($item['item_network'], $user_info['url']) != $status["source"]))
+				$status["source"] = trim($status["source"].' ('.network_to_name($item['item_network'], $user_info['url']).')');
 
 
 			// Retweets are only valid for top postings
@@ -1955,9 +2259,14 @@
 			unset($status["user"]["uid"]);
 			unset($status["user"]["self"]);
 
-			// 'geo' => array('type' => 'Point',
-			//                   'coordinates' => array((float) $notice->lat,
-			//                                          (float) $notice->lon));
+			if ($item["coord"] != "") {
+				$coords = explode(' ',$item["coord"]);
+				if (count($coords) == 2) {
+					$status["geo"] = array('type' => 'Point',
+							'coordinates' => array((float) $coords[0],
+										(float) $coords[1]));
+				}
+			}
 
 			$ret[] = $status;
 		};
@@ -2139,7 +2448,7 @@
 
 		$stringify_ids = (x($_REQUEST,'stringify_ids')?$_REQUEST['stringify_ids']:false);
 
-		$r = q("SELECT unique_contacts.id FROM contact, unique_contacts WHERE contact.nurl = unique_contacts.url AND `uid` = %d AND `self` = 0 AND `blocked` = 0 AND `pending` = 0 $sql_extra",
+		$r = q("SELECT `unique_contact`.`id` FROM contact, `unique_contacts` WHERE contact.nurl = unique_contacts.url AND `uid` = %d AND `self` = 0 AND `blocked` = 0 AND `pending` = 0 $sql_extra",
 			intval(api_user())
 		);
 
@@ -2184,8 +2493,6 @@
 		if (!x($_POST, "text") OR (!x($_POST,"screen_name") AND !x($_POST,"user_id"))) return;
 
 		$sender = api_get_user($a);
-
-		require_once("include/message.php");
 
 		if ($_POST['screen_name']) {
 			$r = q("SELECT `id`, `nurl`, `network` FROM `contact` WHERE `uid`=%d AND `nick`='%s'",
@@ -2243,13 +2550,6 @@
 	function api_direct_messages_box(&$a, $type, $box) {
 		if (api_user()===false) return false;
 
-		unset($_REQUEST["user_id"]);
-		unset($_GET["user_id"]);
-
-		unset($_REQUEST["screen_name"]);
-		unset($_GET["screen_name"]);
-
-		$user_info = api_get_user($a);
 
 		// params
 		$count = (x($_GET,'count')?$_GET['count']:20);
@@ -2259,11 +2559,25 @@
 		$since_id = (x($_REQUEST,'since_id')?$_REQUEST['since_id']:0);
 		$max_id = (x($_REQUEST,'max_id')?$_REQUEST['max_id']:0);
 
-		$start = $page*$count;
+		$user_id = (x($_REQUEST,'user_id')?$_REQUEST['user_id']:"");
+		$screen_name = (x($_REQUEST,'screen_name')?$_REQUEST['screen_name']:"");
 
+		//  caller user info
+		unset($_REQUEST["user_id"]);
+		unset($_GET["user_id"]);
+
+		unset($_REQUEST["screen_name"]);
+		unset($_GET["screen_name"]);
+
+		$user_info = api_get_user($a);
 		//$profile_url = $a->get_baseurl() . '/profile/' . $a->user['nickname'];
 		$profile_url = $user_info["url"];
 
+
+		// pagination
+		$start = $page*$count;
+
+		// filters
 		if ($box=="sentbox") {
 			$sql_extra = "`mail`.`from-url`='".dbesc( $profile_url )."'";
 		}
@@ -2280,11 +2594,19 @@
 		if ($max_id > 0)
 			$sql_extra .= ' AND `mail`.`id` <= '.intval($max_id);
 
+		if ($user_id !="") {
+			$sql_extra .= ' AND `mail`.`contact-id` = ' . intval($user_id);
+		}
+		elseif($screen_name !=""){
+			$sql_extra .= " AND `contact`.`nick` = '" . dbesc($screen_name). "'";
+		}
+
 		$r = q("SELECT `mail`.*, `contact`.`nurl` AS `contact-url` FROM `mail`,`contact` WHERE `mail`.`contact-id` = `contact`.`id` AND `mail`.`uid`=%d AND $sql_extra AND `mail`.`id` > %d ORDER BY `mail`.`id` DESC LIMIT %d,%d",
 				intval(api_user()),
 				intval($since_id),
 				intval($start),	intval($count)
 		);
+
 
 		$ret = Array();
 		foreach($r as $item) {
@@ -2292,12 +2614,11 @@
 				$recipient = $user_info;
 				$sender = api_get_user($a,normalise_link($item['contact-url']));
 			}
-			elseif ($box == "sentbox" || $item['from-url'] != $profile_url){
+			elseif ($box == "sentbox" || $item['from-url'] == $profile_url){
 				$recipient = api_get_user($a,normalise_link($item['contact-url']));
 				$sender = $user_info;
 
 			}
-
 			$ret[]=api_format_messages($item, $recipient, $sender);
 		}
 
@@ -2387,7 +2708,7 @@
 			echo json_encode($r[0]);
 		}
 
-		killme();	
+		killme();
 	}
 
 	api_register_func('api/friendica/photos/list', 'api_fr_photos_list', true);
@@ -2395,10 +2716,71 @@
 
 
 
+	/**
+	 * similar as /mod/redir.php
+	 * redirect to 'url' after dfrn auth
+	 *
+	 * why this when there is mod/redir.php already?
+	 * This use api_user() and api_login()
+	 *
+	 * params
+	 * 		c_url: url of remote contact to auth to
+	 * 		url: string, url to redirect after auth
+	 */
+	function api_friendica_remoteauth(&$a) {
+		$url = ((x($_GET,'url')) ? $_GET['url'] : '');
+		$c_url = ((x($_GET,'c_url')) ? $_GET['c_url'] : '');
+
+		if ($url === '' || $c_url === '')
+			die((api_error($a, 'json', "Wrong parameters")));
+
+		$c_url = normalise_link($c_url);
+
+		// traditional DFRN
+
+		$r = q("SELECT * FROM `contact` WHERE `id` = %d AND `nurl` = '%s' LIMIT 1",
+			dbesc($c_url),
+			intval(api_user())
+		);
+
+		if ((! count($r)) || ($r[0]['network'] !== NETWORK_DFRN))
+			die((api_error($a, 'json', "Unknown contact")));
+
+		$cid = $r[0]['id'];
+
+		$dfrn_id = $orig_id = (($r[0]['issued-id']) ? $r[0]['issued-id'] : $r[0]['dfrn-id']);
+
+		if($r[0]['duplex'] && $r[0]['issued-id']) {
+			$orig_id = $r[0]['issued-id'];
+			$dfrn_id = '1:' . $orig_id;
+		}
+		if($r[0]['duplex'] && $r[0]['dfrn-id']) {
+			$orig_id = $r[0]['dfrn-id'];
+			$dfrn_id = '0:' . $orig_id;
+		}
+
+		$sec = random_string();
+
+		q("INSERT INTO `profile_check` ( `uid`, `cid`, `dfrn_id`, `sec`, `expire`)
+			VALUES( %d, %s, '%s', '%s', %d )",
+			intval(api_user()),
+			intval($cid),
+			dbesc($dfrn_id),
+			dbesc($sec),
+			intval(time() + 45)
+		);
+
+		logger($r[0]['name'] . ' ' . $sec, LOGGER_DEBUG);
+		$dest = (($url) ? '&destination_url=' . $url : '');
+		goaway ($r[0]['poll'] . '?dfrn_id=' . $dfrn_id
+				. '&dfrn_version=' . DFRN_PROTOCOL_VERSION
+				. '&type=profile&sec=' . $sec . $dest . $quiet );
+	}
+	api_register_func('api/friendica/remoteauth', 'api_friendica_remoteauth', true);
 
 
 
-function api_share_as_retweet($a, $uid, &$item) {
+function api_share_as_retweet(&$item) {
 	$body = trim($item["body"]);
 
 	// Skip if it isn't a pure repeated messages
@@ -2442,6 +2824,15 @@ function api_share_as_retweet($a, $uid, &$item) {
 	if ($matches[1] != "")
 		$avatar = $matches[1];
 
+	$link = "";
+	preg_match("/link='(.*?)'/ism", $attributes, $matches);
+	if ($matches[1] != "")
+		$link = $matches[1];
+
+	preg_match('/link="(.*?)"/ism', $attributes, $matches);
+	if ($matches[1] != "")
+		$link = $matches[1];
+
 	$shared_body = preg_replace("/\[share(.*?)\]\s?(.*?)\s?\[\/share\]\s?/ism","$2",$body);
 
 	if (($shared_body == "") OR ($profile == "") OR ($author == "") OR ($avatar == ""))
@@ -2451,6 +2842,7 @@ function api_share_as_retweet($a, $uid, &$item) {
 	$item["author-name"] = $author;
 	$item["author-link"] = $profile;
 	$item["author-avatar"] = $avatar;
+	$item["plink"] = $link;
 
 	return(true);
 
@@ -2458,15 +2850,29 @@ function api_share_as_retweet($a, $uid, &$item) {
 
 function api_get_nick($profile) {
 /* To-Do:
- - remove trailing jung from profile url
+ - remove trailing junk from profile url
  - pump.io check has to check the website
 */
 
 	$nick = "";
 
-	$friendica = preg_replace("=https?://(.*)/profile/(.*)=ism", "$2", $profile);
-	if ($friendica != $profile)
-		$nick = $friendica;
+	$r = q("SELECT `nick` FROM `gcontact` WHERE `nurl` = '%s'",
+		dbesc(normalise_link($profile)));
+	if ($r)
+		$nick = $r[0]["nick"];
+
+	if (!$nick == "") {
+		$r = q("SELECT `nick` FROM `contact` WHERE `uid` = 0 AND `nurl` = '%s'",
+			dbesc(normalise_link($profile)));
+		if ($r)
+			$nick = $r[0]["nick"];
+	}
+
+	if (!$nick == "") {
+		$friendica = preg_replace("=https?://(.*)/profile/(.*)=ism", "$2", $profile);
+		if ($friendica != $profile)
+			$nick = $friendica;
+	}
 
 	if (!$nick == "") {
 		$diaspora = preg_replace("=https?://(.*)/u/(.*)=ism", "$2", $profile);
@@ -2504,8 +2910,8 @@ function api_get_nick($profile) {
 	//}
 
 	if ($nick != "") {
-		q("UPDATE unique_contacts SET nick = '%s' WHERE url = '%s'",
-			dbesc($nick), dbesc(normalise_link($profile)));
+		q("UPDATE `unique_contacts` SET `nick` = '%s' WHERE `nick` != '%s' AND url = '%s'",
+			dbesc($nick), dbesc($nick), dbesc(normalise_link($profile)));
 		return($nick);
 	}
 
@@ -2606,11 +3012,22 @@ function api_best_nickname(&$contacts) {
 		$contacts = array($contacts[0]);
 }
 
+
 /*
+To.Do:
+    [pagename] => api/1.1/statuses/lookup.json
+    [id] => 605138389168451584
+    [include_cards] => true
+    [cards_platform] => Android-12
+    [include_entities] => true
+    [include_my_retweet] => 1
+    [include_rts] => 1
+    [include_reply_count] => true
+    [include_descendent_reply_count] => true
+
+
+
 Not implemented by now:
-favorites
-favorites/create
-favorites/destroy
 statuses/retweets_of_me
 friendships/create
 friendships/destroy

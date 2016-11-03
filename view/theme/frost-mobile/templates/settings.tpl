@@ -27,6 +27,7 @@
 {{include file="field_input.tpl" field=$email}}
 {{include file="field_password.tpl" field=$password4}}
 {{include file="field_custom.tpl" field=$timezone}}
+{{include file="field_select.tpl" field=$language}}
 {{include file="field_input.tpl" field=$defloc}}
 {{include file="field_checkbox.tpl" field=$allowloc}}
 
@@ -85,7 +86,7 @@
 	<div id="settings-default-perms-menu-end"></div>
 
 {{*<!--	<div id="settings-default-perms-select" style="display: none; margin-bottom: 20px" >-->*}}
-	
+
 	<div style="display: none;">
 		<div id="settings-jot-acl-wrapper" style="width:auto;height:auto;overflow:auto;margin-bottom: 20px">
 			{{$aclselect}}
@@ -128,6 +129,8 @@
 {{include file="field_intcheckbox.tpl" field=$notify7}}
 {{include file="field_intcheckbox.tpl" field=$notify8}}
 </div>
+
+{{include file="field_checkbox.tpl" field=$email_textonly}}
 
 </div>
 

@@ -1,6 +1,7 @@
 <?php
 
 require_once("boot.php");
+require_once("include/follow.php");
 
 function RemoveReply($subject) {
 	while (in_array(strtolower(substr($subject, 0, 3)), array("re:", "aw:")))
@@ -15,13 +16,13 @@ function onepoll_run(&$argv, &$argc){
 	if(is_null($a)) {
 		$a = new App;
 	}
-  
+
 	if(is_null($db)) {
-	    @include(".htconfig.php");
-    	require_once("include/dba.php");
-	    $db = new dba($db_host, $db_user, $db_pass, $db_data);
-    	unset($db_host, $db_user, $db_pass, $db_data);
-  	};
+		@include(".htconfig.php");
+		require_once("include/dba.php");
+		$db = new dba($db_host, $db_user, $db_pass, $db_data);
+		unset($db_host, $db_user, $db_pass, $db_data);
+	};
 
 
 	require_once('include/session.php');
@@ -52,6 +53,9 @@ function onepoll_run(&$argv, &$argc){
 	if(($argc > 1) && (intval($argv[1])))
 		$contact_id = intval($argv[1]);
 
+	if(($argc > 2) && ($argv[2] == "force"))
+		$force = true;
+
 	if(! $contact_id) {
 		logger('onepoll: no contact');
 		return;
@@ -60,32 +64,33 @@ function onepoll_run(&$argv, &$argc){
 	logger("onepoll ($contact_id): start");
 	
 
-	// Test
 	$lockpath = get_lockpath();
 	if ($lockpath != '') {
 		$pidfile = new pidfile($lockpath, 'onepoll'.$contact_id);
-		if($pidfile->is_already_running()) {
+		if ($pidfile->is_already_running()) {
 			logger("onepoll: Already running for contact ".$contact_id);
+			if ($pidfile->running_time() > 9*60) {
+				$pidfile->kill();
+				logger("killed stale process");
+			}
 			exit;
 		}
 	}
 
-
 	$d = datetime_convert();
 
 	// Only poll from those with suitable relationships,
-	// and which have a polling address and ignore Diaspora since 
+	// and which have a polling address and ignore Diaspora since
 	// we are unable to match those posts with a Diaspora GUID and prevent duplicates.
 
-	$contacts = q("SELECT `contact`.* FROM `contact` 
+	$contacts = q("SELECT `contact`.* FROM `contact`
 		WHERE ( `rel` = %d OR `rel` = %d ) AND `poll` != ''
-		AND NOT `network` IN ( '%s', '%s', '%s' )
+		AND NOT `network` IN ( '%s', '%s' )
 		AND `contact`.`id` = %d
-		AND `self` = 0 AND `contact`.`blocked` = 0 AND `contact`.`readonly` = 0 
+		AND `self` = 0 AND `contact`.`blocked` = 0 AND `contact`.`readonly` = 0
 		AND `contact`.`archive` = 0 LIMIT 1",
 		intval(CONTACT_IS_SHARING),
 		intval(CONTACT_IS_FRIEND),
-		dbesc(NETWORK_DIASPORA),
 		dbesc(NETWORK_FACEBOOK),
 		dbesc(NETWORK_PUMPIO),
 		intval($contact_id)
@@ -94,9 +99,45 @@ function onepoll_run(&$argv, &$argc){
 	if(! count($contacts)) {
 		logger('onepoll: could not find contact with id ' . $contact_id, LOGGER_NORMAL);
 		return;
-	}
+        }
 
 	$contact = $contacts[0];
+
+	// load current friends if possible.
+	if (($contact['poco'] != "") AND ($contact['success_update'] > $contact['failure_update'])) {
+		$r = q("SELECT count(*) as total from glink
+			where `cid` = %d and updated > UTC_TIMESTAMP() - INTERVAL 1 DAY",
+			intval($contact['id'])
+		);
+		if (count($r))
+			if (!$r[0]['total'])
+				poco_load($contact['id'],$importer_uid,0,$contact['poco']);
+	}
+
+	// To-Do:
+	// - Check why we don't poll the Diaspora feed at the moment (some guid problem in the items?)
+	// - Check whether this is possible with Redmatrix
+	if ($contact["network"] == NETWORK_DIASPORA) {
+		if (poco_do_update($contact["created"], $contact["last-item"], $contact["failure_update"], $contact["success_update"])) {
+			$last_updated = poco_last_updated($contact["url"]);
+			$updated = datetime_convert();
+			if ($last_updated) {
+				q("UPDATE `contact` SET `last-item` = '%s', `last-update` = '%s', `success_update` = '%s' WHERE `id` = %d",
+					dbesc($last_updated),
+					dbesc($updated),
+					dbesc($updated),
+					intval($contact['id'])
+				);
+			} else {
+				q("UPDATE `contact` SET `last-update` = '%s', `failure_update` = '%s' WHERE `id` = %d",
+					dbesc($updated),
+					dbesc($updated),
+					intval($contact['id'])
+				);
+			}
+		}
+		return;
+	}
 
 	$xml = false;
 
@@ -132,6 +173,20 @@ function onepoll_run(&$argv, &$argc){
 		? datetime_convert('UTC','UTC','now - 7 days', ATOM_TIME)
 		: datetime_convert('UTC','UTC',$contact['last-update'], ATOM_TIME)
 	);
+
+	// Update the contact entry
+	if(($contact['network'] === NETWORK_OSTATUS) || ($contact['network'] === NETWORK_DIASPORA) || ($contact['network'] === NETWORK_DFRN)) {
+		if (!poco_reachable($contact['url'])) {
+			logger("Skipping probably dead contact ".$contact['url']);
+			return;
+		}
+
+		if (!update_contact($contact["id"])) {
+			mark_for_death($contact);
+			return;
+		} else
+			unmark_for_death($contact);
+	}
 
 	if($contact['network'] === NETWORK_DFRN) {
 
@@ -172,7 +227,8 @@ function onepoll_run(&$argv, &$argc){
 			mark_for_death($contact);
 
 			// set the last-update so we don't keep polling
-			$r = q("UPDATE `contact` SET `last-update` = '%s' WHERE `id` = %d",
+			$r = q("UPDATE `contact` SET `last-update` = '%s', `failure_update` = '%s' WHERE `id` = %d",
+				dbesc(datetime_convert()),
 				dbesc(datetime_convert()),
 				intval($contact['id'])
 			);
@@ -185,7 +241,8 @@ function onepoll_run(&$argv, &$argc){
 
 			mark_for_death($contact);
 
-			$r = q("UPDATE `contact` SET `last-update` = '%s' WHERE `id` = %d",
+			$r = q("UPDATE `contact` SET `last-update` = '%s', `failure_update` = '%s' WHERE `id` = %d",
+				dbesc(datetime_convert()),
 				dbesc(datetime_convert()),
 				intval($contact['id'])
 			);
@@ -202,7 +259,8 @@ function onepoll_run(&$argv, &$argc){
 			// set the last-update so we don't keep polling
 
 
-			$r = q("UPDATE `contact` SET `last-update` = '%s' WHERE `id` = %d",
+			$r = q("UPDATE `contact` SET `last-update` = '%s', `failure_update` = '%s' WHERE `id` = %d",
+				dbesc(datetime_convert()),
 				dbesc(datetime_convert()),
 				intval($contact['id'])
 			);
@@ -247,8 +305,8 @@ function onepoll_run(&$argv, &$argc){
 			$final_dfrn_id = substr($final_dfrn_id,2);
 
 		if($final_dfrn_id != $orig_id) {
-			logger('poller: ID did not decode: ' . $contact['id'] . ' orig: ' . $orig_id . ' final: ' . $final_dfrn_id);	
-			// did not decode properly - cannot trust this site 
+			logger('poller: ID did not decode: ' . $contact['id'] . ' orig: ' . $orig_id . ' final: ' . $final_dfrn_id);
+			// did not decode properly - cannot trust this site
 			return;
 		}
 
@@ -259,7 +317,7 @@ function onepoll_run(&$argv, &$argc){
 		$xml = post_url($contact['poll'],$postvars);
 
 	}
-	elseif(($contact['network'] === NETWORK_OSTATUS) 
+	elseif(($contact['network'] === NETWORK_OSTATUS)
 		|| ($contact['network'] === NETWORK_DIASPORA)
 		|| ($contact['network'] === NETWORK_FEED) ) {
 
@@ -269,7 +327,8 @@ function onepoll_run(&$argv, &$argc){
 
 		$stat_writeable = ((($contact['notify']) && ($contact['rel'] == CONTACT_IS_FOLLOWER || $contact['rel'] == CONTACT_IS_FRIEND)) ? 1 : 0);
 
-		if($contact['network'] === NETWORK_OSTATUS && get_pconfig($importer_uid,'system','ostatus_autofriend'))
+		// Contacts from OStatus are always writable
+		if($contact['network'] === NETWORK_OSTATUS)
 			$stat_writeable = 1;
 
 		if($stat_writeable != $contact['writable']) {
@@ -290,13 +349,13 @@ function onepoll_run(&$argv, &$argc){
 	}
 	elseif($contact['network'] === NETWORK_MAIL || $contact['network'] === NETWORK_MAIL2) {
 
-		logger("onepoll: mail: Fetching", LOGGER_DEBUG);
+		logger("Mail: Fetching", LOGGER_DEBUG);
 
 		$mail_disabled = ((function_exists('imap_open') && (! get_config('system','imap_disabled'))) ? 0 : 1);
 		if($mail_disabled)
 			return;
 
-		logger("onepoll: Mail: Enabled", LOGGER_DEBUG);
+		logger("Mail: Enabled", LOGGER_DEBUG);
 
 		$mbox = null;
 		$x = q("SELECT `prvkey` FROM `user` WHERE `uid` = %d LIMIT 1",
@@ -318,7 +377,9 @@ function onepoll_run(&$argv, &$argc){
 					intval($mailconf[0]['id']),
 					intval($importer_uid)
 				);
-			}
+				logger("Mail: Connected to " . $mailconf[0]['user']);
+			} else
+				logger("Mail: Connection error ".$mailconf[0]['user']." ".print_r(imap_errors(), true));
 		}
 		if($mbox) {
 
@@ -529,7 +590,10 @@ function onepoll_run(&$argv, &$argc){
 						}
 					}
 				}
-			}
+			} else
+				logger("Mail: no mails for ".$mailconf[0]['user']);
+
+			logger("Mail: closing connection for ".$mailconf[0]['user']);
 			imap_close($mbox);
 		}
 	}
@@ -542,9 +606,11 @@ function onepoll_run(&$argv, &$argc){
 	}
 
 	if($xml) {
+		logger('poller: received xml : ' . $xml, LOGGER_DATA);
 		if(! strstr($xml,'<')) {
-			logger('poller ({$contact['id']}): post_handshake: response from ' . $url . ' did not contain XML.');
-			$r = q("UPDATE `contact` SET `last-update` = '%s' WHERE `id` = %d",
+			logger('poller: post_handshake: response from ' . $url . ' did not contain XML.');
+			$r = q("UPDATE `contact` SET `last-update` = '%s',  `failure_update` = '%s' WHERE `id` = %d",
+				dbesc(datetime_convert()),
 				dbesc(datetime_convert()),
 				intval($contact['id'])
 			);
@@ -552,8 +618,9 @@ function onepoll_run(&$argv, &$argc){
 		}
 
 
-		consume_feed($xml,$importer,$contact,$hub,1,1);
+		logger("Consume feed of contact ".$contact['id']);
 
+		consume_feed($xml,$importer,$contact,$hub,1,1);
 
 		// do it twice. Ensures that children of parents which may be later in the stream aren't tossed
 
@@ -565,6 +632,11 @@ function onepoll_run(&$argv, &$argc){
 
 		if(($contact['network'] === NETWORK_OSTATUS ||  $contact['network'] == NETWORK_FEED) && (! $contact['hub-verify']))
 			$hub_update = true;
+
+		if ($force)
+			$hub_update = true;
+
+		logger("Contact ".$contact['id']." returned hub: ".$hub." Network: ".$contact['network']." Relation: ".$contact['rel']." Update: ".$hub_update);
 
 		if((strlen($hub)) && ($hub_update) && (($contact['rel'] != CONTACT_IS_FOLLOWER) || $contact['network'] == NETWORK_FEED) ) {
 			logger('poller: hub ' . $hubmode . ' : ' . $hub . ' contact name : ' . $contact['name'] . ' local user : ' . $importer['name']);
@@ -578,35 +650,44 @@ function onepoll_run(&$argv, &$argc){
 				}
 			}
 		}
-	}
 
-	$updated = datetime_convert();
+		$updated = datetime_convert();
 
-	$r = q("UPDATE `contact` SET `last-update` = '%s', `success_update` = '%s' WHERE `id` = %d",
-		dbesc($updated),
-		dbesc($updated),
-		intval($contact['id'])
-	);
-
-
-	// load current friends if possible.
-
-	if($contact['poco']) {	
-		$r = q("SELECT count(*) as total from glink 
-			where `cid` = %d and updated > UTC_TIMESTAMP() - INTERVAL 1 DAY",
+		$r = q("UPDATE `contact` SET `last-update` = '%s', `success_update` = '%s' WHERE `id` = %d",
+			dbesc($updated),
+			dbesc($updated),
 			intval($contact['id'])
 		);
-	}
-	if(count($r)) {
-		if(! $r[0]['total']) {
-			poco_load($contact['id'],$importer_uid,0,$contact['poco']);
-		}
+
+		q("UPDATE `gcontact` SET `last_contact` = '%s' WHERE `nurl` = '%s'",
+			dbesc($updated),
+			dbesc($contact['nurl'])
+		);
+
+	} elseif (in_array($contact["network"], array(NETWORK_DFRN, NETWORK_DIASPORA, NETWORK_OSTATUS, NETWORK_FEED))) {
+		$updated = datetime_convert();
+
+		$r = q("UPDATE `contact` SET `last-update` = '%s', `failure_update` = '%s' WHERE `id` = %d",
+			dbesc($updated),
+			dbesc($updated),
+			intval($contact['id'])
+		);
+
+		q("UPDATE `gcontact` SET `last_failure` = '%s' WHERE `nurl` = '%s'",
+			dbesc($updated),
+			dbesc($contact['nurl'])
+		);
+	} else {
+		$r = q("UPDATE `contact` SET `last-update` = '%s' WHERE `id` = %d",
+			dbesc($updated),
+			intval($contact['id'])
+		);
 	}
 
 	return;
 }
 
 if (array_search(__file__,get_included_files())===0){
-  onepoll_run($argv,$argc);
-  killme();
+	onepoll_run($_SERVER["argv"],$_SERVER["argc"]);
+	killme();
 }

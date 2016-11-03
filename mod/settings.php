@@ -16,6 +16,11 @@ function get_theme_config_file($theme){
 
 function settings_init(&$a) {
 
+	if(! local_user()) {
+		notice( t('Permission denied.') . EOL );
+		return;
+	}
+
 	// APC deactivated, since there are problems with PHP 5.5
 	//if (function_exists("apc_delete")) {
 	//	$toDelete = new APCIterator('user', APC_ITER_VALUE);
@@ -36,47 +41,56 @@ function settings_init(&$a) {
 			'label'	=> t('Account'),
 			'url' 	=> $a->get_baseurl(true).'/settings',
 			'selected'	=>  (($a->argc == 1) && ($a->argv[0] === 'settings')?'active':''),
+			'accesskey' => 'o',
 		),
 		array(
 			'label'	=> t('Additional features'),
 			'url' 	=> $a->get_baseurl(true).'/settings/features',
 			'selected'	=> (($a->argc > 1) && ($a->argv[1] === 'features') ? 'active' : ''),
+			'accesskey' => 't',
 		),
 		array(
 			'label'	=> t('Display'),
 			'url' 	=> $a->get_baseurl(true).'/settings/display',
 			'selected'	=> (($a->argc > 1) && ($a->argv[1] === 'display')?'active':''),
+			'accesskey' => 'i',
 		),
 
 		array(
 			'label'	=> t('Social Networks'),
 			'url' 	=> $a->get_baseurl(true).'/settings/connectors',
 			'selected'	=> (($a->argc > 1) && ($a->argv[1] === 'connectors')?'active':''),
+			'accesskey' => 'w',
 		),
 		array(
 			'label'	=> t('Plugins'),
 			'url' 	=> $a->get_baseurl(true).'/settings/addon',
 			'selected'	=> (($a->argc > 1) && ($a->argv[1] === 'addon')?'active':''),
+			'accesskey' => 'l',
 		),
 		array(
 			'label'	=> t('Delegations'),
 			'url' 	=> $a->get_baseurl(true).'/delegate',
 			'selected'	=> (($a->argc == 1) && ($a->argv[0] === 'delegate')?'active':''),
+			'accesskey' => 'd',
 		),
 		array(
 			'label' => t('Connected apps'),
 			'url' => $a->get_baseurl(true) . '/settings/oauth',
 			'selected' => (($a->argc > 1) && ($a->argv[1] === 'oauth')?'active':''),
+			'accesskey' => 'b',
 		),
 		array(
 			'label' => t('Export personal data'),
 			'url' => $a->get_baseurl(true) . '/uexport',
 			'selected' => (($a->argc == 1) && ($a->argv[0] === 'uexport')?'active':''),
+			'accesskey' => 'e',
 		),
 		array(
 			'label' => t('Remove account'),
 			'url' => $a->get_baseurl(true) . '/removeme',
 			'selected' => (($a->argc == 1) && ($a->argv[0] === 'removeme')?'active':''),
+			'accesskey' => 'r',
 		)
 	);
 
@@ -172,7 +186,11 @@ function settings_post(&$a) {
 
 		check_form_security_token_redirectOnErr('/settings/connectors', 'settings_connectors');
 
-		if(x($_POST, 'imap-submit')) {
+		if(x($_POST, 'general-submit')) {
+			set_pconfig(local_user(), 'system', 'no_intelligent_shortening', intval($_POST['no_intelligent_shortening']));
+			set_pconfig(local_user(), 'system', 'ostatus_autofriend', intval($_POST['snautofollow']));
+			set_pconfig(local_user(), 'ostatus', 'legacy_contact', $_POST['legacy_contact']);
+		} elseif(x($_POST, 'imap-submit')) {
 
 			$mail_server       = ((x($_POST,'mail_server')) ? $_POST['mail_server'] : '');
 			$mail_port         = ((x($_POST,'mail_port')) ? $_POST['mail_port'] : '');
@@ -266,13 +284,16 @@ function settings_post(&$a) {
 		$theme = ((x($_POST,'theme')) ? notags(trim($_POST['theme']))  : $a->user['theme']);
 		$mobile_theme = ((x($_POST,'mobile_theme')) ? notags(trim($_POST['mobile_theme']))  : '');
 		$nosmile = ((x($_POST,'nosmile')) ? intval($_POST['nosmile'])  : 0);
+		$first_day_of_week = ((x($_POST,'first_day_of_week')) ? intval($_POST['first_day_of_week'])  : 0);
 		$noinfo = ((x($_POST,'noinfo')) ? intval($_POST['noinfo'])  : 0);
 		$infinite_scroll = ((x($_POST,'infinite_scroll')) ? intval($_POST['infinite_scroll'])  : 0);
 		$no_auto_update = ((x($_POST,'no_auto_update')) ? intval($_POST['no_auto_update'])  : 0);
 		$browser_update   = ((x($_POST,'browser_update')) ? intval($_POST['browser_update']) : 0);
-		$browser_update   = $browser_update * 1000;
-		if($browser_update < 10000)
-			$browser_update = 10000;
+		if ($browser_update != -1) {
+			$browser_update   = $browser_update * 1000;
+			if ($browser_update < 10000)
+				$browser_update = 10000;
+		}
 
 		$itemspage_network   = ((x($_POST,'itemspage_network')) ? intval($_POST['itemspage_network']) : 40);
 		if($itemspage_network > 100)
@@ -290,6 +311,7 @@ function settings_post(&$a) {
 		set_pconfig(local_user(),'system','itemspage_network', $itemspage_network);
 		set_pconfig(local_user(),'system','itemspage_mobile_network', $itemspage_mobile_network);
 		set_pconfig(local_user(),'system','no_smilies',$nosmile);
+		set_pconfig(local_user(),'system','first_day_of_week',$first_day_of_week);
 		set_pconfig(local_user(),'system','ignore_info',$noinfo);
 		set_pconfig(local_user(),'system','infinite_scroll',$infinite_scroll);
 		set_pconfig(local_user(),'system','no_auto_update',$no_auto_update);
@@ -366,6 +388,8 @@ function settings_post(&$a) {
 	$username         = ((x($_POST,'username'))   ? notags(trim($_POST['username']))     : '');
 	$email            = ((x($_POST,'email'))      ? notags(trim($_POST['email']))        : '');
 	$timezone         = ((x($_POST,'timezone'))   ? notags(trim($_POST['timezone']))     : '');
+	$language         = ((x($_POST,'language'))   ? notags(trim($_POST['language']))     : '');
+
 	$defloc           = ((x($_POST,'defloc'))     ? notags(trim($_POST['defloc']))       : '');
 	$openid           = ((x($_POST,'openid_url')) ? notags(trim($_POST['openid_url']))   : '');
 	$maxreq           = ((x($_POST,'maxreq'))     ? intval($_POST['maxreq'])             : 0);
@@ -394,6 +418,8 @@ function settings_post(&$a) {
 	$post_newfriend   = (($_POST['post_newfriend'] == 1) ? 1: 0);
 	$post_joingroup   = (($_POST['post_joingroup'] == 1) ? 1: 0);
 	$post_profilechange   = (($_POST['post_profilechange'] == 1) ? 1: 0);
+
+	$email_textonly   = (($_POST['email_textonly'] == 1) ? 1 : 0);
 
 	$notify = 0;
 
@@ -467,7 +493,7 @@ function settings_post(&$a) {
 	$str_contact_deny  = perms2str($_POST['contact_deny']);
 
 	$openidserver = $a->user['openidserver'];
-	$openid = normalise_openid($openid);
+	//$openid = normalise_openid($openid);
 
 	// If openid has changed or if there's an openid but no openidserver, try and discover it.
 
@@ -495,6 +521,7 @@ function settings_post(&$a) {
 	set_pconfig(local_user(),'system','post_joingroup', $post_joingroup);
 	set_pconfig(local_user(),'system','post_profilechange', $post_profilechange);
 
+	set_pconfig(local_user(),'system','email_textonly', $email_textonly);
 
 	if($page_flags == PAGE_PRVGROUP) {
 		$hidewall = 1;
@@ -505,11 +532,19 @@ function settings_post(&$a) {
 			}
 			else {
 				notice( t('Private forum has no privacy permissions and no default privacy group.') . EOL);
-			} 
+			}
 		}
 	}
 
-	$r = q("UPDATE `user` SET `username` = '%s', `email` = '%s', `openid` = '%s', `timezone` = '%s',  `allow_cid` = '%s', `allow_gid` = '%s', `deny_cid` = '%s', `deny_gid` = '%s', `notify-flags` = %d, `page-flags` = %d, `default-location` = '%s', `allow_location` = %d, `maxreq` = %d, `expire` = %d, `openidserver` = '%s', `def_gid` = %d, `blockwall` = %d, `hidewall` = %d, `blocktags` = %d, `unkmail` = %d, `cntunkmail` = %d  WHERE `uid` = %d",
+
+	$r = q("UPDATE `user` SET `username` = '%s', `email` = '%s',
+				`openid` = '%s', `timezone` = '%s',
+				`allow_cid` = '%s', `allow_gid` = '%s', `deny_cid` = '%s', `deny_gid` = '%s',
+				`notify-flags` = %d, `page-flags` = %d, `default-location` = '%s',
+				`allow_location` = %d, `maxreq` = %d, `expire` = %d, `openidserver` = '%s',
+				`def_gid` = %d, `blockwall` = %d, `hidewall` = %d, `blocktags` = %d,
+				`unkmail` = %d, `cntunkmail` = %d, `language` = '%s'
+			WHERE `uid` = %d",
 			dbesc($username),
 			dbesc($email),
 			dbesc($openid),
@@ -531,10 +566,14 @@ function settings_post(&$a) {
 			intval($blocktags),
 			intval($unkmail),
 			intval($cntunkmail),
+			dbesc($language),
 			intval(local_user())
 	);
 	if($r)
 		info( t('Settings updated.') . EOL);
+
+	// clear session language
+	unset($_SESSION['language']);
 
 	$r = q("UPDATE `profile`
 		SET `publish` = %d,
@@ -561,7 +600,7 @@ function settings_post(&$a) {
 	if(($old_visibility != $net_publish) || ($page_flags != $old_page_flags)) {
 		// Update global directory in background
 		$url = $_SESSION['my_url'];
-		if($url && strlen(get_config('system','directory_submit_url')))
+		if($url && strlen(get_config('system','directory')))
 			proc_run('php',"include/directory.php","$url");
 
 	}
@@ -590,7 +629,7 @@ function settings_content(&$a) {
 	nav_set_selected('settings');
 
 	if(! local_user()) {
-		notice( t('Permission denied.') . EOL );
+		#notice( t('Permission denied.') . EOL );
 		return;
 	}
 
@@ -656,7 +695,7 @@ function settings_content(&$a) {
 		}
 
 
-		$r = q("SELECT clients.*, tokens.id as oauth_token, (clients.uid=%d) AS my 
+		$r = q("SELECT clients.*, tokens.id as oauth_token, (clients.uid=%d) AS my
 				FROM clients
 				LEFT JOIN tokens ON clients.client_id=tokens.client_id
 				WHERE clients.uid IN (%d,0)",
@@ -725,13 +764,52 @@ function settings_content(&$a) {
 
 	if(($a->argc > 1) && ($a->argv[1] === 'connectors')) {
 
-		$settings_connectors = "";
+		$settings_connectors = '<span id="settings_general_inflated" class="settings-block fakelink" style="display: block;" onclick="openClose(\'settings_general_expanded\'); openClose(\'settings_general_inflated\');">';
+		$settings_connectors .= '<h3 class="connector">'. t('General Social Media Settings').'</h3>';
+		$settings_connectors .= '</span>';
+		$settings_connectors .= '<div id="settings_general_expanded" class="settings-block" style="display: none;">';
+		$settings_connectors .= '<span class="fakelink" onclick="openClose(\'settings_general_expanded\'); openClose(\'settings_general_inflated\');">';
+		$settings_connectors .= '<h3 class="connector">'. t('General Social Media Settings').'</h3>';
+		$settings_connectors .= '</span>';
+
+		$checked = ((get_pconfig(local_user(), 'system', 'no_intelligent_shortening')) ? ' checked="checked" ' : '');
+
+		$settings_connectors .= '<div id="no_intelligent_shortening" class="field checkbox">';
+		$settings_connectors .= '<label id="no_intelligent_shortening-label" for="shortening-checkbox">'. t('Disable intelligent shortening'). '</label>';
+		$settings_connectors .= '<input id="shortening-checkbox" type="checkbox" name="no_intelligent_shortening" value="1" ' . $checked . '/>';
+		$settings_connectors .= '<span class="field_help">'.t('Normally the system tries to find the best link to add to shortened posts. If this option is enabled then every shortened post will always point to the original friendica post.').'</span>';
+		$settings_connectors .= '</div>';
+
+		$checked = ((get_pconfig(local_user(), 'system', 'ostatus_autofriend')) ? ' checked="checked" ' : '');
+
+		$settings_connectors .= '<div id="snautofollow-wrapper" class="field checkbox">';
+		$settings_connectors .= '<label id="snautofollow-label" for="snautofollow-checkbox">'. t('Automatically follow any GNU Social (OStatus) followers/mentioners'). '</label>';
+		$settings_connectors .= '<input id="snautofollow-checkbox" type="checkbox" name="snautofollow" value="1" ' . $checked . '/>';
+		$settings_connectors .= '<span class="field_help">'.t('If you receive a message from an unknown OStatus user, this option decides what to do. If it is checked, a new contact will be created for every unknown user.').'</span>';
+		$settings_connectors .= '</div>';
+
+		$legacy_contact = get_pconfig(local_user(), 'ostatus', 'legacy_contact');
+
+		if ($legacy_contact != "")
+			$a->page['htmlhead'] = '<meta http-equiv="refresh" content="0; URL='.$a->get_baseurl().'/ostatus_subscribe?url='.urlencode($legacy_contact).'">';
+
+		$settings_connectors .= '<div id="legacy-contact-wrapper" class="field input">';
+		$settings_connectors .= '<label id="legacy-contact-label" for="snautofollow-checkbox">'. t('Your legacy GNU Social account'). '</label>';
+		$settings_connectors .= '<input id="legacy-contact-checkbox" name="legacy_contact" value="'.$legacy_contact.'"/>';
+		$settings_connectors .= '<span class="field_help">'.t('If you enter your old GNU Social/Statusnet account name here (in the format user@domain.tld), your contacts will be added automatically. The field will be emptied when done.').'</span>';
+		$settings_connectors .= '</div>';
+
+		$settings_connectors .= '<p><a href="'.$a->get_baseurl().'/repair_ostatus">'.t("Repair OStatus subscriptions").'</a></p>';
+
+		$settings_connectors .= '<div class="settings-submit-wrapper" ><input type="submit" name="general-submit" class="settings-submit" value="' . t('Save Settings') . '" /></div>';
+
+		$settings_connectors .= '</div><div class="clear"></div>';
 
 		call_hooks('connector_settings', $settings_connectors);
 
 		if (is_site_admin()) {
 			$diasp_enabled = sprintf( t('Built-in support for %s connectivity is %s'), t('Diaspora'), ((get_config('system','diaspora_enabled')) ? t('enabled') : t('disabled')));
-			$ostat_enabled = sprintf( t('Built-in support for %s connectivity is %s'), t('StatusNet'), ((get_config('system','ostatus_disabled')) ? t('disabled') : t('enabled')));
+			$ostat_enabled = sprintf( t('Built-in support for %s connectivity is %s'), t('GNU Social (OStatus)'), ((get_config('system','ostatus_disabled')) ? t('disabled') : t('enabled')));
 		} else {
 			$diasp_enabled = "";
 			$ostat_enabled = "";
@@ -830,7 +908,7 @@ function settings_content(&$a) {
 				$is_experimental = file_exists('view/theme/' . $th . '/experimental');
 				$unsupported = file_exists('view/theme/' . $th . '/unsupported');
 				$is_mobile = file_exists('view/theme/' . $th . '/mobile');
-				if (!$is_experimental or ($is_experimental && (get_config('experimentals','exp_themes')==1 or get_config('experimentals','exp_themes')===false))){ 
+				if (!$is_experimental or ($is_experimental && (get_config('experimentals','exp_themes')==1 or get_config('experimentals','exp_themes')===false))){
 					$theme_name = (($is_experimental) ?  sprintf("%s - \x28Experimental\x29", $f) : $f);
 					if($is_mobile) {
 						$mobile_themes[$f]=$theme_name;
@@ -845,7 +923,8 @@ function settings_content(&$a) {
 		$mobile_theme_selected = (!x($_SESSION,'mobile-theme')? $default_mobile_theme : $_SESSION['mobile-theme']);
 
 		$browser_update = intval(get_pconfig(local_user(), 'system','update_interval'));
-		$browser_update = (($browser_update == 0) ? 40 : $browser_update / 1000); // default if not set: 40 seconds
+		if (intval($browser_update) != -1)
+			$browser_update = (($browser_update == 0) ? 40 : $browser_update / 1000); // default if not set: 40 seconds
 
 		$itemspage_network = intval(get_pconfig(local_user(), 'system','itemspage_network'));
 		$itemspage_network = (($itemspage_network > 0 && $itemspage_network < 101) ? $itemspage_network : 40); // default if not set: 40 items
@@ -854,6 +933,10 @@ function settings_content(&$a) {
 
 		$nosmile = get_pconfig(local_user(),'system','no_smilies');
 		$nosmile = (($nosmile===false)? '0': $nosmile); // default if not set: 0
+
+		$first_day_of_week = get_pconfig(local_user(),'system','first_day_of_week');
+		$first_day_of_week = (($first_day_of_week===false)? '0': $first_day_of_week); // default if not set: 0
+		$weekdays = array(0 => t("Sunday"), 1 => t("Monday"));
 
 		$noinfo = get_pconfig(local_user(),'system','ignore_info');
 		$noinfo = (($noinfo===false)? '0': $noinfo); // default if not set: 0
@@ -880,14 +963,17 @@ function settings_content(&$a) {
 
 			'$theme'	=> array('theme', t('Display Theme:'), $theme_selected, '', $themes, true),
 			'$mobile_theme'	=> array('mobile_theme', t('Mobile Theme:'), $mobile_theme_selected, '', $mobile_themes, false),
-			'$ajaxint'   => array('browser_update',  t("Update browser every xx seconds"), $browser_update, t('Minimum of 10 seconds, no maximum')),
+			'$ajaxint'   => array('browser_update',  t("Update browser every xx seconds"), $browser_update, t('Minimum of 10 seconds. Enter -1 to disable it.')),
 			'$itemspage_network'   => array('itemspage_network',  t("Number of items to display per page:"), $itemspage_network, t('Maximum of 100 items')),
 			'$itemspage_mobile_network'   => array('itemspage_mobile_network',  t("Number of items to display per page when viewed from mobile device:"), $itemspage_mobile_network, t('Maximum of 100 items')),
 			'$nosmile'	=> array('nosmile', t("Don't show emoticons"), $nosmile, ''),
+			'$calendar_title' => t('Calendar'),
+			'$first_day_of_week'	=> array('first_day_of_week', t('Beginning of week:'), $first_day_of_week, '', $weekdays, false),
 			'$noinfo'	=> array('noinfo', t("Don't show notices"), $noinfo, ''),
 			'$infinite_scroll'	=> array('infinite_scroll', t("Infinite scroll"), $infinite_scroll, ''),
 			'$no_auto_update'	=> array('no_auto_update', t("Automatic updates only at the top of the network page"), $no_auto_update, 'When disabled, the network page is updated all the time, which could be confusing while reading.'),
 
+			'stitle' => t('Theme settings'),
 			'$theme_config' => $theme_config,
 		));
 
@@ -916,6 +1002,7 @@ function settings_content(&$a) {
 	$email      = $a->user['email'];
 	$nickname   = $a->user['nickname'];
 	$timezone   = $a->user['timezone'];
+	$language   = $a->user['language'];
 	$notify     = $a->user['notify-flags'];
 	$defloc     = $a->user['default-location'];
 	$openid     = $a->user['openid'];
@@ -994,7 +1081,7 @@ function settings_content(&$a) {
 		$openid_field = false;
 	}
 	else {
-		$openid_field = array('openid_url', t('OpenID:'),$openid, t("\x28Optional\x29 Allow this OpenID to login to this account."));
+		$openid_field = array('openid_url', t('OpenID:'),$openid, t("\x28Optional\x29 Allow this OpenID to login to this account."), "", "", "url");
 	}
 
 
@@ -1008,7 +1095,7 @@ function settings_content(&$a) {
 		));
 	}
 
-	if(strlen(get_config('system','directory_submit_url'))) {
+	if(strlen(get_config('system','directory'))) {
 		$profile_in_net_dir = replace_macros($opt_tpl,array(
 			'$field' 	=> array('profile_in_netdirectory', t('Publish your default profile in the global social directory?'), $profile['net-publish'], '', array(t('No'),t('Yes'))),
 		));
@@ -1022,7 +1109,7 @@ function settings_content(&$a) {
 	));
 
 	$hide_wall = replace_macros($opt_tpl,array(
-			'$field' 	=> array('hidewall',  t('Hide your profile details from unknown viewers?'), $a->user['hidewall'], '', array(t('No'),t('Yes'))),
+			'$field' 	=> array('hidewall',  t('Hide your profile details from unknown viewers?'), $a->user['hidewall'], t("If enabled, posting public messages to Diaspora and other networks isn't possible."), array(t('No'),t('Yes'))),
 
 	));
 
@@ -1056,20 +1143,16 @@ function settings_content(&$a) {
 		info( t('Profile is <strong>not published</strong>.') . EOL );
 
 
-	$subdir = ((strlen($a->get_path())) ? '<br />' . t('or') . ' ' . $a->get_baseurl(true) . '/profile/' . $nickname : '');
+	//$subdir = ((strlen($a->get_path())) ? '<br />' . t('or') . ' ' . $a->get_baseurl(true) . '/profile/' . $nickname : '');
 
 	$tpl_addr = get_markup_template("settings_nick_set.tpl");
 
 	$prof_addr = replace_macros($tpl_addr,array(
-		'$desc' => t('Your Identity Address is'),
-		'$nickname' => $nickname,
-		'$subdir' => $subdir,
+		'$desc' => sprintf(t("Your Identity Address is <strong>'%s'</strong> or '%s'."), $nickname.'@'.$a->get_hostname().$a->get_path(), $a->get_baseurl().'/profile/'.$nickname),
 		'$basepath' => $a->get_hostname()
 	));
 
 	$stpl = get_markup_template('settings.tpl');
-
-	$celeb = ((($a->user['page-flags'] == PAGE_SOAPBOX) || ($a->user['page-flags'] == PAGE_COMMUNITY)) ? true : false);
 
 	$expire_arr = array(
 		'days' => array('expire',  t("Automatically expire posts after this many days:"), $expire, t('If empty, posts will not expire. Expired posts will be deleted')),
@@ -1078,8 +1161,8 @@ function settings_content(&$a) {
 		'items' => array('expire_items',  t("Expire posts:"), $expire_items, '', array(t('No'),t('Yes'))),
 		'notes' => array('expire_notes',  t("Expire personal notes:"), $expire_notes, '', array(t('No'),t('Yes'))),
 		'starred' => array('expire_starred',  t("Expire starred posts:"), $expire_starred, '', array(t('No'),t('Yes'))),
-		'photos' => array('expire_photos',  t("Expire photos:"), $expire_photos, '', array(t('No'),t('Yes'))),		
-		'network_only' => array('expire_network_only',  t("Only expire posts by others:"), $expire_network_only, '', array(t('No'),t('Yes'))),		
+		'photos' => array('expire_photos',  t("Expire photos:"), $expire_photos, '', array(t('No'),t('Yes'))),
+		'network_only' => array('expire_network_only',  t("Only expire posts by others:"), $expire_network_only, '', array(t('No'),t('Yes'))),
 	);
 
 	require_once('include/group.php');
@@ -1103,6 +1186,8 @@ function settings_content(&$a) {
 	else
 		$public_post_link = '&public=1';
 
+	/* Installed langs */
+	$lang_choices = get_avaiable_languages();
 
 	$o .= replace_macros($stpl, array(
 		'$ptitle' 	=> t('Account Settings'),
@@ -1123,8 +1208,9 @@ function settings_content(&$a) {
 
 		'$h_basic' 	=> t('Basic Settings'),
 		'$username' => array('username',  t('Full Name:'), $username,''),
-		'$email' 	=> array('email', t('Email Address:'), $email, ''),
+		'$email' 	=> array('email', t('Email Address:'), $email, '', '', '', 'email'),
 		'$timezone' => array('timezone_select' , t('Your Timezone:'), select_timezone($timezone), ''),
+		'$language' => array('language', t('Your Language:'), $language, t('Set the language we use to show you friendica interface and to send you emails'), $lang_choices),
 		'$defloc'	=> array('defloc', t('Default Post Location:'), $defloc, ''),
 		'$allowloc' => array('allow_location', t('Use Browser Location:'), ($a->user['allow_location'] == 1), ''),
 
@@ -1135,7 +1221,7 @@ function settings_content(&$a) {
 		'$permissions' => t('Default Post Permissions'),
 		'$permdesc' => t("\x28click to open/close\x29"),
 		'$visibility' => $profile['net-publish'],
-		'$aclselect' => populate_acl($a->user,$celeb),
+		'$aclselect' => populate_acl($a->user),
 		'$suggestme' => $suggestme,
 		'$blockwall'=> $blockwall, // array('blockwall', t('Allow friends to post to your profile page:'), !$blockwall, ''),
 		'$blocktags'=> $blocktags, // array('blocktags', t('Allow friends to tag your posts:'), !$blocktags, ''),
@@ -1175,10 +1261,15 @@ function settings_content(&$a) {
 		'$notify3'	=> array('notify3', t('Someone writes on your profile wall'), ($notify & NOTIFY_WALL), NOTIFY_WALL, ''),
 		'$notify4'	=> array('notify4', t('Someone writes a followup comment'), ($notify & NOTIFY_COMMENT), NOTIFY_COMMENT, ''),
 		'$notify5'	=> array('notify5', t('You receive a private message'), ($notify & NOTIFY_MAIL), NOTIFY_MAIL, ''),
-		'$notify6'  => array('notify6', t('You receive a friend suggestion'), ($notify & NOTIFY_SUGGEST), NOTIFY_SUGGEST, ''),		
-		'$notify7'  => array('notify7', t('You are tagged in a post'), ($notify & NOTIFY_TAGSELF), NOTIFY_TAGSELF, ''),		
-		'$notify8'  => array('notify8', t('You are poked/prodded/etc. in a post'), ($notify & NOTIFY_POKE), NOTIFY_POKE, ''),		
+		'$notify6'  => array('notify6', t('You receive a friend suggestion'), ($notify & NOTIFY_SUGGEST), NOTIFY_SUGGEST, ''),
+		'$notify7'  => array('notify7', t('You are tagged in a post'), ($notify & NOTIFY_TAGSELF), NOTIFY_TAGSELF, ''),
+		'$notify8'  => array('notify8', t('You are poked/prodded/etc. in a post'), ($notify & NOTIFY_POKE), NOTIFY_POKE, ''),
 
+        '$desktop_notifications' => array('desktop_notifications', t('Activate desktop notifications') , false, t('Show desktop popup on new notifications')),
+
+		'$email_textonly' => array('email_textonly', t('Text-only notification emails'),
+									get_pconfig(local_user(),'system','email_textonly'),
+									t('Send text only notification emails, without the html part')),
 
 		'$h_advn' => t('Advanced Account/Page Type Settings'),
 		'$h_descadvn' => t('Change the behaviour of this account for special situations'),

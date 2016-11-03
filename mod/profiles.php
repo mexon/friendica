@@ -137,9 +137,26 @@ function profiles_init(&$a) {
 
 		profile_load($a,$a->user['nickname'],$r[0]['id']);
 	}
-	
-	
 
+
+
+}
+
+function profile_clean_keywords($keywords) {
+	$keywords = str_replace(","," ",$keywords);
+	$keywords = explode(" ", $keywords);
+
+	$cleaned = array();
+	foreach ($keywords as $keyword) {
+		$keyword = trim(strtolower($keyword));
+		$keyword = trim($keyword, "#");
+		if ($keyword != "")
+			$cleaned[] = $keyword;
+	}
+
+	$keywords = implode(", ", $cleaned);
+
+	return $keywords;
 }
 
 function profiles_post(&$a) {
@@ -173,27 +190,23 @@ function profiles_post(&$a) {
 			return;
 		}
 
-		$year = intval($_POST['year']);
-		if($year < 1900 || $year > 2100 || $year < 0)
-			$year = 0;
-		$month = intval($_POST['month']);
-			if(($month > 12) || ($month < 0))
-				$month = 0;
-		$mtab = array(0,31,29,31,30,31,30,31,31,30,31,30,31);
-		$day = intval($_POST['day']);
-			if(($day > $mtab[$month]) || ($day < 0))
-				$day = 0;
+		$dob = $_POST['dob'] ? escape_tags(trim($_POST['dob'])) : '0000-00-00'; // FIXME: Needs to be validated?
 
-		// It's OK to have an empty (0) year, but if you supplied a year you have to have a non-zero month and day
-		if($year && ! $month)
-			$month = 1;
-		if($year && ! $day)
-			$day = 1;
+		$y = substr($dob,0,4);
+		if((! ctype_digit($y)) || ($y < 1900))
+			$ignore_year = true;
+		else
+			$ignore_year = false;
+		if($dob != '0000-00-00') {
+			if(strpos($dob,'0000-') === 0) {
+				$ignore_year = true;
+				$dob = substr($dob,5);
+			}
+			$dob = datetime_convert('UTC','UTC',(($ignore_year) ? '1900-' . $dob : $dob),(($ignore_year) ? 'm-d' : 'Y-m-d'));
+			if($ignore_year)
+				$dob = '0000-' . $dob;
+		}
 
-		$dob = '0000-00-00';
-		$dob = sprintf('%04d-%02d-%02d',$year,$month,$day);
-
-			
 		$name = notags(trim($_POST['name']));
 
 		if(! strlen($name)) {
@@ -212,8 +225,8 @@ function profiles_post(&$a) {
 		$region = notags(trim($_POST['region']));
 		$postal_code = notags(trim($_POST['postal_code']));
 		$country_name = notags(trim($_POST['country_name']));
-		$pub_keywords = notags(trim($_POST['pub_keywords']));
-		$prv_keywords = notags(trim($_POST['prv_keywords']));
+		$pub_keywords = profile_clean_keywords(notags(trim($_POST['pub_keywords'])));
+		$prv_keywords = profile_clean_keywords(notags(trim($_POST['prv_keywords'])));
 		$marital = notags(trim($_POST['marital']));
 		$howlong = notags(trim($_POST['howlong']));
 
@@ -223,7 +236,7 @@ function profiles_post(&$a) {
 			$howlong = '0000-00-00 00:00:00';
 		else
 			$howlong = datetime_convert(date_default_timezone_get(),'UTC',$howlong);
- 
+
 		// linkify the relationship target if applicable
 
 		$withchanged = false;
@@ -277,7 +290,7 @@ function profiles_post(&$a) {
 						$newname = $r[0]['name'];
 					}
 				}
-	
+
 				if($prf) {
 					$with = str_replace($lookup,'<a href="' . $prf . '">' . $newname	. '</a>', $with);
 					if(strpos($with,'@') === 0)
@@ -314,7 +327,7 @@ function profiles_post(&$a) {
 
 		$hide_friends = (($_POST['hide-friends'] == 1) ? 1: 0);
 
-
+		set_pconfig(local_user(),'system','detailled_profile', (($_POST['detailled_profile'] == 1) ? 1: 0));
 
 		$changes = array();
 		$value = '';
@@ -457,7 +470,8 @@ function profiles_post(&$a) {
 
 
 		if($namechanged && $is_default) {
-			$r = q("UPDATE `contact` SET `name-date` = '%s' WHERE `self` = 1 AND `uid` = %d",
+			$r = q("UPDATE `contact` SET `name` = '%s', `name-date` = '%s' WHERE `self` = 1 AND `uid` = %d",
+				dbesc($name),
 				dbesc(datetime_convert()),
 				intval(local_user())
 			);
@@ -468,9 +482,33 @@ function profiles_post(&$a) {
 		}
 
 		if($is_default) {
+			$location = $locality;
+
+			if ($region != "") {
+				if ($location != "")
+					$location .= ", ";
+
+				$location .= $region;
+			}
+
+			if ($country_name != "") {
+				if ($location != "")
+					$location .= ", ";
+
+				$location .= $country_name;
+			}
+
+			$r = q("UPDATE `contact` SET `about` = '%s', `location` = '%s', `keywords` = '%s', `gender` = '%s' WHERE `self` = 1 AND `uid` = %d",
+				dbesc($about),
+				dbesc($location),
+				dbesc($pub_keywords),
+				dbesc($gender),
+				intval(local_user())
+			);
+
 			// Update global directory in background
 			$url = $_SESSION['my_url'];
-			if($url && strlen(get_config('system','directory_submit_url')))
+			if($url && strlen(get_config('system','directory')))
 				proc_run('php',"include/directory.php","$url");
 
 			require_once('include/profile_update.php');
@@ -502,7 +540,7 @@ function profile_activity($changed, $value) {
 		return;
 
 	$arr = array();
-	$arr['uri'] = $arr['parent-uri'] = item_new_uri($a->get_hostname(), local_user()); 
+	$arr['uri'] = $arr['parent-uri'] = item_new_uri($a->get_hostname(), local_user());
 	$arr['uid'] = local_user();
 	$arr['contact-id'] = $self[0]['id'];
 	$arr['wall'] = 1;
@@ -514,7 +552,7 @@ function profile_activity($changed, $value) {
 	$arr['author-avatar'] = $arr['owner-avatar'] = $self[0]['thumb'];
 	$arr['verb'] = ACTIVITY_UPDATE;
 	$arr['object-type'] = ACTIVITY_OBJ_PROFILE;
-				
+
 	$A = '[url=' . $self[0]['url'] . ']' . $self[0]['name'] . '[/url]';
 
 
@@ -532,7 +570,7 @@ function profile_activity($changed, $value) {
 		$changes .= $ch;
 	}
 
-	$prof = '[url=' . $self[0]['url'] . '?tab=profile' . ']' . t('public profile') . '[/url]';	
+	$prof = '[url=' . $self[0]['url'] . '?tab=profile' . ']' . t('public profile') . '[/url]';
 
 	if($t == 1 && strlen($value)) {
 		$message = sprintf( t('%1$s changed %2$s to &ldquo;%3$s&rdquo;'), $A, $changes, $value);
@@ -540,9 +578,9 @@ function profile_activity($changed, $value) {
 	}
 	else
 		$message = 	sprintf( t('%1$s has an updated %2$s, changing %3$s.'), $A, $prof, $changes);
- 
 
-	$arr['body'] = $message;  
+
+	$arr['body'] = $message;
 
 	$arr['object'] = '<object><type>' . ACTIVITY_OBJ_PROFILE . '</type><title>' . $self[0]['name'] . '</title>'
 	. '<id>' . $self[0]['url'] . '/' . $self[0]['name'] . '</id>';
@@ -626,8 +664,10 @@ function profiles_content(&$a) {
 			'$no_selected' => (($r[0]['hide-friends'] == 0) ? " checked=\"checked\" " : "")
 		));
 
+		$personal_account = !(in_array($a->user["page-flags"],
+					array(PAGE_COMMUNITY, PAGE_PRVGROUP)));
 
-
+		$detailled_profile = (get_pconfig(local_user(),'system','detailled_profile') AND $personal_account);
 
 		$f = get_config('system','birthday_input_format');
 		if(! $f)
@@ -636,6 +676,17 @@ function profiles_content(&$a) {
 		$is_default = (($r[0]['is-default']) ? 1 : 0);
 		$tpl = get_markup_template("profile_edit.tpl");
 		$o .= replace_macros($tpl,array(
+			'$personal_account' => $personal_account,
+			'$detailled_profile' => $detailled_profile,
+
+			'$details' => array(
+                                'detailled_profile', //Name
+                                t('Show more profile fields:'), //Label
+                                $detailled_profile, //Value
+                                '', //Help string
+                                array(t('No'),t('Yes')) //Off - On strings
+                        ),
+
 			'$multi_profiles' => feature_enabled(local_user(),'multi_profiles'),
 			'$form_security_token' => get_form_security_token("profile_edit"),
 			'$form_security_token_photo' => get_form_security_token("profile_photo"),
@@ -660,7 +711,7 @@ function profiles_content(&$a) {
 			'$lbl_fullname' => t('Your Full Name:'),
 			'$lbl_title' => t('Title/Description:'),
 			'$lbl_gender' => t('Your Gender:'),
-			'$lbl_bd' => sprintf( t("Birthday \x28%s\x29:"),datesel_format($f)),
+			'$lbl_bd'       => t("Birthday :"),
 			'$lbl_address' => t('Street Address:'),
 			'$lbl_city' => t('Locality/City:'),
 			'$lbl_zip' => t('Postal/Zip Code:'),
@@ -737,10 +788,10 @@ function profiles_content(&$a) {
 
 		return $o;
 	}
-	
+
 	//Profiles list.
 	else {
-		
+
 		//If we don't support multi profiles, don't display this list.
 		if(!feature_enabled(local_user(),'multi_profiles')){
 			$r = q(
@@ -752,11 +803,11 @@ function profiles_content(&$a) {
 				goaway($a->get_baseurl(true) . '/profiles/'.$r[0]['id']);
 			}
 		}
-		
+
 		$r = q("SELECT * FROM `profile` WHERE `uid` = %d",
 			local_user());
 		if(count($r)) {
-			
+
 			$tpl_header = get_markup_template('profile_listing_header.tpl');
 			$o .= replace_macros($tpl_header,array(
 				'$header' => t('Edit/Manage Profiles'),
@@ -764,17 +815,17 @@ function profiles_content(&$a) {
 				'$cr_new' => t('Create New Profile'),
 				'$cr_new_link' => 'profiles/new?t=' . get_form_security_token("profile_new")
 			));
-			
-			
+
+
 			$tpl = get_markup_template('profile_entry.tpl');
-			
+
 			foreach($r as $rr) {
 				$o .= replace_macros($tpl, array(
 					'$photo' => $a->get_cached_avatar_image($rr['thumb']),
 					'$id' => $rr['id'],
 					'$alt' => t('Profile Image'),
 					'$profile_name' => $rr['profile-name'],
-					'$visible' => (($rr['is-default']) ? '<strong>' . t('visible to everybody') . '</strong>' 
+					'$visible' => (($rr['is-default']) ? '<strong>' . t('visible to everybody') . '</strong>'
 						: '<a href="' . $a->get_baseurl(true) . '/profperm/' . $rr['id'] . '" />' . t('Edit visibility') . '</a>')
 				));
 			}

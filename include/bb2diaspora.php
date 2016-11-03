@@ -5,7 +5,7 @@ require_once("include/event.php");
 require_once("library/markdown.php");
 require_once("include/html2bbcode.php");
 require_once("include/bbcode.php");
-require_once("include/markdownify/markdownify.php");
+require_once("library/html-to-markdown/HTML_To_Markdown.php");
 
 
 // we don't want to support a bbcode specific markdown interpreter
@@ -17,20 +17,31 @@ function diaspora2bb($s) {
 
 	$s = html_entity_decode($s,ENT_COMPAT,'UTF-8');
 
-	// Simply remove cr.
+	// Remove CR to avoid problems with following code
 	$s = str_replace("\r","",$s);
 
-	// <br/> is invalid. Replace it with the valid expression
-	$s = str_replace(array("<br/>", "</p>", "<p>", '<p dir="ltr">'),array("<br />", "<br />", "<br />", "<br />"),$s);
+	$s = str_replace("\n"," \n",$s);
 
-	$s = preg_replace('/\@\{(.+?)\; (.+?)\@(.+?)\}/','@[url=https://$3/u/$2]$1[/url]',$s);
+	// The parser cannot handle paragraphs correctly
+	$s = str_replace(array("</p>", "<p>", '<p dir="ltr">'),array("<br>", "<br>", "<br>"),$s);
 
 	// Escaping the hash tags
 	$s = preg_replace('/\#([^\s\#])/','&#35;$1',$s);
 
 	$s = Markdown($s);
 
+	$s = preg_replace('/\@\{(.+?)\; (.+?)\@(.+?)\}/','@[url=https://$3/u/$2]$1[/url]',$s);
+
 	$s = str_replace('&#35;','#',$s);
+
+	$search = array(" \n", "\n ");
+	$replace = array("\n", "\n");
+	do {
+		$oldtext = $s;
+		$s = str_replace($search, $replace, $s);
+	} while ($oldtext != $s);
+
+	$s = str_replace("\n\n", "<br>", $s);
 
 	$s = html2bbcode($s);
 
@@ -56,6 +67,10 @@ function diaspora2bb($s) {
 
 function bb2diaspora($Text,$preserve_nl = false, $fordiaspora = true) {
 
+	$a = get_app();
+
+	$OriginalText = $Text;
+
 	// Since Diaspora is creating a summary for links, this function removes them before posting
 	if ($fordiaspora)
 		$Text = bb_remove_share_information($Text);
@@ -68,47 +83,46 @@ function bb2diaspora($Text,$preserve_nl = false, $fordiaspora = true) {
 		'return \'#\'. str_replace(\' \', \'_\', $match[2]);'
 	), $Text);
 
-
 	// Converting images with size parameters to simple images. Markdown doesn't know it.
 	$Text = preg_replace("/\[img\=([0-9]*)x([0-9]*)\](.*?)\[\/img\]/ism", '[img]$3[/img]', $Text);
 
 	// Convert it to HTML - don't try oembed
-	if ($fordiaspora)
+	if ($fordiaspora) {
 		$Text = bbcode($Text, $preserve_nl, false, 3);
-	else {
+
+		// Add all tags that maybe were removed
+		if (preg_match_all("/#\[url\=([$URLSearchString]*)\](.*?)\[\/url\]/ism",$OriginalText, $tags)) {
+			$tagline = "";
+			foreach($tags[2] as $tag) {
+				$tag = html_entity_decode($tag, ENT_QUOTES, 'UTF-8');
+				if (!strpos(html_entity_decode($Text, ENT_QUOTES, 'UTF-8'), "#".$tag))
+					$tagline .= "#".$tag." ";
+			}
+			$Text = $Text." ".$tagline;
+		}
+
+	} else
 		$Text = bbcode($Text, $preserve_nl, false, 4);
-		// Libertree doesn't convert a harizontal rule if there isn't a linefeed
-		$Text = str_replace("<hr />", "<br /><hr />", $Text);
-	}
+
+    // mask some special HTML chars from conversation to markdown
+    $Text = str_replace(array('&lt;','&gt;','&amp;'),array('&_lt_;','&_gt_;','&_amp_;'),$Text);
+
+	// If a link is followed by a quote then there should be a newline before it
+	// Maybe we should make this newline at every time before a quote.
+	$Text = str_replace(array("</a><blockquote>"), array("</a><br><blockquote>"), $Text);
+
+	$stamp1 = microtime(true);
 
 	// Now convert HTML to Markdown
-	$md = new Markdownify(false, false, false);
-	$Text = $md->parseString($Text);
+	$Text = new HTML_To_Markdown($Text);
 
-	// The Markdownify converter converts underscores '_' in URLs to '\_', which
-	// messes up the URL. Manually fix these
-	$count = 1;
-	$pos = bb_find_open_close($Text, '[', ']', $count);
-	while($pos !== false) {
-		$start = substr($Text, 0, $pos['start']);
-		$subject = substr($Text, $pos['start'], $pos['end'] - $pos['start'] + 1);
-		$end = substr($Text, $pos['end'] + 1);
+    // unmask the special chars back to HTML
+    $Text = str_replace(array('&_lt_;','&_gt_;','&_amp_;'),array('&lt;','&gt;','&amp;'),$Text);
 
-		$subject = str_replace('\_', '_', $subject);
-		$Text = $start . $subject . $end;
+	$a->save_timestamp($stamp1, "parser");
 
-		$count++;
-		$pos = bb_find_open_close($Text, '[', ']', $count);
-	}
-
-	// If the text going into bbcode() has a plain URL in it, i.e.
-	// with no [url] tags around it, it will come out of parseString()
-	// looking like: <http://url.com>, which gets removed by strip_tags().
-	// So take off the angle brackets of any such URL
-	$Text = preg_replace("/<http(.*?)>/is", "http$1", $Text);
-
-	// Remove all unconverted tags
-	$Text = strip_tags($Text);
+	// Libertree has a problem with escaped hashtags.
+	$Text = str_replace(array('\#'), array('#'), $Text);
 
 	// Remove any leading or trailing whitespace, as this will mess up
 	// the Diaspora signature verification and cause the item to disappear
@@ -138,22 +152,22 @@ function format_event_diaspora($ev) {
 	$o .= '**' . (($ev['summary']) ? bb2diaspora($ev['summary']) : bb2diaspora($ev['desc'])) .  '**' . "\n";
 
 	$o .= t('Starts:') . ' ' . '['
-		. (($ev['adjust']) ? day_translate(datetime_convert('UTC', 'UTC', 
+		. (($ev['adjust']) ? day_translate(datetime_convert('UTC', 'UTC',
 			$ev['start'] , $bd_format ))
-			:  day_translate(datetime_convert('UTC', 'UTC', 
+			:  day_translate(datetime_convert('UTC', 'UTC',
 			$ev['start'] , $bd_format)))
 		.  '](' . $a->get_baseurl() . '/localtime/?f=&time=' . urlencode(datetime_convert('UTC','UTC',$ev['start'])) . ")\n";
 
 	if(! $ev['nofinish'])
-		$o .= t('Finishes:') . ' ' . '[' 
-			. (($ev['adjust']) ? day_translate(datetime_convert('UTC', 'UTC', 
+		$o .= t('Finishes:') . ' ' . '['
+			. (($ev['adjust']) ? day_translate(datetime_convert('UTC', 'UTC',
 				$ev['finish'] , $bd_format ))
-				:  day_translate(datetime_convert('UTC', 'UTC', 
+				:  day_translate(datetime_convert('UTC', 'UTC',
 				$ev['finish'] , $bd_format )))
 			. '](' . $a->get_baseurl() . '/localtime/?f=&time=' . urlencode(datetime_convert('UTC','UTC',$ev['finish'])) . ")\n";
 
 	if(strlen($ev['location']))
-		$o .= t('Location:') . bb2diaspora($ev['location']) 
+		$o .= t('Location:') . bb2diaspora($ev['location'])
 			. "\n";
 
 	$o .= "\n";

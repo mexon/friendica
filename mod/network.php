@@ -6,6 +6,8 @@ function network_init(&$a) {
 	}
 
 	$is_a_date_query = false;
+	if(x($_GET['cid']) && intval($_GET['cid']) != 0)
+		$cid = $_GET['cid'];
 
 	if($a->argc > 1) {
 		for($x = 1; $x < $a->argc; $x ++) {
@@ -16,10 +18,12 @@ function network_init(&$a) {
 		}
 	}
 
-    // convert query string to array and remove first element (which is friendica args)
-    $query_array = array();
-    parse_str($a->query_string, $query_array);
-    array_shift($query_array);
+	// convert query string to array. remove friendica args
+	$query_array = array();
+	$query_string = str_replace($a->cmd."?", "", $a->query_string);
+	parse_str($query_string, $query_array);
+	array_shift($query_array);
+
 
 	// fetch last used network view and redirect if needed
 	if(! $is_a_date_query) {
@@ -53,30 +57,30 @@ function network_init(&$a) {
 				'',		//all
 				'',		//postord
 				'',		//conv
-				'/new',	//new
+				'/new',		//new
 				'',		//starred
 				'',		//bookmarked
 				'',		//spam
 			);
 			$tab_args = array(
 				'f=&order=comment',	//all
-				'f=&order=post',		//postord
-				'f=&conv=1',			//conv
-				'',					//new
-				'f=&star=1',			//starred
-				'f=&bmark=1',			//bookmarked
-				'f=&spam=1',			//spam
+				'f=&order=post',	//postord
+				'f=&conv=1',		//conv
+				'',			//new
+				'f=&star=1',		//starred
+				'f=&bmark=1',		//bookmarked
+				'f=&spam=1',		//spam
 			);
 
 			$k = array_search('active', $last_sel_tabs);
 
 			$net_baseurl .= $tab_baseurls[$k];
 
-            // parse out tab queries
-            $dest_qa = array();
-            $dest_qs = $tab_args[$k];
-            parse_str( $dest_qs, $dest_qa);
-            $net_args = array_merge($net_args, $dest_qa);
+			// parse out tab queries
+			$dest_qa = array();
+			$dest_qs = $tab_args[$k];
+			parse_str( $dest_qs, $dest_qa);
+			$net_args = array_merge($net_args, $dest_qa);
 		}
 		else if($sel_tabs[4] === 'active') {
 			// The '/new' tab is selected
@@ -86,12 +90,16 @@ function network_init(&$a) {
 		if($remember_net) {
 			$net_args['nets'] = $last_sel_nets;
 		}
+		else if($sel_nets!==false) {
+			$net_args['nets'] = $sel_nets;
+		}
 
 		if($remember_tab || $remember_net || $remember_group) {
 			$net_args = array_merge($query_array, $net_args);
 			$net_queries = build_querystring($net_args);
 
 			$redir_url = ($net_queries ? $net_baseurl."?".$net_queries : $net_baseurl);
+
 			goaway($a->get_baseurl() . $redir_url);
 		}
 	}
@@ -106,6 +114,7 @@ function network_init(&$a) {
 	require_once('include/group.php');
 	require_once('include/contact_widgets.php');
 	require_once('include/items.php');
+	require_once('include/forums.php');
 
 	if(! x($a->page,'aside'))
 		$a->page['aside'] = '';
@@ -113,19 +122,19 @@ function network_init(&$a) {
 	$search = ((x($_GET,'search')) ? escape_tags($_GET['search']) : '');
 
 	if(x($_GET,'save')) {
-		$r = q("select * from `search` where `uid` = %d and `term` = '%s' limit 1",
+		$r = q("SELECT * FROM `search` WHERE `uid` = %d AND `term` = '%s' LIMIT 1",
 			intval(local_user()),
 			dbesc($search)
 		);
 		if(! count($r)) {
-			q("insert into `search` ( `uid`,`term` ) values ( %d, '%s') ",
+			q("INSERT INTO `search` ( `uid`,`term` ) VALUES ( %d, '%s') ",
 				intval(local_user()),
 				dbesc($search)
 			);
 		}
 	}
 	if(x($_GET,'remove')) {
-		q("delete from `search` where `uid` = %d and `term` = '%s'",
+		q("DELETE FROM `search` WHERE `uid` = %d AND `term` = '%s'",
 			intval(local_user()),
 			dbesc($search)
 		);
@@ -133,10 +142,13 @@ function network_init(&$a) {
 
 	// search terms header
 	if(x($_GET,'search')) {
-		$a->page['content'] .= '<h2>' . t('Search Results For:') . ' '  . $search . '</h2>';
+		$a->page['content'] .= replace_macros(get_markup_template("section_title.tpl"),array(
+			'$title' => sprintf( t('Search Results For: %s'), $search)
+		));
 	}
 
-	$a->page['aside'] .= (feature_enabled(local_user(),'groups') ? group_side('network/0','network',true,$group_id) : '');
+	$a->page['aside'] .= (feature_enabled(local_user(),'groups') ? group_side('network/0','network','standard',$group_id) : '');
+	$a->page['aside'] .= (feature_enabled(local_user(),'forumlist_widget') ? widget_forumlist(local_user(),$cid) : '');
 	$a->page['aside'] .= posted_date_widget($a->get_baseurl() . '/network',local_user(),false);
 	$a->page['aside'] .= networks_widget($a->get_baseurl(true) . '/network',(x($_GET, 'nets') ? $_GET['nets'] : ''));
 	$a->page['aside'] .= saved_searches($search);
@@ -164,7 +176,7 @@ function saved_searches($search) {
 
 	$o = '';
 
-	$r = q("select `id`,`term` from `search` WHERE `uid` = %d",
+	$r = q("SELECT `id`,`term` FROM `search` WHERE `uid` = %d",
 		intval(local_user())
 	);
 
@@ -173,11 +185,11 @@ function saved_searches($search) {
 	if(count($r)) {
 		foreach($r as $rr) {
 			$saved[] = array(
-				'id'            => $rr['id'],
-				'term'			=> $rr['term'],
+				'id'		=> $rr['id'],
+				'term'		=> $rr['term'],
 				'encodedterm' 	=> urlencode($rr['term']),
-				'delete'		=> t('Remove term'),
-				'selected'		=> ($search==$rr['term']),
+				'delete'	=> t('Remove term'),
+				'selected'	=> ($search==$rr['term']),
 			);
 		}
 	}
@@ -185,10 +197,10 @@ function saved_searches($search) {
 
 	$tpl = get_markup_template("saved_searches_aside.tpl");
 	$o = replace_macros($tpl, array(
-		'$title'	 => t('Saved Searches'),
-		'$add'		 => t('add'),
-		'$searchbox' => search($search,'netsearch-box',$srchurl,true),
-		'$saved' 	 => $saved,
+		'$title'	=> t('Saved Searches'),
+		'$add'		=> t('add'),
+		'$searchbox'	=> search($search,'netsearch-box',$srchurl,true),
+		'$saved' 	=> $saved,
 	));
 
 	return $o;
@@ -297,11 +309,11 @@ function network_content(&$a, $update = 0) {
 
 	if(! local_user()) {
 		$_SESSION['return_url'] = $a->query_string;
-    	return login(false);
+		return login(false);
 	}
 
+	// TODO:is this really necessary? $a is already available to hooks
 	$arr = array('query' => $a->query_string);
-
 	call_hooks('network_content_init', $arr);
 
 
@@ -347,52 +359,64 @@ function network_content(&$a, $update = 0) {
 	// tabs
 	$tabs = array(
 		array(
-			'label' => t('Commented Order'),
-			'url'=>$a->get_baseurl(true) . '/' . str_replace('/new', '', $cmd) . '?f=&order=comment' . ((x($_GET,'cid')) ? '&cid=' . $_GET['cid'] : ''),
-			'sel'=>$all_active,
-			'title'=> t('Sort by Comment Date'),
+			'label'	=> t('Commented Order'),
+			'url'	=> $a->get_baseurl(true) . '/' . str_replace('/new', '', $cmd) . '?f=&order=comment' . ((x($_GET,'cid')) ? '&cid=' . $_GET['cid'] : ''),
+			'sel'	=> $all_active,
+			'title'	=> t('Sort by Comment Date'),
+			'id'	=> 'commented-order-tab',
+			'accesskey' => "e",
 		),
 		array(
-			'label' => t('Posted Order'),
-			'url'=>$a->get_baseurl(true) . '/' . str_replace('/new', '', $cmd) . '?f=&order=post' . ((x($_GET,'cid')) ? '&cid=' . $_GET['cid'] : ''),
-			'sel'=>$postord_active,
-			'title' => t('Sort by Post Date'),
+			'label'	=> t('Posted Order'),
+			'url'	=> $a->get_baseurl(true) . '/' . str_replace('/new', '', $cmd) . '?f=&order=post' . ((x($_GET,'cid')) ? '&cid=' . $_GET['cid'] : ''),
+			'sel'	=> $postord_active,
+			'title'	=> t('Sort by Post Date'),
+			'id'	=> 'posted-order-tab',
+			'accesskey' => "t",
 		),
 	);
 
 	if(feature_enabled(local_user(),'personal_tab')) {
 		$tabs[] = array(
-			'label' => t('Personal'),
-			'url' => $a->get_baseurl(true) . '/' . str_replace('/new', '', $cmd) . ((x($_GET,'cid')) ? '/?f=&cid=' . $_GET['cid'] : '') . '&conv=1',
-			'sel' => $conv_active,
-			'title' => t('Posts that mention or involve you'),
+			'label'	=> t('Personal'),
+			'url'	=> $a->get_baseurl(true) . '/' . str_replace('/new', '', $cmd) . ((x($_GET,'cid')) ? '/?f=&cid=' . $_GET['cid'] : '/?f=') . '&conv=1',
+			'sel'	=> $conv_active,
+			'title'	=> t('Posts that mention or involve you'),
+			'id'	=> 'personal-tab',
+			'accesskey' => "r",
 		);
 	}
 
 	if(feature_enabled(local_user(),'new_tab')) {
 		$tabs[] = array(
-			'label' => t('New'),
-			'url' => $a->get_baseurl(true) . '/' . str_replace('/new', '', $cmd) . ($len_naked_cmd ? '/' : '') . 'new' . ((x($_GET,'cid')) ? '/?f=&cid=' . $_GET['cid'] : ''),
-			'sel' => $new_active,
-			'title' => t('Activity Stream - by date'),
+			'label'	=> t('New'),
+			'url'	=> $a->get_baseurl(true) . '/' . str_replace('/new', '', $cmd) . ($len_naked_cmd ? '/' : '') . 'new' . ((x($_GET,'cid')) ? '/?f=&cid=' . $_GET['cid'] : ''),
+			'sel'	=> $new_active,
+			'title'	=> t('Activity Stream - by date'),
+			'id'	=> 'activitiy-by-date-tab',
+			'accesskey' => "w",
 		);
 	}
 
 	if(feature_enabled(local_user(),'link_tab')) {
 		$tabs[] = array(
-			'label' => t('Shared Links'),
-			'url'=>$a->get_baseurl(true) . '/' . str_replace('/new', '', $cmd) . ((x($_GET,'cid')) ? '/?f=&cid=' . $_GET['cid'] : '') . '&bmark=1',
-			'sel'=>$bookmarked_active,
-			'title'=> t('Interesting Links'),
+			'label'	=> t('Shared Links'),
+			'url'	=> $a->get_baseurl(true) . '/' . str_replace('/new', '', $cmd) . ((x($_GET,'cid')) ? '/?f=&cid=' . $_GET['cid'] : '/?f=') . '&bmark=1',
+			'sel'	=> $bookmarked_active,
+			'title'	=> t('Interesting Links'),
+			'id'	=> 'shared-links-tab',
+			'accesskey' => "b",
 		);
 	}
 
 	if(feature_enabled(local_user(),'star_posts')) {
 		$tabs[] = array(
-			'label' => t('Starred'),
-			'url'=>$a->get_baseurl(true) . '/' . str_replace('/new', '', $cmd) . ((x($_GET,'cid')) ? '/?f=&cid=' . $_GET['cid'] : '') . '&star=1',
-			'sel'=>$starred_active,
-			'title' => t('Favourite Posts'),
+			'label'	=> t('Starred'),
+			'url'	=> $a->get_baseurl(true) . '/' . str_replace('/new', '', $cmd) . ((x($_GET,'cid')) ? '/?f=&cid=' . $_GET['cid'] : '/?f=') . '&star=1',
+			'sel'	=> $starred_active,
+			'title'	=> t('Favourite Posts'),
+			'id'	=> 'starred-posts-tab',
+			'accesskey' => "m",
 		);
 	}
 
@@ -432,7 +456,7 @@ function network_content(&$a, $update = 0) {
 		$def_acl = array('allow_cid' => '<' . intval($cid) . '>');
 
 	if($nets) {
-		$r = q("select id from contact where uid = %d and network = '%s' and self = 0",
+		$r = q("SELECT `id` FROM `contact` WHERE `uid` = %d AND network = '%s' AND `self` = 0",
 			intval(local_user()),
 			dbesc($nets)
 		);
@@ -446,11 +470,6 @@ function network_content(&$a, $update = 0) {
 	}
 	set_pconfig(local_user(), 'network.view', 'net.selected', ($nets ? $nets : 'all'));
 
-/*if ($update) {
-print_r($_GET);
-die("ss");
-}*/
-
 	if(! $update) {
 		if($group) {
 			if(($t = group_public_members($group)) && (! get_pconfig(local_user(),'system','nowarn_insecure'))) {
@@ -463,20 +482,33 @@ die("ss");
 
 		nav_set_selected('network');
 
-		$celeb = ((($a->user['page-flags'] == PAGE_SOAPBOX) || ($a->user['page-flags'] == PAGE_COMMUNITY)) ? true : false);
+		$content = "";
+
+		if ($cid) {
+			// If $cid belongs to a communitity forum or a privat goup,.add a mention to the status editor
+			$contact = q("SELECT `nick` FROM `contact` WHERE `id` = %d AND `uid` = %d AND (`forum` OR `prv`) ",
+				intval($cid),
+				intval(local_user())
+			);
+			if ($contact)
+				$content = "@".$contact[0]["nick"]."+".$cid;
+		}
 
 		$x = array(
 			'is_owner' => true,
 			'allow_location' => $a->user['allow_location'],
 			'default_location' => $a->user['default-location'],
 			'nickname' => $a->user['nickname'],
-			'lockstate' => ((($group) || ($cid) || ($nets) || (is_array($a->user) && ((strlen($a->user['allow_cid'])) || (strlen($a->user['allow_gid'])) || (strlen($a->user['deny_cid'])) || (strlen($a->user['deny_gid']))))) ? 'lock' : 'unlock'),
-			'default_perms' => get_acl_permissions($a->user),
-			'acl' => populate_acl((($group || $cid || $nets) ? $def_acl : $a->user), $celeb),
-			'bang' => (($group || $cid || $nets) ? '!' : ''),
+			'lockstate'=> ((($group) || ($cid) || ($nets) || (is_array($a->user) &&
+					((strlen($a->user['allow_cid'])) || (strlen($a->user['allow_gid'])) ||
+					(strlen($a->user['deny_cid'])) || (strlen($a->user['deny_gid']))))) ? 'lock' : 'unlock'),
+			'default_perms'	=> get_acl_permissions($a->user),
+			'acl'	=> populate_acl((($group || $cid || $nets) ? $def_acl : $a->user), true),
+			'bang'	=> (($group || $cid || $nets) ? '!' : ''),
 			'visitor' => 'block',
 			'profile_uid' => local_user(),
 			'acl_data' => construct_acl_data($a, $a->user), // For non-Javascript ACL selector
+			'content' => $content,
 		);
 
 		$o .= status_editor($a,$x);
@@ -527,25 +559,49 @@ die("ss");
 				$contact_str_self = ",".$self[0]["id"];
 		}
 		else {
-				$contact_str = ' 0 ';
-				info( t('Group is empty'));
+			$contact_str = ' 0 ';
+			info( t('Group is empty'));
 		}
 
 		//$sql_post_table = " INNER JOIN (SELECT DISTINCT(`parent`) FROM `item` WHERE (`contact-id` IN ($contact_str) OR `allow_gid` like '".protect_sprintf('%<'.intval($group).'>%')."') and deleted = 0 ORDER BY `created` DESC) AS `temp1` ON $sql_table.$sql_parent = `temp1`.`parent` ";
 
 		$sql_extra3 .= " AND `contact-id` IN ($contact_str$contact_str_self) ";
-		$sql_extra3 .= " AND EXISTS (SELECT id FROM `item` WHERE (`contact-id` IN ($contact_str)  OR `allow_gid` like '".protect_sprintf('%<'.intval($group).'>%')."') and deleted = 0 AND parent = $sql_table.$sql_parent) ";
-		$o = '<h2>' . t('Group: ') . $r[0]['name'] . '</h2>' . $o;
-	} elseif($cid) {
+		$sql_extra3 .= " AND EXISTS (SELECT `id` FROM `item` WHERE (`contact-id` IN ($contact_str)
+				OR `allow_gid` LIKE '".protect_sprintf('%<'.intval($group).'>%')."') AND `deleted` = 0
+				AND `parent` = $sql_table.$sql_parent) ";
 
-		$r = q("SELECT `id`,`name`,`network`,`writable`,`nurl` FROM `contact` WHERE `id` = %d
+		$o = replace_macros(get_markup_template("section_title.tpl"),array(
+			'$title' => sprintf( t('Group: %s'), $r[0]['name'])
+		)) . $o;
+
+	}
+	elseif($cid) {
+
+		$r = q("SELECT `id`,`name`,`network`,`writable`,`nurl`, `forum`, `prv`, `addr`, `thumb`, `location` FROM `contact` WHERE `id` = %d
 				AND `blocked` = 0 AND `pending` = 0 LIMIT 1",
 			intval($cid)
 		);
 		if(count($r)) {
-			$sql_post_table = " INNER JOIN (SELECT DISTINCT(`parent`) FROM `item` WHERE 1 $sql_options AND `contact-id` = ".intval($cid)." and deleted = 0 ORDER BY `item`.`received` DESC) AS `temp1` ON $sql_table.$sql_parent = `temp1`.`parent` ";
+			$sql_post_table = " INNER JOIN (SELECT DISTINCT(`parent`) FROM `item`
+					    WHERE 1 $sql_options AND `contact-id` = ".intval($cid)." AND `deleted` = 0
+					    ORDER BY `item`.`received` DESC) AS `temp1`
+					    ON $sql_table.$sql_parent = `temp1`.`parent` ";
 			$sql_extra = "";
-			$o = '<h2>' . t('Contact: ') . $r[0]['name'] . '</h2>' . $o;
+
+			$entries[0] = array(
+				'id' => 'network',
+				'name' => htmlentities($r[0]['name']),
+				'itemurl' => (($r[0]['addr']) ? ($r[0]['addr']) : ($r[0]['nurl'])),
+				'thumb' => proxy_url($r[0]['thumb'], false, PROXY_SIZE_THUMB),
+				'account_type' => (($r[0]['forum']) || ($r[0]['prv']) ? t('Forum') : ''),
+				'details' => $r[0]['location'],
+			);
+
+			$o = replace_macros(get_markup_template("viewcontact_template.tpl"),array(
+				'contacts' => $entries,
+				'id' => 'network',
+			)) . $o;
+
 			if($r[0]['network'] === NETWORK_OSTATUS && $r[0]['writable'] && (! get_pconfig(local_user(),'system','nowarn_insecure'))) {
 				notice( t('Private messages to this person are at risk of public disclosure.') . EOL);
 			}
@@ -621,30 +677,31 @@ die("ss");
 
 	}
 	else {
-		if( (! get_config('alt_pager', 'global')) && (! get_pconfig(local_user(),'system','alt_pager')) ) {
-		        $r = q("SELECT COUNT(*) AS `total`
-			        FROM $sql_table $sql_post_table INNER JOIN `contact` ON `contact`.`id` = $sql_table.`contact-id`
-			        AND `contact`.`blocked` = 0 AND `contact`.`pending` = 0
-			        WHERE $sql_table.`uid` = %d AND $sql_table.`visible` = 1 AND $sql_table.`deleted` = 0
-			        $sql_extra2 $sql_extra3
-			        $sql_extra $sql_nets ",
-			        intval($_SESSION['uid'])
-		        );
+		if(get_config('system', 'old_pager')) {
+			$r = q("SELECT COUNT(*) AS `total`
+				FROM $sql_table $sql_post_table INNER JOIN `contact` ON `contact`.`id` = $sql_table.`contact-id`
+				AND `contact`.`blocked` = 0 AND `contact`.`pending` = 0
+				WHERE $sql_table.`uid` = %d AND $sql_table.`visible` = 1 AND $sql_table.`deleted` = 0
+				$sql_extra2 $sql_extra3
+				$sql_extra $sql_nets ",
+				intval($_SESSION['uid'])
+			);
 
-		        if(count($r)) {
-			        $a->set_pager_total($r[0]['total']);
-		        }
+			if(count($r)) {
+				$a->set_pager_total($r[0]['total']);
+			}
 		}
 
 		//  check if we serve a mobile device and get the user settings
 		//  accordingly
 		if ($a->is_mobile) {
-		    $itemspage_network = get_pconfig(local_user(),'system','itemspage_mobile_network');
-		    $itemspage_network = ((intval($itemspage_network)) ? $itemspage_network : 20);
+			$itemspage_network = get_pconfig(local_user(),'system','itemspage_mobile_network');
+			$itemspage_network = ((intval($itemspage_network)) ? $itemspage_network : 20);
 		} else {
-		    $itemspage_network = get_pconfig(local_user(),'system','itemspage_network');
-		    $itemspage_network = ((intval($itemspage_network)) ? $itemspage_network : 40);
+			$itemspage_network = get_pconfig(local_user(),'system','itemspage_network');
+			$itemspage_network = ((intval($itemspage_network)) ? $itemspage_network : 40);
 		}
+
 		//  now that we have the user settings, see if the theme forces
 		//  a maximum item number which is lower then the user choice
 		if(($a->force_max_items > 0) && ($a->force_max_items < $itemspage_network))
@@ -655,7 +712,7 @@ die("ss");
 	}
 
 	if($nouveau) {
-		$simple_update = (($update) ? " and `item`.`unseen` = 1 " : '');
+		$simple_update = (($update) ? " AND `item`.`unseen` = 1 " : '');
 
 		if ($sql_order == "")
 			$sql_order = "`item`.`received`";
@@ -668,7 +725,7 @@ die("ss");
 			FROM $sql_table $sql_post_table INNER JOIN `contact` ON `contact`.`id` = `item`.`contact-id`
 			AND `contact`.`blocked` = 0 AND `contact`.`pending` = 0
 			WHERE `item`.`uid` = %d AND `item`.`visible` = 1
-			AND `item`.`deleted` = 0 and `item`.`moderated` = 0
+			AND `item`.`deleted` = 0 AND `item`.`moderated` = 0
 			$simple_update
 			$sql_extra $sql_nets
 			ORDER BY $sql_order DESC $pager_sql ",
@@ -699,12 +756,19 @@ die("ss");
 
 		// Fetch a page full of parent items for this page
 		if($update) {
+			if (!get_config("system", "like_no_comment"))
+				$sql_extra4 = "(`item`.`deleted` = 0
+						OR `item`.`verb` = '".ACTIVITY_LIKE."' OR `item`.`verb` = '".ACTIVITY_DISLIKE."'
+						OR `item`.`verb` = '".ACTIVITY_ATTEND."' OR `item`.`verb` = '".ACTIVITY_ATTENDNO."'
+						OR `item`.`verb` = '".ACTIVITY_ATTENDMAYBE."')";
+			else
+				$sql_extra4 = "`item`.`deleted` = 0 AND `item`.`verb` = '".ACTIVITY_POST."'";
+
 			$r = q("SELECT `item`.`parent` AS `item_id`, `item`.`network` AS `item_network`, `contact`.`uid` AS `contact_uid`
 				FROM $sql_table $sql_post_table INNER JOIN `contact` ON `contact`.`id` = `item`.`contact-id`
 				AND `contact`.`blocked` = 0 AND `contact`.`pending` = 0
-				WHERE `item`.`uid` = %d AND `item`.`visible` = 1 AND
-				(`item`.`deleted` = 0 OR `item`.`verb` = '" . ACTIVITY_LIKE ."' OR `item`.`verb` = '" . ACTIVITY_DISLIKE . "')
-				and `item`.`moderated` = 0 and `item`.`unseen` = 1
+				WHERE `item`.`uid` = %d AND `item`.`visible` = 1 AND $sql_extra4
+				AND `item`.`moderated` = 0 AND `item`.`unseen` = 1
 				$sql_extra3 $sql_extra $sql_nets ORDER BY `item_id` DESC LIMIT 100",
 				intval(local_user())
 			);
@@ -809,10 +873,11 @@ die("ss");
 	$o .= conversation($a,$items,$mode,$update);
 
 	if(!$update) {
-		if( get_config('alt_pager', 'global') || get_pconfig(local_user(),'system','alt_pager') ) {
+		if(get_pconfig(local_user(),'system','infinite_scroll')) {
+				$o .= scroll_loader();
+		} elseif(!get_config('system', 'old_pager')) {
 		        $o .= alt_pager($a,count($items));
-		}
-		else {
+		} else {
 		        $o .= paginate($a);
 		}
 	}

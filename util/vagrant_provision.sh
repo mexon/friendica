@@ -21,16 +21,13 @@ organizationalUnitName=
 emailAddress=
 "
 sudo mkdir -p "$SSL_DIR"
-sudo openssl genrsa -out "$SSL_DIR/xip.io.key" 1024
+sudo openssl genrsa -out "$SSL_DIR/xip.io.key" 4096
 sudo openssl req -new -subj "$(echo -n "$SUBJ" | tr "\n" "/")" -key "$SSL_DIR/xip.io.key" -out "$SSL_DIR/xip.io.csr" -passin pass:$PASSPHRASE
 sudo openssl x509 -req -days 365 -in "$SSL_DIR/xip.io.csr" -signkey "$SSL_DIR/xip.io.key" -out "$SSL_DIR/xip.io.crt"
 
 
 #Install apache2
 echo ">>> Installing Apache2 webserver"
-sudo add-apt-repository -y ppa:ondrej/apache2
-sudo apt-key update
-sudo apt-get update
 sudo apt-get install -y apache2
 sudo a2enmod rewrite actions ssl
 sudo cp /vagrant/util/vagrant_vhost.sh /usr/local/bin/vhost
@@ -42,7 +39,10 @@ sudo service apache2 restart
 #Install php
 echo ">>> Installing PHP5"
 sudo apt-get install -y php5 libapache2-mod-php5 php5-cli php5-mysql php5-curl php5-gd
+sudo apt-get install -y imagemagick
+sudo apt-get install -y php5-imagick
 sudo service apache2 restart
+
 
 #Install mysql
 echo ">>> Installing Mysql"
@@ -61,19 +61,25 @@ SQL="${Q1}${Q2}"
 $MYSQL -uroot -proot -e "$SQL"
 service mysql restart
 
+
+#configure rudimentary mail server (local delivery only)
+#add Friendica accounts for local user accounts, use email address like vagrant@friendica.dev, read the email with 'mail'.
+debconf-set-selections <<< "postfix postfix/mailname string friendica.dev"
+debconf-set-selections <<< "postfix postfix/main_mailer_type string 'Local Only'"
+sudo apt-get install -y postfix mailutils libmailutils-dev
+sudo echo -e "friendica1:	vagrant\nfriendica2:	vagrant\nfriendica3:	vagrant\nfriendica4:	vagrant\nfriendica5:	vagrant" >> /etc/aliases && sudo newaliases
+
 #make the vagrant directory the docroot
 sudo rm -rf /var/www/
 sudo ln -fs /vagrant /var/www
 
-#delete .htconfig.php file if it exists to have a fresh friendica 
-#installation
-if [ -f /vagrant/.htconfig.php ]
-  then
-    sudo rm /vagrant/.htconfig.php
-fi
+# initial config file for friendica in vagrant
+cp /vagrant/util/htconfig.vagrant.php /vagrant/.htconfig.php
 
-#create the friendica database
+# create the friendica database
 echo "create database friendica" | mysql -u root -proot
+# import test database
+$MYSQL -uroot -proot friendica < /vagrant/friendica_test_data.sql
 
 #create cronjob
 echo "*/10 * * * * cd /vagrant; /usr/bin/php include/poller.php" >> friendicacron

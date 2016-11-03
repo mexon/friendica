@@ -21,7 +21,7 @@ function initEditor(cb){
 			$(".jothidden").show();
 			if (typeof cb!="undefined") cb();
 			return;
-		}	
+		}
 		tinyMCE.init({
 			theme : "advanced",
 			mode : "specific_textareas",
@@ -34,6 +34,7 @@ function initEditor(cb){
 			theme_advanced_toolbar_location : "top",
 			theme_advanced_toolbar_align : "center",
 			theme_advanced_blockformats : "blockquote,code",
+			theme_advanced_resizing : true,
 			gecko_spellcheck : true,
 			paste_text_sticky : true,
 			entity_encoding : "raw",
@@ -73,7 +74,7 @@ function initEditor(cb){
 					}
 					else {
 						$('#profile-jot-desc').html('&nbsp;');
-					}	 
+					}
 
 				 //Character count
 
@@ -109,7 +110,7 @@ function initEditor(cb){
 		$("a#jot-perms-icon").colorbox({
 			'inline' : true,
 			'transition' : 'elastic'
-		}); 
+		});
 	} else {
 		if (typeof cb!="undefined") cb();
 	}
@@ -126,37 +127,66 @@ function enableOnUser(){
 <script>
 	var ispublic = '{{$ispublic}}';
 
+
 	$(document).ready(function() {
-		
+
 		/* enable tinymce on focus and click */
 		$("#profile-jot-text").focus(enableOnUser);
 		$("#profile-jot-text").click(enableOnUser);
 
-		var uploader = new window.AjaxUpload(
-			'wall-image-upload',
-			{ action: 'wall_upload/{{$nickname}}',
-				name: 'userfile',
-				onSubmit: function(file,ext) { $('#profile-rotator').show(); },
-				onComplete: function(file,response) {
-					addeditortext(response);
-					$('#profile-rotator').hide();
-				}				 
-			}
-		);
-		var file_uploader = new window.AjaxUpload(
-			'wall-file-upload',
-			{ action: 'wall_attach/{{$nickname}}',
-				name: 'userfile',
-				onSubmit: function(file,ext) { $('#profile-rotator').show(); },
-				onComplete: function(file,response) {
-					addeditortext(response);
-					$('#profile-rotator').hide();
-				}				 
-			}
-		);
 
 
+
+		/* show images / file browser window
+		 *
+		 **/
+
+		/* callback */
+		$('body').on('fbrowser.image.main', function(e, filename, embedcode, id) {
+			$.colorbox.close();
+			addeditortext(embedcode);
+		});
+		$('body').on('fbrowser.file.main', function(e, filename, embedcode, id) {
+			$.colorbox.close();
+			addeditortext(embedcode);
+		});
+
+		$('#wall-image-upload').on('click', function(){
+			Dialog.doImageBrowser("main");
+		});
+
+		$('#wall-file-upload').on('click', function(){
+			Dialog.doFileBrowser("main");
+		});
+
+		/**
+			var uploader = new window.AjaxUpload(
+				'wall-image-upload',
+				{ action: 'wall_upload/{{$nickname}}',
+					name: 'userfile',
+					onSubmit: function(file,ext) { $('#profile-rotator').show(); },
+					onComplete: function(file,response) {
+						addeditortext(response);
+						$('#profile-rotator').hide();
+					}
+				}
+			);
+			var file_uploader = new window.AjaxUpload(
+				'wall-file-upload',
+				{ action: 'wall_attach/{{$nickname}}',
+					name: 'userfile',
+					onSubmit: function(file,ext) { $('#profile-rotator').show(); },
+					onComplete: function(file,response) {
+						addeditortext(response);
+						$('#profile-rotator').hide();
+					}
+				}
+			);
+
+		}
+		**/
 	});
+
 
 	function deleteCheckedItems() {
 		if(confirm('{{$delitems}}')) {
@@ -173,7 +203,7 @@ function enableOnUser(){
 					else {
 						checkedstr = $(this).val();
 					}
-				}	
+				}
 			});
 			$.post('item', { dropitems: checkedstr }, function(data) {
 				window.location.reload();
@@ -271,9 +301,9 @@ function enableOnUser(){
 	}
 
 	function itemFiler(id) {
-		
+
 		var bordercolor = $("input").css("border-color");
-		
+
 		$.get('filer/', function(data){
 			$.colorbox({html:data});
 			$("#id_term").keypress(function(){
@@ -282,7 +312,7 @@ function enableOnUser(){
 			$("#select_term").change(function(){
 				$("#id_term").css("border-color",bordercolor);
 			})
-			
+
 			$("#filer_save").click(function(e){
 				e.preventDefault();
 				reply = $("#id_term").val();
@@ -300,7 +330,7 @@ function enableOnUser(){
 				return false;
 			});
 		});
-		
+
 	}
 
 	function jotClearLocation() {
@@ -315,7 +345,7 @@ function enableOnUser(){
 		}
 		else
 			tinyMCE.execCommand('mceInsertRawHTML',false,data);
-	}	
+	}
 
 	{{$geotag}}
 

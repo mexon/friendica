@@ -20,14 +20,26 @@ function notification($params) {
 	$siteurl = $a->get_baseurl(true);
 	$thanks = t('Thank You,');
 	$sitename = $a->config['sitename'];
-	$site_admin = sprintf( t('%s Administrator'), $sitename);
+	if (!x($a->config['admin_name'])) {
+	    $site_admin = sprintf( t('%s Administrator'), $sitename);
+	} else {
+	    $site_admin = sprintf( t('%1$s, %2$s Administrator'), $a->config['admin_name'], $sitename);
+	}
+	$nickname = "";
 
-	$sender_name = $product;
+	$sender_name = $sitename;
 	$hostname = $a->get_hostname();
 	if(strpos($hostname,':'))
 		$hostname = substr($hostname,0,strpos($hostname,':'));
 
-	$sender_email = t('noreply') . '@' . $hostname;
+	$sender_email = $a->config['sender_email'];
+	if (empty($sender_email)) {
+		$sender_email = t('noreply') . '@' . $hostname;
+	}
+
+	$user = q("SELECT `nickname` FROM `user` WHERE `uid` = %d", intval($params['uid']));
+	if ($user)
+		$nickname = $user[0]["nickname"];
 
 	// with $params['show_in_notification_page'] == false, the notification isn't inserted into
 	// the database, and an email is sent if applicable.
@@ -37,6 +49,7 @@ function notification($params) {
 	$additional_mail_header = "";
 	$additional_mail_header .= "Precedence: list\n";
 	$additional_mail_header .= "X-Friendica-Host: ".$hostname."\n";
+	$additional_mail_header .= "X-Friendica-Account: <".$nickname."@".$hostname.">\n";
 	$additional_mail_header .= "X-Friendica-Platform: ".FRIENDICA_PLATFORM."\n";
 	$additional_mail_header .= "X-Friendica-Version: ".FRIENDICA_VERSION."\n";
 	$additional_mail_header .= "List-ID: <notification.".$hostname.">\n";
@@ -54,6 +67,16 @@ function notification($params) {
 	// e.g. "your post", "David's photo", etc.
 	$possess_desc = t('%s <!item_type!>');
 
+	if (isset($params['item']['id']))
+		$item_id = $params['item']['id'];
+	else
+		$item_id = 0;
+
+	if (isset($params['parent']))
+		$parent_id = $params['parent'];
+	else
+		$parent_id = 0;
+
 	if($params['type'] == NOTIFY_MAIL) {
 
 		$subject = 	sprintf( t('[Friendica:Notify] New mail received at %s'),$sitename);
@@ -69,7 +92,7 @@ function notification($params) {
 	if($params['type'] == NOTIFY_COMMENT) {
 //		logger("notification: params = " . print_r($params, true), LOGGER_DEBUG);
 
-		$parent_id = $params['parent'];
+		//$parent_id = $params['parent'];
 
 		$p = q("SELECT `ignored` FROM `thread` WHERE `iid` = %d AND `uid` = %d LIMIT 1",
 			intval($parent_id),
@@ -278,7 +301,7 @@ function notification($params) {
 	if($params['type'] == NOTIFY_CONFIRM) {
 		if ($params['verb'] == ACTIVITY_FRIEND ){ // mutual connection
 			$subject = sprintf( t('[Friendica:Notify] Connection accepted'));
-			$preamble = sprintf( t('\'%1$s\' has acepted your connection request at %2$s'), $params['source_name'], $sitename);
+			$preamble = sprintf( t('\'%1$s\' has accepted your connection request at %2$s'), $params['source_name'], $sitename);
 			$epreamble = sprintf( t('%2$s has accepted your [url=%1$s]connection request[/url].'),
 									$itemlink,
 									'[url=' . $params['source_link'] . ']' . $params['source_name'] . '[/url]');
@@ -291,7 +314,7 @@ function notification($params) {
 			$itemlink =  $params['link'];
 		} else { // ACTIVITY_FOLLOW
 			$subject = sprintf( t('[Friendica:Notify] Connection accepted'));
-			$preamble = sprintf( t('\'%1$s\' has acepted your connection request at %2$s'), $params['source_name'], $sitename);
+			$preamble = sprintf( t('\'%1$s\' has accepted your connection request at %2$s'), $params['source_name'], $sitename);
 			$epreamble = sprintf( t('%2$s has accepted your [url=%1$s]connection request[/url].'),
 									$itemlink,
 									'[url=' . $params['source_link'] . ']' . $params['source_name'] . '[/url]');
@@ -344,7 +367,7 @@ function notification($params) {
 			$show_in_notification_page = false;
 	}
 
-
+	$subject .= " (".$nickname."@".$hostname.")";
 
 	$h = array(
 		'params'    => $params,
@@ -391,6 +414,7 @@ function notification($params) {
 		$datarray['date']  = datetime_convert();
 		$datarray['uid']   = $params['uid'];
 		$datarray['link']  = $itemlink;
+		$datarray['iid']   = $item_id;
 		$datarray['parent'] = $parent_id;
 		$datarray['type']  = $params['type'];
 		$datarray['verb']  = $params['verb'];
@@ -406,8 +430,8 @@ function notification($params) {
 
 		// create notification entry in DB
 
-		$r = q("insert into notify (hash,name,url,photo,date,uid,link,parent,type,verb,otype)
-			values('%s','%s','%s','%s','%s',%d,'%s',%d,%d,'%s','%s')",
+		$r = q("insert into notify (hash,name,url,photo,date,uid,link,iid,parent,type,verb,otype)
+			values('%s','%s','%s','%s','%s',%d,'%s',%d,%d,%d,'%s','%s')",
 			dbesc($datarray['hash']),
 			dbesc($datarray['name']),
 			dbesc($datarray['url']),
@@ -415,6 +439,7 @@ function notification($params) {
 			dbesc($datarray['date']),
 			intval($datarray['uid']),
 			dbesc($datarray['link']),
+			intval($datarray['iid']),
 			intval($datarray['parent']),
 			intval($datarray['type']),
 			dbesc($datarray['verb']),
@@ -592,6 +617,7 @@ function notification($params) {
 		// use the Emailer class to send the message
 
 		return Emailer::send(array(
+			'uid' => $params['uid'],
 			'fromName' => $sender_name,
 			'fromEmail' => $sender_email,
 			'replyTo' => $sender_email,

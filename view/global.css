@@ -1,3 +1,6 @@
+/* General style rules .*/
+.pull-right { float: right }
+
 /* List of social Networks */
 img.connector, img.connector-disabled {
   height: 40px;
@@ -84,6 +87,10 @@ span.connector {
   position: relative;
 }
 
+.embed_rich {
+  display: block;
+}
+
 /* Shared Messages */
 .shared_header {
   height: 32px;
@@ -125,4 +132,192 @@ blockquote.shared_content {
 
 .settings-heading a:after{
   content: ' »';
+}
+
+/* headers */
+h1, h2, h3, h4, h5, h6 {
+  margin: 5px 0px 5px 0px;
+  font-weight: normal;
+  line-height: normal;
+  text-rendering: optimizelegibility;
+}
+
+h1 {
+  font-size: 31.5px;
+}
+
+h2 {
+  font-size: 24.5px;
+}
+
+h3 {
+  font-size: 20.5px;
+}
+
+h4 {
+  font-size: 18px;
+}
+
+h5 {
+  font-size: 16.5px;
+}
+
+h6 {
+  font-size: 14.95px;
+}
+
+span.oembed, h4 {
+  margin: 0px 0px 0px 0px;
+}
+
+code { display: block; background-color: #eee; color: #666; padding:1em; font-size: 0.8em; font-family: monospace; }
+key { display: inline; background-color: #eee; color: #666; padding:0.2em; font-size: 0.8em; font-family: monospace; }
+
+/* fields help text */
+.field .field_help {
+    clear: left;
+}
+
+/* notifications unseen */
+.notify-unseen { background-color: #cceeFF; }
+
+/* plain text editor upload/select popup */
+
+.fbrowser .path a { padding: 5px; }
+.fbrowser .path a:before { content: "/"; padding-right: 5px;}
+.fbrowser .folders ul { list-style-type: none; padding-left: 10px;}
+.fbrowser .list { height: auto; overflow-y: hidden; margin: 10px 0px; }
+.fbrowser.image .photo-album-image-wrapper { float: left; }
+.fbrowser.image a img { height: 48px; }
+.fbrowser.image a p { display: none;}
+.fbrowser.file .photo-album-image-wrapper { float:none;  white-space: nowrap; }
+.fbrowser.file img { display: inline; }
+.fbrowser.file p  { display: inline; white-space: nowrap; }
+.fbrowser .upload { clear: both; padding-top: 1em;}
+.fbrowser .error { background: #ffeeee; border: 1px solid #994444; color: #994444; padding: 0.5em;}
+.fbrowser .error a.close { float: right; font-weight: bold; }
+.fbrowser .error.hidden { display: none; }
+
+a {
+  cursor: pointer;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0,0,0,0);
+  border: 0;
+}
+
+.itentity-match-wrapper {
+  float: left;
+  padding: 10px;
+  width: 120px;
+  height: 140px;
+  margin-bottom: 20px;
+}
+
+.identity-match-photo {
+  float: left;
+  text-align: center;
+  width: 120px;
+}
+
+.identity-match-name {
+  text-align: center;
+}
+
+.identity-match-details {
+  float: left;
+  text-align: center;
+  width: 120px;
+  overflow: hidden;
+  font-size: 10px;
+  font-weight: 500;
+  color: #999999;
+}
+
+.identity-match-break, .identity-match-end {
+  clear: both;
+}
+
+.identity-match-photo button {
+  border: none;
+  padding: 0;
+  margin: 0;
+  background: none;
+  height: 80px;
+  width: 80px;
+  cursor: pointer;
+}
+
+.selected-identity img {
+  border: 2px solid #ff0000;
+}
+/* poke */
+#poke-desc {
+  margin: 5px 0 10px;
+}
+
+#poke-wrapper  {
+  padding: 10px 0 0px;
+}
+
+#poke-recipient, #poke-action, #poke-privacy-settings {
+  margin: 10px 0 30px;
+}
+
+#poke-recip-label, #poke-action-label, #prvmail-message-label {
+  margin: 10px 0 10px;
+}
+ul.credits {
+  list-style: none;
+}
+ul.credits li {
+  float: left;
+  width: 240px;
+}
+
+.contact-entry-photo img {
+  max-width: 80px;
+  max-height: 80px;
+}
+
+/* forumlist widget */
+.forumlist-img {
+  height: 20px;
+  width: 20px;
+  vertical-align: middle;
+}
+
+#forum-widget-collapse {
+  opacity: 0.3;
+}
+
+#forum-widget-collapse:hover {
+  opacity: 1.0;
+}
+
+.crepair-label {
+        margin-top: 10px;
+        float: left;
+        width: 250px;
+}
+
+.crepair-input {
+        margin-top: 10px;
+        float: left;
+        width: 200px;
+}
+
+.renderinfo {
+	clear: both;
+}
+
+.p-addr {
+	clear: both;	
 }

@@ -4,6 +4,7 @@ if(class_exists('Item'))
 
 require_once('object/BaseObject.php');
 require_once('include/text.php');
+require_once('include/diaspora.php');
 require_once('boot.php');
 
 /**
@@ -80,7 +81,7 @@ class Item extends BaseObject {
 	 *      _ The data requested on success
 	 *      _ false on failure
 	 */
-	public function get_template_data($alike, $dlike, $thread_level=1) {
+	public function get_template_data($conv_responses, $thread_level=1) {
 		require_once("mod/proxy.php");
 
 		$result = array();
@@ -116,9 +117,12 @@ class Item extends BaseObject {
 			? t('Private Message')
 			: false);
 		$shareable = ((($conv->get_profile_owner() == local_user()) && ($item['private'] != 1)) ? true : false);
-		if(local_user() && link_compare($a->contact['url'],$item['author-link']))
-			$edpost = array($a->get_baseurl($ssl_state)."/editpost/".$item['id'], t("Edit"));
-		else
+		if(local_user() && link_compare($a->contact['url'],$item['author-link'])) {
+			if ($item["event-id"] != 0)
+				$edpost = array($a->get_baseurl($ssl_state)."/events/event/".$item['event-id'], t("Edit"));
+			else
+				$edpost = array($a->get_baseurl($ssl_state)."/editpost/".$item['id'], t("Edit"));
+		} else
 			$edpost = false;
 		if(($this->get_data_value('uid') == local_user()) || $this->is_visiting())
 			$dropping = true;
@@ -133,7 +137,7 @@ class Item extends BaseObject {
 		$filer = (($conv->get_profile_owner() == local_user()) ? t("save to folder") : false);
 
 		$diff_author    = ((link_compare($item['url'],$item['author-link'])) ? false : true);
-		$profile_name   = (((strlen($item['author-name']))   && $diff_author) ? $item['author-name']   : $item['name']);
+		$profile_name   = htmlentities(((strlen($item['author-name']))   && $diff_author) ? $item['author-name']   : $item['name']);
 		if($item['author-link'] && (! $item['author-name']))
 			$profile_name = $item['author-link'];
 
@@ -154,7 +158,7 @@ class Item extends BaseObject {
 
 		$locate = array('location' => $item['location'], 'coord' => $item['coord'], 'html' => '');
 		call_hooks('render_location',$locate);
-		$location = ((strlen($locate['html'])) ? $locate['html'] : render_location_google($locate));
+		$location = ((strlen($locate['html'])) ? $locate['html'] : render_location_dummy($locate));
 
 		$searchpath = $a->get_baseurl()."/search?tag=";
 		$tags=array();
@@ -174,8 +178,26 @@ class Item extends BaseObject {
 			}
 		}*/
 
-		$like    = ((x($alike,$item['uri'])) ? format_like($alike[$item['uri']],$alike[$item['uri'] . '-l'],'like',$item['uri']) : '');
-		$dislike = ((x($dlike,$item['uri'])) ? format_like($dlike[$item['uri']],$dlike[$item['uri'] . '-l'],'dislike',$item['uri']) : '');
+		// process action responses - e.g. like/dislike/attend/agree/whatever
+		$response_verbs = array('like');
+		if(feature_enabled($conv->get_profile_owner(),'dislike'))
+			$response_verbs[] = 'dislike';
+		if($item['object-type'] === ACTIVITY_OBJ_EVENT) {
+			$response_verbs[] = 'attendyes';
+			$response_verbs[] = 'attendno';
+			$response_verbs[] = 'attendmaybe';
+			if($conv->is_writable()) {
+				$isevent = true;
+				$attend = array( t('I will attend'), t('I will not attend'), t('I might attend'));
+			}
+		}
+
+		$responses = get_responses($conv_responses,$response_verbs,$this,$item);
+
+		foreach ($response_verbs as $value=>$verbs) {
+			$responses[$verbs][output]  = ((x($conv_responses[$verbs],$item['uri'])) ? format_like($conv_responses[$verbs][$item['uri']],$conv_responses[$verbs][$item['uri'] . '-l'],$verbs,$item['uri']) : '');
+
+		}
 
 		/*
 		 * We should avoid doing this all the time, but it depends on the conversation mode
@@ -234,6 +256,8 @@ class Item extends BaseObject {
 			if ($shareable) $buttons['share'] = array( t('Share this'), t('share'));
 		}
 
+		$comment = $this->get_comment_box($indent);
+
 		if(strcmp(datetime_convert('UTC','UTC',$item['created']),datetime_convert('UTC','UTC','now - 12 hours')) > 0){
 			$shiny = 'shiny';
 		}
@@ -287,24 +311,29 @@ class Item extends BaseObject {
 		}
 
 		// Disable features that aren't available in several networks
-		if (($item["item_network"] != "dfrn") AND isset($buttons["dislike"])) {
-			unset($buttons["dislike"]);
+		if (($item["item_network"] != NETWORK_DFRN) AND isset($buttons["dislike"])) {
+			unset($buttons["dislike"],$isevent);
 			$tagger = '';
 		}
 
-		if (($item["item_network"] == "feed") AND isset($buttons["like"]))
+		if (($item["item_network"] == NETWORK_FEED) AND isset($buttons["like"]))
 			unset($buttons["like"]);
 
-		if (($item["item_network"] == "mail") AND isset($buttons["like"]))
+		if (($item["item_network"] == NETWORK_MAIL) AND isset($buttons["like"]))
 			unset($buttons["like"]);
 
-		if (($item["item_network"] == "dspr") AND ($indent == 'comment') AND isset($buttons["like"]))
+		// Diaspora isn't able to do likes on comments - but red does
+		if (($item["item_network"] == NETWORK_DIASPORA) AND ($indent == 'comment') AND
+			!diaspora_is_redmatrix($item["owner-link"]) AND isset($buttons["like"]))
 			unset($buttons["like"]);
+
+		// Diaspora doesn't has multithreaded comments
+		if (($item["item_network"] == NETWORK_DIASPORA) AND ($indent == 'comment'))
+			unset($comment);
 
 		// Facebook can like comments - but it isn't programmed in the connector yet.
-		if (($item["item_network"] == "face") AND ($indent == 'comment') AND isset($buttons["like"]))
+		if (($item["item_network"] == NETWORK_FACEBOOK) AND ($indent == 'comment') AND isset($buttons["like"]))
 			unset($buttons["like"]);
-
 
 		$tmp_item = array(
 			'template' => $this->get_template(),
@@ -322,9 +351,11 @@ class Item extends BaseObject {
 			'body' => $body_e,
 			'text' => $text_e,
 			'id' => $this->get_id(),
-			'guid' => $item['guid'],
+			'guid' => urlencode($item['guid']),
+			'isevent' => $isevent,
+			'attend' => $attend,
 			'linktitle' => sprintf( t('View %s\'s profile @ %s'), $profile_name, ((strlen($item['author-link'])) ? $item['author-link'] : $item['url'])),
-			'olinktitle' => sprintf( t('View %s\'s profile @ %s'), $this->get_owner_name(), ((strlen($item['owner-link'])) ? $item['owner-link'] : $item['url'])),
+			'olinktitle' => sprintf( t('View %s\'s profile @ %s'), htmlentities($this->get_owner_name()), ((strlen($item['owner-link'])) ? $item['owner-link'] : $item['url'])),
 			'to' => t('to'),
 			'via' => t('via'),
 			'wall' => t('Wall-to-Wall'),
@@ -332,7 +363,7 @@ class Item extends BaseObject {
 			'profile_url' => $profile_link,
 			'item_photo_menu' => item_photo_menu($item),
 			'name' => $name_e,
-			'thumb' => proxy_url($profile_avatar),
+			'thumb' => proxy_url($profile_avatar, false, PROXY_SIZE_THUMB),
 			'osparkle' => $osparkle,
 			'sparkle' => $sparkle,
 			'title' => $title_e,
@@ -345,8 +376,8 @@ class Item extends BaseObject {
 			'indent' => $indent,
 			'shiny' => $shiny,
 			'owner_url' => $this->get_owner_url(),
-			'owner_photo' => proxy_url($this->get_owner_photo()),
-			'owner_name' => $owner_name_e,
+			'owner_photo' => proxy_url($this->get_owner_photo(), false, PROXY_SIZE_THUMB),
+			'owner_name' => htmlentities($owner_name_e),
 			'plink' => get_plink($item),
 			'edpost'    => ((feature_enabled($conv->get_profile_owner(),'edit_posts')) ? $edpost : ''),
 			'isstarred' => $isstarred,
@@ -356,17 +387,18 @@ class Item extends BaseObject {
 			'filer'     => ((feature_enabled($conv->get_profile_owner(),'filing')) ? $filer : ''),
 			'drop' => $drop,
 			'vote' => $buttons,
-			'like' => $like,
-                        'dislike'   => $dislike,
+			'like' => $responses['like']['output'],
+			'dislike'   => $responses['dislike']['output'],
+			'responses' => $responses,
 			'switchcomment' => t('Comment'),
-			'comment' => $this->get_comment_box($indent),
+			'comment' => $comment,
 			'previewing' => ($conv->is_preview() ? ' preview ' : ''),
 			'wait' => t('Please wait'),
 			'thread_level' => $thread_level,
-                        'postopts' => $langstr,
-                        'edited' => $edited,
+			'postopts' => $langstr,
+			'edited' => $edited,
 			'network' => $item["item_network"],
-			'network_name' => network_to_name($item['item_network']),
+			'network_name' => network_to_name($item['item_network'], $profile_link),
 		);
 
 		$arr = array('item' => $item, 'output' => $tmp_item);
@@ -379,7 +411,7 @@ class Item extends BaseObject {
 		$nb_children = count($children);
 		if($nb_children > 0) {
 			foreach($children as $child) {
-				$result['children'][] = $child->get_template_data($alike, $dlike, $thread_level + 1);
+				$result['children'][] = $child->get_template_data($conv_responses, $thread_level + 1);
 			}
 			// Collapse
 			if(($nb_children > 2) || ($thread_level > 1)) {
@@ -521,7 +553,7 @@ class Item extends BaseObject {
 	 */
 	public function set_conversation($conv) {
 		$previous_mode = ($this->conversation ? $this->conversation->get_mode() : '');
-		
+
 		$this->conversation = $conv;
 
 		// Set it on our children too
@@ -642,7 +674,7 @@ class Item extends BaseObject {
 		if(!$this->is_toplevel() && !(get_config('system','thread_allow') && $a->theme_thread_allow)) {
 			return '';
 		}
-		
+
 		$comment_box = '';
 		$conv = $this->get_conversation();
 		$template = get_markup_template($this->get_comment_box_template());

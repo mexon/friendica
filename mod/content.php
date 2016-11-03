@@ -11,8 +11,8 @@
 // There is no "pagination query", but we will manage the "current page" on the client
 // and provide a link to fetch the next page - until there are no pages left to fetch.
 
-// With the exception of complex tag and text searches, this prototype is incredibly 
-// fast - e.g. one or two milliseconds to fetch parent items for the current content, 
+// With the exception of complex tag and text searches, this prototype is incredibly
+// fast - e.g. one or two milliseconds to fetch parent items for the current content,
 // and 10-20 milliseconds to fetch all the child items.
 
 
@@ -131,7 +131,9 @@ function content_content(&$a, $update = 0) {
 		}
 
 		$sql_extra = " AND `item`.`parent` IN ( SELECT DISTINCT(`parent`) FROM `item` WHERE 1 $sql_options AND ( `contact-id` IN ( $contact_str ) OR `allow_gid` like '" . protect_sprintf('%<' . intval($group) . '>%') . "' ) and deleted = 0 ) ";
-		$o = '<h2>' . t('Group: ') . $r[0]['name'] . '</h2>' . $o;
+		$o = replace_macros(get_markup_template("section_title.tpl"),array(
+			'$title' => sprintf( t('Group: %s'), $r[0]['name'])
+		)) . $o;
 	}
 	elseif($cid) {
 
@@ -423,7 +425,7 @@ function render_content(&$a, $items, $mode, $update, $preview = false) {
 				$locate = array('location' => $item['location'], 'coord' => $item['coord'], 'html' => '');
 				call_hooks('render_location',$locate);
 
-				$location = ((strlen($locate['html'])) ? $locate['html'] : render_location_google($locate));
+				$location = ((strlen($locate['html'])) ? $locate['html'] : render_location_dummy($locate));
 
 				localize_item($item);
 				if($mode === 'network-new')
@@ -474,7 +476,7 @@ function render_content(&$a, $items, $mode, $update, $preview = false) {
 					'name' => $name_e,
 					'sparkle' => $sparkle,
 					'lock' => $lock,
-					'thumb' => proxy_url($profile_avatar),
+					'thumb' => proxy_url($profile_avatar, false, PROXY_SIZE_THUMB),
 					'title' => $title_e,
 					'body' => $body_e,
 					'text' => $text_e,
@@ -483,7 +485,7 @@ function render_content(&$a, $items, $mode, $update, $preview = false) {
 					'indent' => '',
 					'owner_name' => $owner_name_e,
 					'owner_url' => $owner_url,
-					'owner_photo' => proxy_url($owner_photo),
+					'owner_photo' => proxy_url($owner_photo, false, PROXY_SIZE_THUMB),
 					'plink' => get_plink($item),
 					'edpost' => false,
 					'isstarred' => $isstarred,
@@ -797,7 +799,7 @@ function render_content(&$a, $items, $mode, $update, $preview = false) {
 				$locate = array('location' => $item['location'], 'coord' => $item['coord'], 'html' => '');
 				call_hooks('render_location',$locate);
 
-				$location = ((strlen($locate['html'])) ? $locate['html'] : render_location_google($locate));
+				$location = ((strlen($locate['html'])) ? $locate['html'] : render_location_dummy($locate));
 
 				$indent = (($toplevelpost) ? '' : ' comment');
 
@@ -857,7 +859,7 @@ function render_content(&$a, $items, $mode, $update, $preview = false) {
 					'profile_url' => $profile_link,
 					'item_photo_menu' => item_photo_menu($item),
 					'name' => $name_e,
-					'thumb' => proxy_url($profile_avatar),
+					'thumb' => proxy_url($profile_avatar, false, PROXY_SIZE_THUMB),
 					'osparkle' => $osparkle,
 					'sparkle' => $sparkle,
 					'title' => $title_e,
@@ -867,7 +869,7 @@ function render_content(&$a, $items, $mode, $update, $preview = false) {
 					'indent' => $indent,
 					'shiny' => $shiny,
 					'owner_url' => $owner_url,
-					'owner_photo' => proxy_url($owner_photo),
+					'owner_photo' => proxy_url($owner_photo, false, PROXY_SIZE_THUMB),
 					'owner_name' => $owner_name_e,
 					'plink' => get_plink($item),
 					'edpost' => $edpost,

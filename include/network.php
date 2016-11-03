@@ -9,6 +9,47 @@
 if(! function_exists('fetch_url')) {
 function fetch_url($url,$binary = false, &$redirects = 0, $timeout = 0, $accept_content=Null, $cookiejar = 0, $curlredirect = false) {
 
+	$ret = z_fetch_url(
+		$url,
+		$binary,
+		$redirects,
+		array('timeout'=>$timeout,
+		'accept_content'=>$accept_content,
+		'cookiejar'=>$cookiejar
+		));
+
+	return($ret['body']);
+}}
+
+if(!function_exists('z_fetch_url')){
+/**
+ * @brief fetches an URL.
+ *
+ * @param string $url
+ *    URL to fetch
+ * @param boolean $binary default false
+ *    TRUE if asked to return binary results (file download)
+ * @param int $redirects default 0
+ *    internal use, recursion counter
+ * @param array $opts (optional parameters) assoziative array with:
+ *  * \b accept_content => supply Accept: header with 'accept_content' as the value
+ *  * \b timeout => int seconds, default system config value or 60 seconds
+ *  * \b http_auth => username:password
+ *  * \b novalidate => do not validate SSL certs, default is to validate using our CA list
+ *  * \b nobody => only return the header
+ *	* \b cookiejar => path to cookie jar file
+ *
+ * @return array an assoziative array with:
+ *  * \e int \b return_code => HTTP return code or 0 if timeout or failure
+ *  * \e boolean \b success => boolean true (if HTTP 2xx result) or false
+ *  * \e string \b header => HTTP headers
+ *  * \e string \b body => fetched content
+ */
+function z_fetch_url($url,$binary = false, &$redirects = 0, $opts=array()) {
+
+	$ret = array('return_code' => 0, 'success' => false, 'header' => "", 'body' => "");
+
+
 	$stamp1 = microtime(true);
 
 	$a = get_app();
@@ -20,18 +61,18 @@ function fetch_url($url,$binary = false, &$redirects = 0, $timeout = 0, $accept_
 
 	@curl_setopt($ch, CURLOPT_HEADER, true);
 
-	if($cookiejar) {
-		curl_setopt($ch, CURLOPT_COOKIEJAR, $cookiejar);
-		curl_setopt($ch, CURLOPT_COOKIEFILE, $cookiejar);
+	if(x($opts,"cookiejar")) {
+		curl_setopt($ch, CURLOPT_COOKIEJAR, $opts["cookiejar"]);
+		curl_setopt($ch, CURLOPT_COOKIEFILE, $opts["cookiejar"]);
 	}
 
 //  These settings aren't needed. We're following the location already.
 //	@curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
 //	@curl_setopt($ch, CURLOPT_MAXREDIRS, 5);
 
-	if (!is_null($accept_content)){
+	if (x($opts,'accept_content')){
 		curl_setopt($ch,CURLOPT_HTTPHEADER, array (
-			"Accept: " . $accept_content
+			"Accept: " . $opts['accept_content']
 		));
 	}
 
@@ -39,10 +80,16 @@ function fetch_url($url,$binary = false, &$redirects = 0, $timeout = 0, $accept_
 	@curl_setopt($ch, CURLOPT_USERAGENT, $a->get_useragent());
 
 
-	if(intval($timeout)) {
-		@curl_setopt($ch, CURLOPT_TIMEOUT, $timeout);
+
+	if(x($opts,'headers')){
+		@curl_setopt($ch, CURLOPT_HTTPHEADER, $opts['headers']);
 	}
-	else {
+	if(x($opts,'nobody')){
+		@curl_setopt($ch, CURLOPT_NOBODY, $opts['nobody']);
+	}
+	if(x($opts,'timeout')){
+		@curl_setopt($ch, CURLOPT_TIMEOUT, $opts['timeout']);
+	} else {
 		$curl_time = intval(get_config('system','curl_timeout'));
 		@curl_setopt($ch, CURLOPT_TIMEOUT, (($curl_time !== false) ? $curl_time : 60));
 	}
@@ -51,6 +98,7 @@ function fetch_url($url,$binary = false, &$redirects = 0, $timeout = 0, $accept_
 
 	$check_cert = get_config('system','verifyssl');
 	@curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, (($check_cert) ? true : false));
+	@curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, (($check_cert) ? 2 : false));
 
 	$prx = get_config('system','proxy');
 	if(strlen($prx)) {
@@ -108,19 +156,42 @@ function fetch_url($url,$binary = false, &$redirects = 0, $timeout = 0, $accept_
 			$newurl = $old_location_info["scheme"]."://".$old_location_info["host"].$newurl;
 		if (filter_var($newurl, FILTER_VALIDATE_URL)) {
 			$redirects++;
+			@curl_close($ch);
 			$a->set_curl_redirect_url($newurl);
-			return fetch_url($newurl,$binary,$redirects,$timeout,$accept_content,$cookiejar,$curlredirect);
+			return z_fetch_url($newurl,$binary, $redirects, $opts);
 		}
 	}
 
+
+	$a->set_curl_code($http_code);
 	$a->set_curl_content_type($curl_info['content_type']);
 
 	$body = substr($s,strlen($header));
 	$a->set_curl_headers($header);
 
+
+
+	$rc = intval($http_code);
+	$ret['return_code'] = $rc;
+	$ret['success'] = (($rc >= 200 && $rc <= 299) ? true : false);
+	if(! $ret['success']) {
+		$ret['error'] = curl_error($ch);
+		$ret['debug'] = $curl_info;
+		logger('z_fetch_url: error: ' . $url . ': ' . $ret['error'], LOGGER_DEBUG);
+		logger('z_fetch_url: debug: ' . print_r($curl_info,true), LOGGER_DATA);
+	}
+	$ret['body'] = substr($s,strlen($header));
+	$ret['header'] = $header;
+	if(x($opts,'debug')) {
+		$ret['debug'] = $curl_info;
+	}
+	@curl_close($ch);
+>>>>>>> 3.4.3-2
+
 	$a->save_timestamp($stamp1, "network");
 
-	return($body);
+	return($ret);
+
 }}
 
 // post request to $url. $params is an array of post variables.
@@ -164,6 +235,7 @@ function post_url($url,$params, $headers = null, &$redirects = 0, $timeout = 0) 
 
 	$check_cert = get_config('system','verifyssl');
 	curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, (($check_cert) ? true : false));
+	curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, (($check_cert) ? 2 : false));
 	$prx = get_config('system','proxy');
 	if(strlen($prx)) {
 		curl_setopt($ch, CURLOPT_HTTPPROXYTUNNEL, 1);
@@ -244,16 +316,25 @@ function xml_status($st, $message = '') {
 
 
 if(! function_exists('http_status_exit')) {
-function http_status_exit($val) {
-
+function http_status_exit($val, $description = array()) {
     $err = '';
-	if($val >= 400)
+	if($val >= 400) {
 		$err = 'Error';
+		if (!isset($description["title"]))
+			$description["title"] = $err." ".$val;
+	}
 	if($val >= 200 && $val < 300)
 		$err = 'OK';
 
 	logger('http_status_exit ' . $val);
 	header($_SERVER["SERVER_PROTOCOL"] . ' ' . $val . ' ' . $err);
+
+	if (isset($description["title"])) {
+		$tpl = get_markup_template('http_status.tpl');
+		echo replace_macros($tpl, array('$title' => $description["title"],
+						'$description' => $description["description"]));
+	}
+
 	killme();
 
 }}
@@ -265,43 +346,43 @@ function http_status_exit($val) {
 if(! function_exists('convert_xml_element_to_array')) {
 function convert_xml_element_to_array($xml_element, &$recursion_depth=0) {
 
-        // If we're getting too deep, bail out
-        if ($recursion_depth > 512) {
-                return(null);
-        }
+	// If we're getting too deep, bail out
+	if ($recursion_depth > 512) {
+		return(null);
+	}
 
-        if (!is_string($xml_element) &&
-        !is_array($xml_element) &&
-        (get_class($xml_element) == 'SimpleXMLElement')) {
-                $xml_element_copy = $xml_element;
-                $xml_element = get_object_vars($xml_element);
-        }
+	if (!is_string($xml_element) &&
+	!is_array($xml_element) &&
+	(get_class($xml_element) == 'SimpleXMLElement')) {
+		$xml_element_copy = $xml_element;
+		$xml_element = get_object_vars($xml_element);
+	}
 
-        if (is_array($xml_element)) {
-                $result_array = array();
-                if (count($xml_element) <= 0) {
-                        return (trim(strval($xml_element_copy)));
-                }
+	if (is_array($xml_element)) {
+		$result_array = array();
+		if (count($xml_element) <= 0) {
+			return (trim(strval($xml_element_copy)));
+		}
 
-                foreach($xml_element as $key=>$value) {
+		foreach($xml_element as $key=>$value) {
 
-                        $recursion_depth++;
-                        $result_array[strtolower($key)] =
-                convert_xml_element_to_array($value, $recursion_depth);
-                        $recursion_depth--;
-                }
-                if ($recursion_depth == 0) {
-                        $temp_array = $result_array;
-                        $result_array = array(
-                                strtolower($xml_element_copy->getName()) => $temp_array,
-                        );
-                }
+			$recursion_depth++;
+			$result_array[strtolower($key)] =
+		convert_xml_element_to_array($value, $recursion_depth);
+			$recursion_depth--;
+		}
+		if ($recursion_depth == 0) {
+			$temp_array = $result_array;
+			$result_array = array(
+				strtolower($xml_element_copy->getName()) => $temp_array,
+			);
+		}
 
-                return ($result_array);
+		return ($result_array);
 
-        } else {
-                return (trim(strval($xml_element)));
-        }
+	} else {
+		return (trim(strval($xml_element)));
+	}
 }}
 
 // Given an email style address, perform webfinger lookup and
@@ -657,7 +738,7 @@ function validate_email($addr) {
 		return false;
 	$h = substr($addr,strpos($addr,'@') + 1);
 
-	if(($h) && (dns_get_record($h, DNS_A + DNS_CNAME + DNS_PTR + DNS_MX) || filter_var($h['host'], FILTER_VALIDATE_IP) )) {
+	if(($h) && (dns_get_record($h, DNS_A + DNS_CNAME + DNS_PTR + DNS_MX) || filter_var($h, FILTER_VALIDATE_IP) )) {
 		return true;
 	}
 	return false;
@@ -874,13 +955,6 @@ function scale_external_images($srctext, $include_link = true, $scale_replace = 
 			if(! $i)
 				return $srctext;
 
-			$cachefile = get_cachefile(hash("md5", $scaled));
-			if ($cachefile != '') {
-				$stamp1 = microtime(true);
-				file_put_contents($cachefile, $i);
-				$a->save_timestamp($stamp1, "file");
-			}
-
 			// guess mimetype from headers or filename
 			$type = guess_image_type($mtch[1],true);
 
@@ -975,8 +1049,8 @@ function xml2array($contents, $namespaces = true, $get_attributes=1, $priority =
     if(!$contents) return array();
 
     if(!function_exists('xml_parser_create')) {
-        logger('xml2array: parser function missing');
-        return array();
+	logger('xml2array: parser function missing');
+	return array();
     }
 
 
@@ -1019,29 +1093,29 @@ function xml2array($contents, $namespaces = true, $get_attributes=1, $priority =
     // Go through the tags.
     $repeated_tag_index = array(); // Multiple tags with same name will be turned into an array
     foreach($xml_values as $data) {
-        unset($attributes,$value); // Remove existing values, or there will be trouble
+	unset($attributes,$value); // Remove existing values, or there will be trouble
 
-        // This command will extract these variables into the foreach scope
-        // tag(string), type(string), level(int), attributes(array).
-        extract($data); // We could use the array by itself, but this cooler.
+	// This command will extract these variables into the foreach scope
+	// tag(string), type(string), level(int), attributes(array).
+	extract($data); // We could use the array by itself, but this cooler.
 
-        $result = array();
-        $attributes_data = array();
+	$result = array();
+	$attributes_data = array();
 
-        if(isset($value)) {
-            if($priority == 'tag') $result = $value;
-            else $result['value'] = $value; // Put the value in a assoc array if we are in the 'Attribute' mode
-        }
+	if(isset($value)) {
+	    if($priority == 'tag') $result = $value;
+	    else $result['value'] = $value; // Put the value in a assoc array if we are in the 'Attribute' mode
+	}
 
-        //Set the attributes too.
-        if(isset($attributes) and $get_attributes) {
-            foreach($attributes as $attr => $val) {
-                if($priority == 'tag') $attributes_data[$attr] = $val;
-                else $result['@attributes'][$attr] = $val; // Set all the attributes in a array called 'attr'
-            }
-        }
+	//Set the attributes too.
+	if(isset($attributes) and $get_attributes) {
+	    foreach($attributes as $attr => $val) {
+		if($priority == 'tag') $attributes_data[$attr] = $val;
+		else $result['@attributes'][$attr] = $val; // Set all the attributes in a array called 'attr'
+	    }
+	}
 
-        // See tag status and do the needed.
+	// See tag status and do the needed.
 		if($namespaces && strpos($tag,':')) {
 			$namespc = substr($tag,0,strrpos($tag,':'));
 			$tag = strtolower(substr($tag,strlen($namespc)+1));
@@ -1050,72 +1124,72 @@ function xml2array($contents, $namespaces = true, $get_attributes=1, $priority =
 		$tag = strtolower($tag);
 
 		if($type == "open") {   // The starting of the tag '<tag>'
-            $parent[$level-1] = &$current;
-            if(!is_array($current) or (!in_array($tag, array_keys($current)))) { // Insert New tag
-                $current[$tag] = $result;
-                if($attributes_data) $current[$tag. '_attr'] = $attributes_data;
-                $repeated_tag_index[$tag.'_'.$level] = 1;
+	    $parent[$level-1] = &$current;
+	    if(!is_array($current) or (!in_array($tag, array_keys($current)))) { // Insert New tag
+		$current[$tag] = $result;
+		if($attributes_data) $current[$tag. '_attr'] = $attributes_data;
+		$repeated_tag_index[$tag.'_'.$level] = 1;
 
-                $current = &$current[$tag];
+		$current = &$current[$tag];
 
-            } else { // There was another element with the same tag name
+	    } else { // There was another element with the same tag name
 
-                if(isset($current[$tag][0])) { // If there is a 0th element it is already an array
-                    $current[$tag][$repeated_tag_index[$tag.'_'.$level]] = $result;
-                    $repeated_tag_index[$tag.'_'.$level]++;
-                } else { // This section will make the value an array if multiple tags with the same name appear together
-                    $current[$tag] = array($current[$tag],$result); // This will combine the existing item and the new item together to make an array
-                    $repeated_tag_index[$tag.'_'.$level] = 2;
+		if(isset($current[$tag][0])) { // If there is a 0th element it is already an array
+		    $current[$tag][$repeated_tag_index[$tag.'_'.$level]] = $result;
+		    $repeated_tag_index[$tag.'_'.$level]++;
+		} else { // This section will make the value an array if multiple tags with the same name appear together
+		    $current[$tag] = array($current[$tag],$result); // This will combine the existing item and the new item together to make an array
+		    $repeated_tag_index[$tag.'_'.$level] = 2;
 
-                    if(isset($current[$tag.'_attr'])) { // The attribute of the last(0th) tag must be moved as well
-                        $current[$tag]['0_attr'] = $current[$tag.'_attr'];
-                        unset($current[$tag.'_attr']);
-                    }
+		    if(isset($current[$tag.'_attr'])) { // The attribute of the last(0th) tag must be moved as well
+			$current[$tag]['0_attr'] = $current[$tag.'_attr'];
+			unset($current[$tag.'_attr']);
+		    }
 
-                }
-                $last_item_index = $repeated_tag_index[$tag.'_'.$level]-1;
-                $current = &$current[$tag][$last_item_index];
-            }
+		}
+		$last_item_index = $repeated_tag_index[$tag.'_'.$level]-1;
+		$current = &$current[$tag][$last_item_index];
+	    }
 
-        } elseif($type == "complete") { // Tags that ends in 1 line '<tag />'
-            //See if the key is already taken.
-            if(!isset($current[$tag])) { //New Key
-                $current[$tag] = $result;
-                $repeated_tag_index[$tag.'_'.$level] = 1;
-                if($priority == 'tag' and $attributes_data) $current[$tag. '_attr'] = $attributes_data;
+	} elseif($type == "complete") { // Tags that ends in 1 line '<tag />'
+	    //See if the key is already taken.
+	    if(!isset($current[$tag])) { //New Key
+		$current[$tag] = $result;
+		$repeated_tag_index[$tag.'_'.$level] = 1;
+		if($priority == 'tag' and $attributes_data) $current[$tag. '_attr'] = $attributes_data;
 
-            } else { // If taken, put all things inside a list(array)
-                if(isset($current[$tag][0]) and is_array($current[$tag])) { // If it is already an array...
+	    } else { // If taken, put all things inside a list(array)
+		if(isset($current[$tag][0]) and is_array($current[$tag])) { // If it is already an array...
 
-                    // ...push the new element into that array.
-                    $current[$tag][$repeated_tag_index[$tag.'_'.$level]] = $result;
+		    // ...push the new element into that array.
+		    $current[$tag][$repeated_tag_index[$tag.'_'.$level]] = $result;
 
-                    if($priority == 'tag' and $get_attributes and $attributes_data) {
-                        $current[$tag][$repeated_tag_index[$tag.'_'.$level] . '_attr'] = $attributes_data;
-                    }
-                    $repeated_tag_index[$tag.'_'.$level]++;
+		    if($priority == 'tag' and $get_attributes and $attributes_data) {
+			$current[$tag][$repeated_tag_index[$tag.'_'.$level] . '_attr'] = $attributes_data;
+		    }
+		    $repeated_tag_index[$tag.'_'.$level]++;
 
-                } else { // If it is not an array...
-                    $current[$tag] = array($current[$tag],$result); //...Make it an array using using the existing value and the new value
-                    $repeated_tag_index[$tag.'_'.$level] = 1;
-                    if($priority == 'tag' and $get_attributes) {
-                        if(isset($current[$tag.'_attr'])) { // The attribute of the last(0th) tag must be moved as well
+		} else { // If it is not an array...
+		    $current[$tag] = array($current[$tag],$result); //...Make it an array using using the existing value and the new value
+		    $repeated_tag_index[$tag.'_'.$level] = 1;
+		    if($priority == 'tag' and $get_attributes) {
+			if(isset($current[$tag.'_attr'])) { // The attribute of the last(0th) tag must be moved as well
 
-                            $current[$tag]['0_attr'] = $current[$tag.'_attr'];
-                            unset($current[$tag.'_attr']);
-                        }
+			    $current[$tag]['0_attr'] = $current[$tag.'_attr'];
+			    unset($current[$tag.'_attr']);
+			}
 
-                        if($attributes_data) {
-                            $current[$tag][$repeated_tag_index[$tag.'_'.$level] . '_attr'] = $attributes_data;
-                        }
-                    }
-                    $repeated_tag_index[$tag.'_'.$level]++; // 0 and 1 indexes are already taken
-                }
-            }
+			if($attributes_data) {
+			    $current[$tag][$repeated_tag_index[$tag.'_'.$level] . '_attr'] = $attributes_data;
+			}
+		    }
+		    $repeated_tag_index[$tag.'_'.$level]++; // 0 and 1 indexes are already taken
+		}
+	    }
 
-        } elseif($type == 'close') { // End of tag '</tag>'
-            $current = &$parent[$level-1];
-        }
+	} elseif($type == 'close') { // End of tag '</tag>'
+	    $current = &$parent[$level-1];
+	}
     }
 
     return($xml_array);
@@ -1136,7 +1210,7 @@ function original_url($url, $depth=1, $fetchbody = false) {
 				if (in_array($param, array("utm_source", "utm_medium", "utm_term", "utm_content", "utm_campaign",
 							"wt_mc", "pk_campaign", "pk_kwd", "mc_cid", "mc_eid",
 							"fb_action_ids", "fb_action_types", "fb_ref",
-							"awesm",
+							"awesm", "wtrid",
 							"woo_campaign", "woo_source", "woo_medium", "woo_content", "woo_term"))) {
 
 					$pair = $param."=".urlencode($value);
@@ -1157,71 +1231,91 @@ function original_url($url, $depth=1, $fetchbody = false) {
 			$url = substr($url, 0, -1);
 	}
 
-        if ($depth > 10)
-        	return($url);
+	if ($depth > 10)
+		return($url);
 
-        $url = trim($url, "'");
+	$url = trim($url, "'");
 
-        $siteinfo = array();
-        $ch = curl_init();
-        curl_setopt($ch, CURLOPT_URL, $url);
-        curl_setopt($ch, CURLOPT_HEADER, 1);
+	$stamp1 = microtime(true);
 
-        if ($fetchbody)
-                curl_setopt($ch, CURLOPT_NOBODY, 0);
-        else
-                curl_setopt($ch, CURLOPT_NOBODY, 1);
-
-        curl_setopt($ch, CURLOPT_TIMEOUT, 10);
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+	$siteinfo = array();
+	$ch = curl_init();
+	curl_setopt($ch, CURLOPT_URL, $url);
+	curl_setopt($ch, CURLOPT_HEADER, 1);
+	curl_setopt($ch, CURLOPT_NOBODY, 1);
+	curl_setopt($ch, CURLOPT_TIMEOUT, 10);
+	curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
 	curl_setopt($ch, CURLOPT_USERAGENT, $a->get_useragent());
 
-        $header = curl_exec($ch);
-        $curl_info = @curl_getinfo($ch);
-        $http_code = $curl_info['http_code'];
-        curl_close($ch);
+	$header = curl_exec($ch);
+	$curl_info = @curl_getinfo($ch);
+	$http_code = $curl_info['http_code'];
+	curl_close($ch);
 
-        if ((($curl_info['http_code'] == "301") OR ($curl_info['http_code'] == "302"))
-                AND (($curl_info['redirect_url'] != "") OR ($curl_info['location'] != ""))) {
-                if ($curl_info['redirect_url'] != "")
-                        return(original_url($curl_info['redirect_url'], ++$depth, $fetchbody));
-                else
-                        return(original_url($curl_info['location'], ++$depth, $fetchbody));
-        }
+	$a->save_timestamp($stamp1, "network");
 
-        $pos = strpos($header, "\r\n\r\n");
+	if ((($curl_info['http_code'] == "301") OR ($curl_info['http_code'] == "302"))
+		AND (($curl_info['redirect_url'] != "") OR ($curl_info['location'] != ""))) {
+		if ($curl_info['redirect_url'] != "")
+			return(original_url($curl_info['redirect_url'], ++$depth, $fetchbody));
+		else
+			return(original_url($curl_info['location'], ++$depth, $fetchbody));
+	}
 
-        if ($pos)
-                $body = trim(substr($header, $pos));
-        else
-                $body = $header;
+	// Check for redirects in the meta elements of the body if there are no redirects in the header.
+	if (!$fetchbody)
+		return(original_url($url, ++$depth, true));
 
-        if (trim($body) == "")
-                return(original_url($url, ++$depth, true));
+	// if the file is too large then exit
+	if ($curl_info["download_content_length"] > 1000000)
+		return($url);
 
-        $doc = new DOMDocument();
-        @$doc->loadHTML($body);
+	// if it isn't a HTML file then exit
+	if (($curl_info["content_type"] != "") AND !strstr(strtolower($curl_info["content_type"]),"html"))
+		return($url);
 
-        $xpath = new DomXPath($doc);
+	$stamp1 = microtime(true);
 
-        $list = $xpath->query("//meta[@content]");
-        foreach ($list as $node) {
-                $attr = array();
-                if ($node->attributes->length)
-                        foreach ($node->attributes as $attribute)
-                                $attr[$attribute->name] = $attribute->value;
+	$ch = curl_init();
+	curl_setopt($ch, CURLOPT_URL, $url);
+	curl_setopt($ch, CURLOPT_HEADER, 0);
+	curl_setopt($ch, CURLOPT_NOBODY, 0);
+	curl_setopt($ch, CURLOPT_TIMEOUT, 10);
+	curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+	curl_setopt($ch, CURLOPT_USERAGENT, $a->get_useragent());
 
-                if (@$attr["http-equiv"] == 'refresh') {
-                        $path = $attr["content"];
-                        $pathinfo = explode(";", $path);
-                        $content = "";
-                        foreach ($pathinfo AS $value)
-                                if (substr(strtolower($value), 0, 4) == "url=")
-                                        return(original_url(substr($value, 4), ++$depth));
-                }
-        }
+	$body = curl_exec($ch);
+	curl_close($ch);
 
-        return($url);
+	$a->save_timestamp($stamp1, "network");
+
+	if (trim($body) == "")
+		return($url);
+
+	// Check for redirect in meta elements
+	$doc = new DOMDocument();
+	@$doc->loadHTML($body);
+
+	$xpath = new DomXPath($doc);
+
+	$list = $xpath->query("//meta[@content]");
+	foreach ($list as $node) {
+		$attr = array();
+		if ($node->attributes->length)
+			foreach ($node->attributes as $attribute)
+				$attr[$attribute->name] = $attribute->value;
+
+		if (@$attr["http-equiv"] == 'refresh') {
+			$path = $attr["content"];
+			$pathinfo = explode(";", $path);
+			$content = "";
+			foreach ($pathinfo AS $value)
+				if (substr(strtolower($value), 0, 4) == "url=")
+					return(original_url(substr($value, 4), ++$depth));
+		}
+	}
+
+	return($url);
 }
 
 if (!function_exists('short_link')) {

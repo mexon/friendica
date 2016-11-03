@@ -1,37 +1,49 @@
 <?php
+include_once('include/text.php');
+require_once('include/socgraph.php');
+require_once('include/contact_widgets.php');
+require_once('mod/proxy.php');
 
-
+/**
+ * @brief Controller for /match.
+ *
+ * It takes keywords from your profile and queries the directory server for
+ * matching keywords from other profiles.
+ *
+ * @param App &$a
+ * @return void|string
+ */
 function match_content(&$a) {
 
 	$o = '';
 	if(! local_user())
 		return;
 
-	$_SESSION['return_url'] = $a->get_baseurl() . '/' . $a->cmd;
+	$a->page['aside'] .= findpeople_widget();
+	$a->page['aside'] .= follow_widget();
 
-	$o .= '<h2>' . t('Profile Match') . '</h2>';
+	$_SESSION['return_url'] = $a->get_baseurl() . '/' . $a->cmd;
 
 	$r = q("SELECT `pub_keywords`, `prv_keywords` FROM `profile` WHERE `is-default` = 1 AND `uid` = %d LIMIT 1",
 		intval(local_user())
 	);
 	if(! count($r))
-		return; 
+		return;
 	if(! $r[0]['pub_keywords'] && (! $r[0]['prv_keywords'])) {
 		notice( t('No keywords to match. Please add keywords to your default profile.') . EOL);
 		return;
-
 	}
 
 	$params = array();
 	$tags = trim($r[0]['pub_keywords'] . ' ' . $r[0]['prv_keywords']);
-	
+
 	if($tags) {
 		$params['s'] = $tags;
 		if($a->pager['page'] != 1)
 			$params['p'] = $a->pager['page'];
-			
-		if(strlen(get_config('system','directory_submit_url')))
-			$x = post_url('http://dir.friendica.com/msearch', $params);
+
+		if(strlen(get_config('system','directory')))
+			$x = post_url(get_server().'/msearch', $params);
 		else
 			$x = post_url($a->get_baseurl() . '/msearch', $params);
 
@@ -44,30 +56,56 @@ function match_content(&$a) {
 
 		if(count($j->results)) {
 
+			$id = 0;
 
-			
-			$tpl = get_markup_template('match.tpl');
 			foreach($j->results as $jj) {
-				
-				$connlnk = $a->get_baseurl() . '/follow/?url=' . $jj->url;
-				$o .= replace_macros($tpl,array(
-					'$url' => zrl($jj->url),
-					'$name' => $jj->name,
-					'$photo' => $jj->photo,
-					'$inttxt' => ' ' . t('is interested in:'),
-					'$conntxt' => t('Connect'),
-					'$connlnk' => $connlnk,
-					'$tags' => $jj->tags
-				));
+				$match_nurl = normalise_link($jj->url);
+				$match = q("SELECT `nurl` FROM `contact` WHERE `uid` = '%d' AND nurl='%s' LIMIT 1",
+					intval(local_user()),
+					dbesc($match_nurl));
+
+				if (!count($match)) {
+					$jj->photo = str_replace("http:///photo/", get_server()."/photo/", $jj->photo);
+					$connlnk = $a->get_baseurl() . '/follow/?url=' . $jj->url;
+					$photo_menu = array(array(t("View Profile"), zrl($jj->url)));
+					$photo_menu[] = array(t("Connect/Follow"), $connlnk);
+
+					$contact_details = get_contact_details_by_url($jj->url, local_user());
+
+					$entry = array(
+						'url' => zrl($jj->url),
+						'itemurl' => (($contact_details['addr'] != "") ? $contact_details['addr'] : $jj->url),
+						'name' => $jj->name,
+						'details'       => $contact_details['location'],
+						'tags'          => $contact_details['keywords'],
+						'about'         => $contact_details['about'],
+						'account_type'  => (($contact_details['community']) ? t('Forum') : ''),
+						'thumb' => proxy_url($jj->photo, false, PROXY_SIZE_THUMB),
+						'inttxt' => ' ' . t('is interested in:'),
+						'conntxt' => t('Connect'),
+						'connlnk' => $connlnk,
+						'img_hover' => $jj->tags,
+						'photo_menu' => $photo_menu,
+						'id' => ++$id,
+					);
+					$entries[] = $entry;
+				}
 			}
+
+		$tpl = get_markup_template('viewcontact_template.tpl');
+
+		$o .= replace_macros($tpl,array(
+			'$title' => t('Profile Match'),
+			'$contacts' => $entries,
+			'$paginate' => paginate($a),
+		));
+
 		}
 		else {
 			info( t('No matches') . EOL);
-		}		
+		}
 
 	}
 
-	$o .= cleardiv();
-	$o .= paginate($a);
 	return $o;
 }

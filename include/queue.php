@@ -2,64 +2,6 @@
 require_once("boot.php");
 require_once('include/queue_fn.php');
 
-function handle_pubsubhubbub() {
-	global $a, $db;
-
-	logger('queue [pubsubhubbub]: start');
-
-	// We'll push to each subscriber that has push > 0,
-	// i.e. there has been an update (set in notifier.php).
-
-	$r = q("SELECT * FROM `push_subscriber` WHERE `push` > 0");
-
-	foreach($r as $rr) {
-		$params = get_feed_for($a, '', $rr['nickname'], $rr['last_update']);
-		$hmac_sig = hash_hmac("sha1", $params, $rr['secret']);
-
-		$headers = array("Content-type: application/atom+xml",
-						 sprintf("Link: <%s>;rel=hub," .
-								 "<%s>;rel=self",
-								 $a->get_baseurl() . '/pubsubhubbub',
-								 $rr['topic']),
-						 "X-Hub-Signature: sha1=" . $hmac_sig);
-
-		logger('queue [pubsubhubbub]: POST', $headers);
-
-		post_url($rr['callback_url'], $params, $headers);
-		$ret = $a->get_curl_code();
-
-		if ($ret >= 200 && $ret <= 299) {
-			logger('queue [pubsubhubbub]: successfully pushed to ' .
-				   $rr['callback_url']);
-
-			// set last_update to "now", and reset push=0
-			$date_now = datetime_convert('UTC','UTC','now','Y-m-d H:i:s');
-			q("UPDATE `push_subscriber` SET `push` = 0, last_update = '%s' " .
-			  "WHERE id = %d",
-			  dbesc($date_now),
-			  intval($rr['id']));
-
-		} else {
-			logger('queue [pubsubhubbub]: error when pushing to ' .
-				   $rr['callback_url'] . 'HTTP: ', $ret);
-
-			// we use the push variable also as a counter, if we failed we
-			// increment this until some upper limit where we give up
-			$new_push = intval($rr['push']) + 1;
-
-			if ($new_push > 30) // OK, let's give up
-				$new_push = 0;
-
-			q("UPDATE `push_subscriber` SET `push` = %d, last_update = '%s' " .
-			  "WHERE id = %d",
-			  $new_push,
-			  dbesc($date_now),
-			  intval($rr['id']));
-		}
-	}
-}
-
-
 function queue_run(&$argv, &$argc){
 	global $a, $db;
 
@@ -80,6 +22,7 @@ function queue_run(&$argv, &$argc){
 	require_once('include/items.php');
 	require_once('include/bbcode.php');
 	require_once('include/pidfile.php');
+	require_once('include/socgraph.php');
 
 	load_config('config');
 	load_config('system');
@@ -112,9 +55,14 @@ function queue_run(&$argv, &$argc){
 
 	logger('queue: start');
 
-	handle_pubsubhubbub();
+	// Handling the pubsubhubbub requests
+	proc_run('php','include/pubsubpublish.php');
 
 	$interval = ((get_config('system','delivery_interval') === false) ? 2 : intval(get_config('system','delivery_interval')));
+
+	// If we are using the worker we don't need a delivery interval
+	if (get_config("system", "worker"))
+		$interval = false;
 
 	$r = q("select * from deliverq where 1");
 	if($r) {
@@ -126,8 +74,8 @@ function queue_run(&$argv, &$argc){
 		}
 	}
 
-	$r = q("SELECT `queue`.*, `contact`.`name`, `contact`.`uid` FROM `queue` 
-		INNER JOIN `contact` ON `queue`.`cid` = `contact`.`id` 
+	$r = q("SELECT `queue`.*, `contact`.`name`, `contact`.`uid` FROM `queue`
+		INNER JOIN `contact` ON `queue`.`cid` = `contact`.`id`
 		WHERE `queue`.`created` < UTC_TIMESTAMP() - INTERVAL 3 DAY");
 	if($r) {
 		foreach($r as $rr) {
@@ -145,7 +93,7 @@ function queue_run(&$argv, &$argc){
 	else {
 
 		// For the first 12 hours we'll try to deliver every 15 minutes
-		// After that, we'll only attempt delivery once per hour. 
+		// After that, we'll only attempt delivery once per hour.
 
 		$r = q("SELECT `id` FROM `queue` WHERE (( `created` > UTC_TIMESTAMP() - INTERVAL 12 HOUR && `last` < UTC_TIMESTAMP() - INTERVAL 15 MINUTE ) OR ( `last` < UTC_TIMESTAMP() - INTERVAL 1 HOUR ))");
 	}
@@ -164,7 +112,7 @@ function queue_run(&$argv, &$argc){
 
 	foreach($r as $q_item) {
 
-		// queue_predeliver hooks may have changed the queue db details, 
+		// queue_predeliver hooks may have changed the queue db details,
 		// so check again if this entry still needs processing
 
 		if($queue_id) {
@@ -189,12 +137,18 @@ function queue_run(&$argv, &$argc){
 			continue;
 		}
 		if(in_array($c[0]['notify'],$deadguys)) {
-				logger('queue: skipping known dead url: ' . $c[0]['notify']);
-				update_queue_time($q_item['id']);
-				continue;
+			logger('queue: skipping known dead url: ' . $c[0]['notify']);
+			update_queue_time($q_item['id']);
+			continue;
 		}
 
-		$u = q("SELECT `user`.*, `user`.`pubkey` AS `upubkey`, `user`.`prvkey` AS `uprvkey` 
+		if (!poco_reachable($c[0]['url'])) {
+			logger('queue: skipping probably dead url: ' . $c[0]['url']);
+			update_queue_time($q_item['id']);
+			continue;
+		}
+
+		$u = q("SELECT `user`.*, `user`.`pubkey` AS `upubkey`, `user`.`prvkey` AS `uprvkey`
 			FROM `user` WHERE `uid` = %d LIMIT 1",
 			intval($c[0]['uid'])
 		);
@@ -251,9 +205,9 @@ function queue_run(&$argv, &$argc){
 				call_hooks('queue_deliver', $a, $params);
 
 				if($params['result'])
-						remove_queue_item($q_item['id']);
+					remove_queue_item($q_item['id']);
 				else
-						update_queue_time($q_item['id']);
+					update_queue_time($q_item['id']);
 
 				break;
 
@@ -265,6 +219,6 @@ function queue_run(&$argv, &$argc){
 }
 
 if (array_search(__file__,get_included_files())===0){
-  queue_run($argv,$argc);
+  queue_run($_SERVER["argv"],$_SERVER["argc"]);
   killme();
 }

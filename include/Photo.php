@@ -345,20 +345,37 @@ class Photo {
     }
 
     public function orient($filename) {
+	if ($this->is_imagick()) {
+		// based off comment on http://php.net/manual/en/imagick.getimageorientation.php
+		$orientation = $this->image->getImageOrientation();
+		switch ($orientation) {
+		case imagick::ORIENTATION_BOTTOMRIGHT:
+		    $this->image->rotateimage("#000", 180);
+		    break;
+		case imagick::ORIENTATION_RIGHTTOP:
+		    $this->image->rotateimage("#000", 90);
+		    break;
+		case imagick::ORIENTATION_LEFTBOTTOM:
+		    $this->image->rotateimage("#000", -90);
+		    break;
+		}
+
+		$this->image->setImageOrientation(imagick::ORIENTATION_TOPLEFT);
+		return TRUE;
+	}
 	// based off comment on http://php.net/manual/en/function.imagerotate.php
 
 	if(!$this->is_valid())
-	    return FALSE;
+		return FALSE;
 
 	if( (! function_exists('exif_read_data')) || ($this->getType() !== 'image/jpeg') )
-	    return;
+		return;
 
-	$exif = @exif_read_data($filename);
+	$exif = @exif_read_data($filename,null,true);
+	if(! $exif)
+		return;
 
-		if(! $exif)
-			return;
-
-	$ort = $exif['Orientation'];
+	$ort = $exif['IFD0']['Orientation'];
 
 	switch($ort)
 	{
@@ -395,6 +412,10 @@ class Photo {
 		$this->rotate(90);
 		break;
 	}
+
+	//	logger('exif: ' . print_r($exif,true));
+	return $exif;
+
     }
 
 
@@ -516,7 +537,12 @@ class Photo {
 	    return FALSE;
 
 	$string = $this->imageString();
+
+	$a = get_app();
+
+	$stamp1 = microtime(true);
 	file_put_contents($path, $string);
+	$a->save_timestamp($stamp1, "file");
     }
 
     public function imageString() {
@@ -764,10 +790,20 @@ function get_photo_info($url) {
 	if (is_null($data)) {
 		$img_str = fetch_url($url, true, $redirects, 4);
 
+		$filesize = strlen($img_str);
+
 		$tempfile = tempnam(get_temppath(), "cache");
+
+		$a = get_app();
+		$stamp1 = microtime(true);
 		file_put_contents($tempfile, $img_str);
+		$a->save_timestamp($stamp1, "file");
+
 		$data = getimagesize($tempfile);
 		unlink($tempfile);
+
+		if ($data)
+			$data["size"] = $filesize;
 
 		Cache::set($url, serialize($data));
 	} else
@@ -846,7 +882,10 @@ function store_photo($a, $uid, $imagedata = "", $url = "") {
 		return(array());
 	} elseif (strlen($imagedata) == 0) {
 		logger("Uploading picture from ".$url, LOGGER_DEBUG);
+
+		$stamp1 = microtime(true);
 		$imagedata = @file_get_contents($url);
+		$a->save_timestamp($stamp1, "file");
 	}
 
 	$maximagesize = get_config('system','maximagesize');
@@ -870,7 +909,11 @@ function store_photo($a, $uid, $imagedata = "", $url = "") {
 */
 
 	$tempfile = tempnam(get_temppath(), "cache");
+
+	$stamp1 = microtime(true);
 	file_put_contents($tempfile, $imagedata);
+	$a->save_timestamp($stamp1, "file");
+
 	$data = getimagesize($tempfile);
 
 	if (!isset($data["mime"])) {
@@ -973,3 +1016,4 @@ function store_photo($a, $uid, $imagedata = "", $url = "") {
 
 	return($image);
 }
+

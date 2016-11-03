@@ -4,13 +4,20 @@ require_once('include/acl_selectors.php');
 require_once('include/message.php');
 
 function message_init(&$a) {
-	$tabs = array();
+
+	$tabs = '';
+
+	if ($a->argc >1 && is_numeric($a->argv[1])) {
+	 $tabs = render_messages(get_messages(local_user(),0,5), 'mail_list.tpl');
+	}
+
 	$new = array(
 		'label' => t('New Message'),
 		'url' => $a->get_baseurl(true) . '/message/new',
 		'sel'=> ($a->argv[1] == 'new'),
+		'accesskey' => 'm',
 	);
-	
+
 	$tpl = get_markup_template('message_side.tpl');
 	$a->page['aside'] = replace_macros($tpl, array(
 		'$tabs'=>$tabs,
@@ -29,7 +36,7 @@ function message_init(&$a) {
 		'$baseurl' => $a->get_baseurl(true),
 		'$base' => $base
 	));
-	
+
 }
 
 function message_post(&$a) {
@@ -54,7 +61,7 @@ function message_post(&$a) {
 	if(! $plaintext) {
 		$body = fix_mce_lf($body);
 	}
-	
+
 	$ret = send_message($recipient, $body, $subject, $replyto);
 	$norecip = false;
 
@@ -139,7 +146,7 @@ function item_redir_and_replace_images($body, $images, $cid) {
 
 	for($i = 0; $i < count($images); $i++) {
 		$search = '/\[url\=(.*?)\]\[!#saved_image' . $i . '#!\]\[\/url\]' . '/is';
-		$replace = '[url=' . z_path() . '/redir/' . $cid 
+		$replace = '[url=' . z_path() . '/redir/' . $cid
 		           . '?f=1&url=' . '$1' . '][!#saved_image' . $i . '#!][/url]' ;
 
 		$img_end = strpos($origbody, '[!#saved_image' . $i . '#!][/url]') + strlen('[!#saved_image' . $i . '#!][/url]');
@@ -245,8 +252,8 @@ function message_content(&$a) {
 
 				// remove diaspora conversation pointer
 				// Actually if we do this, we can never receive another reply to that conversation,
-				// as we will never again have the info we need to re-create it. 
-				// We'll just have to orphan it. 
+				// as we will never again have the info we need to re-create it.
+				// We'll just have to orphan it.
 
 				//if($convid) {
 				//	q("delete from conv where id = %d limit 1",
@@ -256,17 +263,17 @@ function message_content(&$a) {
 
 				if($r)
 					info( t('Conversation removed.') . EOL );
-			} 
+			}
 			//goaway($a->get_baseurl(true) . '/message' );
 			goaway($a->get_baseurl(true) . '/' . $_SESSION['return_url']);
-		}	
-	
+		}
+
 	}
 
 	if(($a->argc > 1) && ($a->argv[1] === 'new')) {
-		
+
 		$o .= $header;
-		
+
 /*		$plaintext = false;
 		if(intval(get_pconfig(local_user(),'system','plaintext')))
 			$plaintext = true;*/
@@ -282,7 +289,7 @@ function message_content(&$a) {
 			'$nickname' => $a->user['nickname'],
 			'$linkurl' => t('Please enter a link URL:')
 		));
-	
+
 		$tpl = get_markup_template('msg-end.tpl');
 		$a->page['end'] .= replace_macros($tpl, array(
 			'$baseurl' => $a->get_baseurl(true),
@@ -290,9 +297,9 @@ function message_content(&$a) {
 			'$nickname' => $a->user['nickname'],
 			'$linkurl' => t('Please enter a link URL:')
 		));
-	
+
 		$preselect = (isset($a->argv[2])?array($a->argv[2]):false);
-			
+
 
 		$prename = $preurl = $preid = '';
 
@@ -306,19 +313,19 @@ function message_content(&$a) {
 				$preurl = $r[0]['url'];
 				$preid = $r[0]['id'];
 			}
-		}	 
+		}
 
 		$prefill = (($preselect) ? $prename  : '');
 
 		// the ugly select box
-		
+
 		$select = contact_select('messageto','message-to-select', $preselect, 4, true, false, false, 10);
 
 		$tpl = get_markup_template('prv_message.tpl');
 		$o .= replace_macros($tpl,array(
 			'$header' => t('Send Private Message'),
 			'$to' => t('To:'),
-			'$showinputs' => 'true', 
+			'$showinputs' => 'true',
 			'$prefill' => $prefill,
 			'$autocomp' => $autocomp,
 			'$preid' => $preid,
@@ -343,75 +350,29 @@ function message_content(&$a) {
 
 	if($a->argc == 1) {
 
-		// list messages
+		// List messages
 
 		$o .= $header;
 
-		
-		$r = q("SELECT count(*) AS `total` FROM `mail` 
+		$r = q("SELECT count(*) AS `total` FROM `mail`
 			WHERE `mail`.`uid` = %d GROUP BY `parent-uri` ORDER BY `created` DESC",
 			intval(local_user()),
 			dbesc($myprofile)
 		);
-		if(count($r))
-			$a->set_pager_total($r[0]['total']);
 
-		$r = q("SELECT max(`mail`.`created`) AS `mailcreated`, min(`mail`.`seen`) AS `mailseen`, 
-			`mail`.* , `contact`.`name`, `contact`.`url`, `contact`.`thumb` , `contact`.`network`,
-			count( * ) as count
-			FROM `mail` LEFT JOIN `contact` ON `mail`.`contact-id` = `contact`.`id` 
-			WHERE `mail`.`uid` = %d GROUP BY `parent-uri` ORDER BY `mailcreated` DESC  LIMIT %d , %d ",
-			intval(local_user()),
-			//
-			intval($a->pager['start']),
-			intval($a->pager['itemspage'])
-		);
+		if(count($r)) $a->set_pager_total($r[0]['total']);
+
+		$r = get_messages(local_user(), $a->pager['start'], $a->pager['itemspage']);
 
 		if(! count($r)) {
 			info( t('No messages.') . EOL);
 			return $o;
 		}
 
-		$tpl = get_markup_template('mail_list.tpl');
-		foreach($r as $rr) {
-			if($rr['unknown']) {
-				$partecipants = sprintf( t("Unknown sender - %s"),$rr['from-name']);
-			}
-			elseif (link_compare($rr['from-url'],$myprofile)){
-				$partecipants = sprintf( t("You and %s"), $rr['name']);
-			}
-			else {
-				$partecipants = sprintf( t("%s and You"), $rr['from-name']);
-			}
+		$o .= render_messages($r, 'mail_list.tpl');
 
-			if($a->theme['template_engine'] === 'internal') {
-				$subject_e = template_escape((($rr['mailseen']) ? $rr['title'] : '<strong>' . $rr['title'] . '</strong>'));
-				$body_e = template_escape($rr['body']);
-				$to_name_e = template_escape($rr['name']);
-			}
-			else {
-				$subject_e = (($rr['mailseen']) ? $rr['title'] : '<strong>' . $rr['title'] . '</strong>');
-				$body_e = $rr['body'];
-				$to_name_e = $rr['name'];
-			}
-			
-			$o .= replace_macros($tpl, array(
-				'$id' => $rr['id'],
-				'$from_name' => $partecipants,
-				'$from_url' => (($rr['network'] === NETWORK_DFRN) ? $a->get_baseurl(true) . '/redir/' . $rr['contact-id'] : $rr['url']),
-				'$sparkle' => ' sparkle',
-				'$from_photo' => (($rr['thumb']) ? $rr['thumb'] : $rr['from-photo']),
-				'$subject' => $subject_e,
-				'$delete' => t('Delete conversation'),
-				'$body' => $body_e,
-				'$to_name' => $to_name_e,
-				'$date' => datetime_convert('UTC',date_default_timezone_get(),$rr['mailcreated'], t('D, d M Y - g:i A')),
-                                '$ago' => relative_date($rr['mailcreated']),
-				'$seen' => $rr['mailseen'],
-				'$count' => sprintf( tt('%d message', '%d messages', $rr['count']), $rr['count']),
-			));
-		}
-		$o .= paginate($a);	
+		$o .= paginate($a);
+
 		return $o;
 	}
 
@@ -423,13 +384,13 @@ function message_content(&$a) {
 		if( local_user() && feature_enabled(local_user(),'richtext') )
 			$plaintext = false;
 
-		$r = q("SELECT `mail`.*, `contact`.`name`, `contact`.`url`, `contact`.`thumb` 
-			FROM `mail` LEFT JOIN `contact` ON `mail`.`contact-id` = `contact`.`id` 
+		$r = q("SELECT `mail`.*, `contact`.`name`, `contact`.`url`, `contact`.`thumb`
+			FROM `mail` LEFT JOIN `contact` ON `mail`.`contact-id` = `contact`.`id`
 			WHERE `mail`.`uid` = %d AND `mail`.`id` = %d LIMIT 1",
 			intval(local_user()),
 			intval($a->argv[1])
 		);
-		if(count($r)) { 
+		if(count($r)) {
 			$contact_id = $r[0]['contact-id'];
 			$convid = $r[0]['convid'];
 
@@ -438,10 +399,10 @@ function message_content(&$a) {
 				$sql_extra = sprintf(" and ( `mail`.`parent-uri` = '%s' OR `mail`.`convid` = '%d' ) ",
 					dbesc($r[0]['parent-uri']),
 					intval($convid)
-				);  
+				);
 
-			$messages = q("SELECT `mail`.*, `contact`.`name`, `contact`.`url`, `contact`.`thumb` 
-				FROM `mail` LEFT JOIN `contact` ON `mail`.`contact-id` = `contact`.`id` 
+			$messages = q("SELECT `mail`.*, `contact`.`name`, `contact`.`url`, `contact`.`thumb`
+				FROM `mail` LEFT JOIN `contact` ON `mail`.`contact-id` = `contact`.`id`
 				WHERE `mail`.`uid` = %d $sql_extra ORDER BY `mail`.`created` ASC",
 				intval(local_user())
 			);
@@ -522,7 +483,7 @@ function message_content(&$a) {
 				'date' => datetime_convert('UTC',date_default_timezone_get(),$message['created'],'D, d M Y - g:i A'),
                                 'ago' => relative_date($message['created']),
 			);
-				
+
 			$seen = $message['seen'];
 		}
 
@@ -545,9 +506,9 @@ function message_content(&$a) {
 			'$thread_seen' => $seen,
 			'$delete' =>  t('Delete conversation'),
 			'$canreply' => (($unknown) ? false : '1'),
-			'$unknown_text' => t("No secure communications available. You <strong>may</strong> be able to respond from the sender's profile page."),			
+			'$unknown_text' => t("No secure communications available. You <strong>may</strong> be able to respond from the sender's profile page."),
 			'$mails' => $mails,
-			
+
 			// reply
 			'$header' => t('Send Reply'),
 			'$to' => t('To:'),
@@ -568,5 +529,65 @@ function message_content(&$a) {
 
 		return $o;
 	}
+}
 
+function get_messages($user, $lstart, $lend) {
+
+	return q("SELECT max(`mail`.`created`) AS `mailcreated`, min(`mail`.`seen`) AS `mailseen`,
+		`mail`.* , `contact`.`name`, `contact`.`url`, `contact`.`thumb` , `contact`.`network`,
+		count( * ) as count
+		FROM `mail` LEFT JOIN `contact` ON `mail`.`contact-id` = `contact`.`id`
+		WHERE `mail`.`uid` = %d GROUP BY `parent-uri` ORDER BY `mailcreated` DESC  LIMIT %d , %d ",
+		intval($user), intval($lstart), intval($lend)
+	);
+}
+
+function render_messages($msg, $t) {
+
+	$a = get_app();
+
+	$tpl = get_markup_template($t);
+	$rslt = '';
+
+	foreach($msg as $rr) {
+
+		if($rr['unknown']) {
+			$participants = sprintf( t("Unknown sender - %s"),$rr['from-name']);
+		}
+		elseif (link_compare($rr['from-url'], $myprofile)){
+			$participants = sprintf( t("You and %s"), $rr['name']);
+		}
+		else {
+			$participants = sprintf( t("%s and You"), $rr['from-name']);
+		}
+
+		if($a->theme['template_engine'] === 'internal') {
+			$subject_e = template_escape((($rr['mailseen']) ? $rr['title'] : '<strong>' . $rr['title'] . '</strong>'));
+			$body_e = template_escape($rr['body']);
+			$to_name_e = template_escape($rr['name']);
+		}
+		else {
+			$subject_e = (($rr['mailseen']) ? $rr['title'] : '<strong>' . $rr['title'] . '</strong>');
+			$body_e = $rr['body'];
+			$to_name_e = $rr['name'];
+		}
+
+		$rslt .= replace_macros($tpl, array(
+			'$id' => $rr['id'],
+			'$from_name' => $participants,
+			'$from_url' => (($rr['network'] === NETWORK_DFRN) ? $a->get_baseurl(true) . '/redir/' . $rr['contact-id'] : $rr['url']),
+			'$sparkle' => ' sparkle',
+			'$from_photo' => (($rr['thumb']) ? $rr['thumb'] : $rr['from-photo']),
+			'$subject' => $subject_e,
+			'$delete' => t('Delete conversation'),
+			'$body' => $body_e,
+			'$to_name' => $to_name_e,
+			'$date' => datetime_convert('UTC',date_default_timezone_get(),$rr['mailcreated'], t('D, d M Y - g:i A')),
+															'$ago' => relative_date($rr['mailcreated']),
+			'$seen' => $rr['mailseen'],
+			'$count' => sprintf( tt('%d message', '%d messages', $rr['count']), $rr['count']),
+		));
+	}
+
+	return $rslt;
 }

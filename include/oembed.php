@@ -11,7 +11,6 @@ function oembed_replacecb($matches){
 
 
 function oembed_fetch_url($embedurl, $no_rich_type = false){
-
 	$embedurl = trim($embedurl, "'");
 	$embedurl = trim($embedurl, '"');
 
@@ -38,9 +37,14 @@ function oembed_fetch_url($embedurl, $no_rich_type = false){
 				if ($dom){
 					$xpath = new DOMXPath($dom);
 					$attr = "oembed";
-
 					$xattr = oe_build_xpath("class","oembed");
 					$entries = $xpath->query("//link[@type='application/json+oembed']");
+					foreach($entries as $e){
+						$href = $e->getAttributeNode("href")->nodeValue;
+						$txt = fetch_url($href . '&maxwidth=' . $a->videowidth);
+						break;
+					}
+					$entries = $xpath->query("//link[@type='text/json+oembed']");
 					foreach($entries as $e){
 						$href = $e->getAttributeNode("href")->nodeValue;
 						$txt = fetch_url($href . '&maxwidth=' . $a->videowidth);
@@ -52,31 +56,32 @@ function oembed_fetch_url($embedurl, $no_rich_type = false){
 
 		if ($txt==false || $txt==""){
 			$embedly = get_config("system", "embedly");
-			if ($embedly == "") {
-				// try oohembed service
-				$ourl = "http://oohembed.com/oohembed/?url=".urlencode($embedurl).'&maxwidth=' . $a->videowidth;
-				$txt = fetch_url($ourl);
-			} else {
+			if ($embedly != "") {
 				// try embedly service
 				$ourl = "https://api.embed.ly/1/oembed?key=".$embedly."&url=".urlencode($embedurl);
 				$txt = fetch_url($ourl);
-			}
 
-			logger("oembed_fetch_url: ".$txt, LOGGER_DEBUG);
+				logger("oembed_fetch_url: ".$txt, LOGGER_DEBUG);
+			}
 		}
 
 		$txt=trim($txt);
-		if ($txt[0]!="{") $txt='{"type":"error"}';
 
-		//save in cache
-		Cache::set($a->videowidth . $embedurl,$txt);
-
+		if ($txt[0]!="{")
+			$txt='{"type":"error"}';
+		else	//save in cache
+			Cache::set($a->videowidth . $embedurl,$txt, CACHE_DAY);
 	}
 
 	$j = json_decode($txt);
 
 	if (!is_object($j))
 		return false;
+
+	// Always embed the SSL version
+	if (isset($j->html))
+		$j->html = str_replace(array("http://www.youtube.com/", "http://player.vimeo.com/"),
+			array("https://www.youtube.com/", "https://player.vimeo.com/"), $j->html);
 
 	$j->embedurl = $embedurl;
 
@@ -104,6 +109,8 @@ function oembed_fetch_url($embedurl, $no_rich_type = false){
 	        	$j->thumbnail_height = $data["images"][0]["height"];
 		}
 	}
+
+	call_hooks('oembed_fetch_url', $embedurl, $j);
 
 	return $j;
 }
@@ -150,12 +157,13 @@ function oembed_format_object($j){
 		case "rich": {
 			// not so safe..
 			if (!get_config("system","no_oembed_rich_content"))
-				$ret.= $jhtml;
+				$ret.= proxy_parse_html($jhtml);
 		}; break;
 	}
 
 	// add link to source if not present in "rich" type
 	if ($j->type!='rich' || !strpos($j->html,$embedurl) ){
+		$ret .= "<h4>";
 		if (isset($j->title)) {
 			if (isset($j->provider_name))
 				$ret .= $j->provider_name.": ";
@@ -182,19 +190,26 @@ function oembed_format_object($j){
 		}
 		//if (isset($j->author_name)) $ret.=" by ".$j->author_name;
 		//if (isset($j->provider_name)) $ret.=" on ".$j->provider_name;
+		$ret .= "</h4>";
 	} else {
 		// add <a> for html2bbcode conversion
 		$ret .= "<a href='$embedurl' rel='oembed'>$embedurl</a>";
+		$ret .= "<br style='clear:left'>";
 	}
-	$ret.="<br style='clear:left'></span>";
+	$ret.="</span>";
 	return  mb_convert_encoding($ret, 'HTML-ENTITIES', mb_detect_encoding($ret));
 }
 
 function oembed_iframe($src,$width,$height) {
+
 	if(! $width || strstr($width,'%'))
 		$width = '640';
-	if(! $height || strstr($height,'%'))
+	if(! $height || strstr($height,'%')) {
 		$height = '300';
+		$resize = 'onload="resizeIframe(this);"';
+	} else
+		$resize = '';
+
 	// try and leave some room for the description line.
 	$height = intval($height) + 80;
 	$width  = intval($width) + 40;
@@ -202,7 +217,7 @@ function oembed_iframe($src,$width,$height) {
 	$a = get_app();
 
 	$s = $a->get_baseurl()."/oembed/".base64url_encode($src);
-	return '<iframe height="' . $height . '" width="' . $width . '" src="' . $s . '" frameborder="no" >' . t('Embedded content') . '</iframe>';
+	return '<iframe '.$resize.' class="embed_rich" height="'.$height.'" width="'.$width.'" src="'.$s.'" frameborder="no">'.t('Embedded content').'</iframe>';
 
 }
 

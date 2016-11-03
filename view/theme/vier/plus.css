@@ -17,6 +17,12 @@ nav a:hover,
   color: #000;
 }
 
+.manage-notify {
+  background-color: #CB4437;
+  border-radius: 10px;
+  font: bold 11px/16px Arial;
+}
+
 nav .nav-notify {
 /*  background-color: #427FED; */
   background-color: #CB4437;
@@ -47,10 +53,11 @@ nav .nav-menu {
   font-weight: initial;
 }
 
+#nav-apps-menu,
 #nav-site-menu,
 #nav-notifications-menu,
 #nav-user-menu {
-  top: 35px;
+  top: 32px;
 }
 
 #nav-messages-menu {
@@ -142,6 +149,10 @@ header #banner {
 aside {
   top: 44px;
   height: calc(100% - 54px);
+}
+
+right_aside {
+  top: 44px;
 }
 
 section {
