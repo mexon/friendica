@@ -186,7 +186,6 @@ function z_fetch_url($url,$binary = false, &$redirects = 0, $opts=array()) {
 		$ret['debug'] = $curl_info;
 	}
 	@curl_close($ch);
->>>>>>> 3.4.3-2
 
 	$a->save_timestamp($stamp1, "network");
 
