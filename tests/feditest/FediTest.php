@@ -46,7 +46,6 @@ class FediTest extends MockedTest
         $_SERVER["QUERY_STRING"] = "pagename=%2ewell%2dknown%2fwebfinger&resource=acct:test_user@friendica.local";
         $_GET['resource'] = "acct:test_user@friendica.local";
 
-        $this->start_time = microtime(true);
         $this->dice = (new Dice())->addRules(include __DIR__ . '/../../static/dependencies.config.php');
         \Friendica\DI::init($this->dice);
         $this->a = \Friendica\DI::app();
@@ -68,7 +67,7 @@ class FediTest extends MockedTest
             $this->dice->create(\Friendica\Content\Nav::class),
             $this->dice->create(\Friendica\Module\Special\HTTPException::class),
             new \Friendica\Util\HTTPInputData($_SERVER),
-            $this->start_time,
+            microtime(true),
             $_SERVER
         );
         } catch (Friendica\Core\ExitException $e) {
