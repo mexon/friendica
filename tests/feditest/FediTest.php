@@ -98,6 +98,7 @@ class FediTest extends MockedTest
         Friendica\Core\System::setBypassExit();
         self::assertTrue(true);
         ob_start();
+        try {
         $this->a->runFrontend(
             $this->dice->create(\Friendica\App\Router::class),
             $this->dice->create(\Friendica\Core\PConfig\Capability\IManagePersonalConfigValues::class),
@@ -109,7 +110,17 @@ class FediTest extends MockedTest
             $this->start_time,
             $_SERVER
         );
-        $result = ob_get_clean();
-        echo $result;
+        } catch (Friendica\Core\ExitException $e) {
+        }
+        $result = json_decode(ob_get_clean());
+        self::assertIsObject($result);
+        self::assertIsArray($result->links);
+        foreach ($result->links as $link) {
+            if (property_exists($link, "rel") and $link->rel == "self" and property_exists($link, "type") and $link->type == "application/activity+json") {
+                $self_link = $link;
+                break;
+            }
+        }
+        self::assertEquals($link->href, "https://friendica.local/profile/test_user");
     }
 }
