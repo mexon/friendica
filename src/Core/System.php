@@ -36,6 +36,10 @@ use Friendica\Util\XML;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Log\LoggerInterface;
 
+class ExitException extends \Exception
+{
+}
+
 /**
  * Contains the class with system relevant stuff
  */
@@ -424,7 +428,9 @@ class System
 	public static function exit()
 	{
 		DI::page()->logRuntime(DI::config(), 'exit');
-		if (!self::$bypassExit) {
+		if (self::$bypassExit) {
+			throw new ExitException();
+		} else {
 			exit();
 		}
 	}
