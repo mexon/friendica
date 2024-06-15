@@ -20,7 +20,6 @@
  */
 
 use Friendica\Test\MockedTest;
-use Friendica\Test\DiceHttpMockHandlerTrait;
 use Friendica\Model\User as UserModel;
 use Friendica\DI;
 use Dice\Dice;
@@ -28,8 +27,6 @@ use Friendica\Core\Logger;
 
 class FediTest extends MockedTest
 {
-	use DiceHttpMockHandlerTrait;
-
 	protected function setUp(): void
 	{
 		parent::setUp();
@@ -37,8 +34,6 @@ class FediTest extends MockedTest
 
 	protected function tearDown(): void
 	{
-		$this->tearDownFixtures();
-
 		parent::tearDown();
 	}
 
@@ -51,7 +46,6 @@ class FediTest extends MockedTest
         $_SERVER["QUERY_STRING"] = "pagename=%2ewell%2dknown%2fwebfinger&resource=acct:test_user@friendica.local";
         $_GET['resource'] = "acct:test_user@friendica.local";
 
-		$this->setupHttpMockHandler();
         $this->start_time = microtime(true);
         $this->dice = (new Dice())->addRules(include __DIR__ . '/../../static/dependencies.config.php');
         \Friendica\DI::init($this->dice);
