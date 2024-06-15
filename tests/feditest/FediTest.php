@@ -49,7 +49,6 @@ class FediTest extends MockedTest
         $this->dice = (new Dice())->addRules(include __DIR__ . '/../../static/dependencies.config.php');
         \Friendica\DI::init($this->dice);
         $this->a = \Friendica\DI::app();
-        \Friendica\DI::mode()->setExecutor(\Friendica\App\Mode::INDEX);
         DI::config()->set('system', 'disable_email_validation', true);
         if (!UserModel::getByNickname("test_user")) {
             $this->test_user = UserModel::createMinimal("Test User", "test_user@social.test", "test_user");
