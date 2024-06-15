@@ -47,41 +47,8 @@ class FediTest extends MockedTest
      */
     public function testNothing()
     {
-        $oldserver = $_SERVER;
-        $_SERVER["REDIRECT_REMOTE_USER"] = "";
-        $_SERVER["REDIRECT_HTTPS"] = "on";
-        $_SERVER["REDIRECT_SSL_TLS_SNI"] = "friendica.local";
-        $_SERVER["REDIRECT_STATUS"] = "200";
-        $_SERVER["HTTPS"] = "on";
-        $_SERVER["SSL_TLS_SNI"] = "friendica.local";
-        $_SERVER["HTTP_HOST"] = "friendica.local";
-        $_SERVER["HTTP_USER_AGENT"] = "curl/7.81.0";
-        $_SERVER["HTTP_ACCEPT"] = "application/activity+json";
-        $_SERVER["PATH"] = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/snap/bin";
-        $_SERVER["SERVER_SIGNATURE"] = "<address>Apache/2.4.52 (Ubuntu) Server at friendica.local Port 443</address>\n";
-        $_SERVER["SERVER_SOFTWARE"] = "Apache/2.4.52 (Ubuntu)";
         $_SERVER["SERVER_NAME"] = "friendica.local";
-        $_SERVER["SERVER_ADDR"] = "192.168.56.30";
-        $_SERVER["SERVER_PORT"] = "443";
-        $_SERVER["REMOTE_ADDR"] = "192.168.56.1";
-        $_SERVER["DOCUMENT_ROOT"] = "/var/www/friendica";
-        $_SERVER["REQUEST_SCHEME"] = "https";
-        $_SERVER["CONTEXT_PREFIX"] = "";
-        $_SERVER["CONTEXT_DOCUMENT_ROOT"] = "/var/www/friendica";
-        $_SERVER["SERVER_ADMIN"] = "[no address given]";
-        $_SERVER["SCRIPT_FILENAME"] = "/var/www/friendica/index.php";
-        $_SERVER["REMOTE_PORT"] = "60430";
-        $_SERVER["REDIRECT_URL"] = "/.well-known/webfinger";
-        $_SERVER["REDIRECT_QUERY_STRING"] = "pagename=%2ewell%2dknown%2fwebfinger&resource=acct:test_user@friendica.local";
-        $_SERVER["GATEWAY_INTERFACE"] = "CGI/1.1";
-        $_SERVER["SERVER_PROTOCOL"] = "HTTP/1.1";
-        $_SERVER["REQUEST_METHOD"] = "GET";
         $_SERVER["QUERY_STRING"] = "pagename=%2ewell%2dknown%2fwebfinger&resource=acct:test_user@friendica.local";
-        $_SERVER["REQUEST_URI"] = "/.well-known/webfinger?resource=acct:test_user@friendica.local";
-        $_SERVER["SCRIPT_NAME"] = "/index.php";
-        $_SERVER["PHP_SELF"] = "/index.php";
-        $_SERVER["REQUEST_TIME_FLOAT"] = 1717159701.122909;
-        $_SERVER["REQUEST_TIME"] = 1717159701;
         $_GET['resource'] = "acct:test_user@friendica.local";
 
 		$this->setupHttpMockHandler();
