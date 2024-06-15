@@ -56,6 +56,11 @@ class System
 	 */
 	private $basePath;
 
+	/**
+	 * @var bool
+	 */
+	private static $bypassExit = false;
+
 	public function __construct(LoggerInterface $logger, IManageConfigValues $config, string $basepath)
 	{
 		$this->logger   = $logger;
@@ -406,12 +411,22 @@ class System
 	}
 
 	/**
+	 * Set a flag so that calling exit() will not in fact exit.  Used for testing.
+	 */
+	public static function setBypassExit()
+	{
+		self::$bypassExit = true;
+	}
+
+	/**
 	 * Exit the program execution.
 	 */
 	public static function exit()
 	{
 		DI::page()->logRuntime(DI::config(), 'exit');
-		exit();
+		if (!self::$bypassExit) {
+			exit();
+		}
 	}
 
 	/**
