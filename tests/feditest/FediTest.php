@@ -30,6 +30,19 @@ class FediTest extends MockedTest
 	protected function setUp(): void
 	{
 		parent::setUp();
+
+        Friendica\Core\System::setBypassExit();
+        
+        $_SERVER["SERVER_NAME"] = "friendica.local";
+        $_SERVER["QUERY_STRING"] = "pagename=%2ewell%2dknown%2fwebfinger";
+
+        $this->dice = (new Dice())->addRules(include __DIR__ . '/../../static/dependencies.config.php');
+        \Friendica\DI::init($this->dice);
+        $this->a = \Friendica\DI::app();
+        DI::config()->set('system', 'disable_email_validation', true);
+        if (!UserModel::getByNickname("test_user")) {
+            $this->test_user = UserModel::createMinimal("Test User", "test_user@social.test", "test_user");
+        }
 	}
 
 	protected function tearDown(): void
@@ -42,20 +55,8 @@ class FediTest extends MockedTest
      */
     public function testNothing()
     {
-        $_SERVER["SERVER_NAME"] = "friendica.local";
-        $_SERVER["QUERY_STRING"] = "pagename=%2ewell%2dknown%2fwebfinger&resource=acct:test_user@friendica.local";
         $_GET['resource'] = "acct:test_user@friendica.local";
-
-        $this->dice = (new Dice())->addRules(include __DIR__ . '/../../static/dependencies.config.php');
-        \Friendica\DI::init($this->dice);
-        $this->a = \Friendica\DI::app();
-        DI::config()->set('system', 'disable_email_validation', true);
-        if (!UserModel::getByNickname("test_user")) {
-            $this->test_user = UserModel::createMinimal("Test User", "test_user@social.test", "test_user");
-        }
-
-        Friendica\Core\System::setBypassExit();
-        self::assertTrue(true);
+        
         ob_start();
         try {
         $this->a->runFrontend(
@@ -72,6 +73,7 @@ class FediTest extends MockedTest
         } catch (Friendica\Core\ExitException $e) {
         }
         $result = json_decode(ob_get_clean());
+
         self::assertIsObject($result);
         self::assertIsArray($result->links);
         foreach ($result->links as $link) {
