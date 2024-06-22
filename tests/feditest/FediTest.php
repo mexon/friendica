@@ -24,6 +24,16 @@ use Friendica\Model\User as UserModel;
 use Friendica\DI;
 use Dice\Dice;
 use Friendica\Core\Logger;
+use Friendica\Core\System;
+
+class MatthewSystem extends System
+{
+	public function __construct(LoggerInterface $logger, IManageConfigValues $config, string $basepath)
+	{
+        parent::__construct($logger, $config, $basepath);
+        echo "@@@ hello world";
+    }
+}
 
 class FediTest extends MockedTest
 {
@@ -37,6 +47,8 @@ class FediTest extends MockedTest
         $_SERVER["QUERY_STRING"] = "pagename=%2ewell%2dknown%2fwebfinger";
 
         $this->dice = (new Dice())->addRules(include __DIR__ . '/../../static/dependencies.config.php');
+        $this->dice->addRules(['MatthewSystem' => ['substitutions' => ['\Friendica\Core\System' => 'MatthewSystem']]]);
+
         \Friendica\DI::init($this->dice);
         $this->a = \Friendica\DI::app();
         DI::config()->set('system', 'disable_email_validation', true);
