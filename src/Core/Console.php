@@ -58,6 +58,7 @@ Commands:
 	serverblock            Manage blocked servers
 	storage                Manage storage backend
 	relay                  Manage ActivityPub relay servers
+	matthew                Matthew Stuff
 
 Options:
 	-h|--help|-? Show help information
@@ -89,6 +90,7 @@ HELP;
 		'postupdate'             => Friendica\Console\PostUpdate::class,
 		'po2php'                 => Friendica\Console\PoToPhp::class,
 		'relay'                  => Friendica\Console\Relay::class,
+		'matthew'                => Friendica\Console\Matthew::class,
 		'relocate'               => Friendica\Console\Relocate::class,
 		'serverblock'            => Friendica\Console\ServerBlock::class,
 		'storage'                => Friendica\Console\Storage::class,

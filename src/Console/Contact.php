@@ -39,10 +39,12 @@ class Contact extends \Asika\SimpleConsole\Console
 console contact - Modify contact settings per console commands.
 Usage
 	bin/console contact add <user nick> <URL> [<network>] [-h|--help|-?] [-v]
+	bin/console contact block <user nick> <URL> [<reason>] [-h|--help|-?] [-v]
 	bin/console contact remove <CID> [-h|--help|-?] [-v]
 	bin/console contact search id <CID> [-h|--help|-?] [-v]
 	bin/console contact search url <user nick> <URL> [-h|--help|-?] [-v]
 	bin/console contact terminate <CID> [-h|--help|-?] [-v]
+	bin/console contact unblock <user nick> <URL> [-h|--help|-?] [-v]
 
 Description
 	Modify contact settings per console commands.
@@ -84,12 +86,16 @@ HELP;
 		switch ($command) {
 			case 'add':
 				return $this->addContact();
+			case 'block':
+				return $this->blockContact();
 			case 'remove':
 				return $this->removeContact();
 			case 'search':
 				return $this->searchContact();
 			case 'terminate':
 				return $this->terminateContact();
+			case 'unblock':
+				return $this->unblockContact();
 			default:
 				throw new \Asika\SimpleConsole\CommandArgsException('Wrong command.');
 		}
@@ -160,6 +166,80 @@ HELP;
 			$this->out('User ' . $user['nickname'] . ' now connected to ' . $url . ', contact ID ' . $result['cid']);
 		} else {
 			throw new RuntimeException($result['message']);
+		}
+	}
+
+	/**
+	 * Block a contact from a user to a URL
+	 *
+	 * @return bool True, if the command was successful
+	 */
+	private function blockContact()
+	{
+		$user = $this->getUserByNick(1);
+
+		$url = $this->getArgument(2);
+		if (empty($url)) {
+			$this->out('Enter contact URL: ');
+			$url = CliPrompt::prompt();
+			if (empty($url)) {
+				throw new RuntimeException('A contact URL must be specified.');
+			}
+		}
+
+		$url = Probe::cleanURI($url);
+
+		$contact = ContactModel::getByURL($url, null, [], $user['uid']);
+		if (empty($contact)) {
+			throw new RuntimeException('Contact not found');
+		}
+
+		$reason = $this->getArgument(3);
+		if ($reason === null) {
+			$this->out('Enter reason, or leave blank: ');
+			$reason = CliPrompt::prompt();
+		}
+
+		$result = ContactModel::block($contact['cid'], $reason);
+
+		if ($result) {
+			$this->out('User ' . $user['nickname'] . ' blocked ' . $url . ', contact ID ' . $result['cid']);
+		} else {
+			throw new RuntimeException('Unable to block contact');
+		}
+	}
+
+	/**
+	 * Unblock a contact from a user to a URL
+	 *
+	 * @return bool True, if the command was successful
+	 */
+	private function unblockContact()
+	{
+		$user = $this->getUserByNick(1);
+
+		$url = $this->getArgument(2);
+		if (empty($url)) {
+			$this->out('Enter contact URL: ');
+			$url = CliPrompt::prompt();
+			if (empty($url)) {
+				throw new RuntimeException('A contact URL must be specified.');
+			}
+		}
+
+		$url = Probe::cleanURI($url);
+
+		$contact = ContactModel::getByURL($url, null, [], $user['uid']);
+		if (empty($contact)) {
+			throw new RuntimeException('Contact not found');
+		}
+
+		$result = ContactModel::unblock($contact['cid']);
+
+		if ($result) {
+			$this->out('User ' . $user['nickname'] . ' unblocked ' . $url . ', contact ID ' . $result['cid']);
+		} else {
+			throw new RuntimeException('Unable to unblock contact');
 		}
 	}
 
